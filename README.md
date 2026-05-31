@@ -12,7 +12,7 @@
 <p align="center">
   <a href="https://tuvl.io">Website</a> &nbsp;·&nbsp;
   <a href="https://tuvl.dev">Docs</a> &nbsp;·&nbsp;
-  <a href="https://github.com/tuvl-io/public">GitHub</a>
+  <a href="https://github.com/tuvl-io/tuvl">GitHub</a>
 </p>
 
 ---
@@ -25,7 +25,7 @@
 Install `tuvl[standard]` during development to get **Tuvl Insight** — a full browser-based developer portal for designing models, configuring datasources, managing LLM providers, building workflows visually, controlling access, and testing execution — all without leaving your local environment.
 
 - **Website:** [tuvl.io](https://tuvl.io)
-- **GitHub:** [tuvl-io/public](https://github.com/tuvl-io/public)
+- **GitHub:** [tuvl-io/tuvl](https://github.com/tuvl-io/tuvl)
 
 ---
 
