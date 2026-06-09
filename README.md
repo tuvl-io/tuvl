@@ -12,20 +12,56 @@
 <p align="center">
   <a href="https://tuvl.io">Website</a> &nbsp;·&nbsp;
   <a href="https://tuvl.dev">Docs</a> &nbsp;·&nbsp;
-  <a href="https://github.com/tuvl-io/tuvl">GitHub</a>
+  <a href="https://github.com/tuvl-io/public">GitHub</a>
 </p>
-
----
 
 > **Hey there!** 👋 The source code is on its way — we're tidying things up before the public release. Keep an eye on this repo and star it so you don't miss the drop.
 
----
+
 `tuvl` lets you define, run, and manage multi-step AI workflows using plain YAML files. No boilerplate. No complex overhead. No lock-in.
 
 Install `tuvl[standard]` during development to get **Tuvl Insight** — a full browser-based developer portal for designing models, configuring datasources, managing LLM providers, building workflows visually, controlling access, and testing execution — all without leaving your local environment.
 
 - **Website:** [tuvl.io](https://tuvl.io)
-- **GitHub:** [tuvl-io/tuvl](https://github.com/tuvl-io/tuvl)
+- **GitHub:** [tuvl-io/public](https://github.com/tuvl-io/public)
+
+---
+
+## 🏛️ Architecture & Data Flow
+
+```mermaid
+flowchart TD
+    subgraph Configuration
+        YAML[YAML Definitions] -->|load_all_configs| Reg[In-Memory Registries]
+    end
+
+    subgraph Transport Layer
+        Reg -->|Mount Endpoints| REST[FastAPI REST Server]
+        Reg -->|Mount Services| GRPC[gRPC Server]
+    end
+
+    Client([Clients]) -->|HTTP/JSON| REST
+    Client -->|HTTP/2 Protobuf| GRPC
+
+    subgraph Security: Authentication & Authorization
+        REST --> Auth[Biscuit Token Auth<br>Verify Crypto Signature]
+        GRPC --> Auth
+        Auth -->|Extract Identity| AuthZ[IAM Scope Guard<br>Enforce Model/Route Scopes]
+    end
+
+    AuthZ -->|Workflow Route| Engine{WorkflowEngine.run}
+    AuthZ -->|Auto-Generated CRUD| UoW[Workflow Unit of Work<br>Pydantic-Validated CRUD]
+
+    subgraph Execution & Integrations
+        Engine -->|model-op| UoW
+        UoW -->|SQLModel Object Mapper| PG[(PostgreSQL)]
+        Engine -->|agent| LLM[LiteLLM Any Provider]
+        Engine -->|DataSearch| RAG[(pgvector RAG)]
+        Engine -->|functional| Nodes[Custom Python Nodes]
+        Engine -->|mcp| MCP[MCP Tools]
+        Engine -->|api_call| ExtAPI[External APIs]
+    end
+```
 
 ---
 
@@ -64,7 +100,7 @@ uv tool install tuvl
 | SDK | Package | Status |
 |-----|---------|--------|
 | Python | `pip install tuvl-sdk` / `uv add tuvl-sdk` | Coming soon |
-| JavaScript / TypeScript | `npm install @tuvl/sdk` | Coming soon |
+| JavaScript / TypeScript | `npm install @tuvl/client` | Beta — [`@tuvl/client`](https://www.npmjs.com/package/@tuvl/client) |
 
 The SDKs provide typed clients for triggering workflows, subscribing to execution events via SSE, and managing workflow instances from your own applications.
 
@@ -143,7 +179,7 @@ Share a project by committing everything except `.env` — collaborators run `uv
 | `tuvl init --project-dir <path>` | Scaffold into `<path>/` (project name inferred from last component) |
 | `tuvl init <name> --sample` | Same as above, plus sample recruitment pipeline covering every step kind |
 | `tuvl init <name> --multi-tenant` | Scaffold in **multi-tenant** mode — locks `deployment_mode: multi_tenant` in `.tuvl/system.yaml`, injects `tenant_id` columns into every model, and enables Postgres Row-Level Security tooling |
-| `tuvl dev` | Start the engine in dev mode with hot reload. The dev key is written to `.tuvl/.dev-session` (mode 0600); pass `--show-key` to also print it to the terminal |
+| `tuvl dev` | Start the engine in dev mode with hot reload. The dev key is written to `.tuvl/.dev-session` (mode 0600); pass `--show-key` to print it, and `--auto-login` to automatically bypass the Insight security screen |
 | `tuvl run` | Start the production server |
 | `tuvl test` | Run LLM-as-a-Judge tests against workflow definitions. In multi-tenant projects, automatically injects a synthetic tenant so the data-layer guard doesn't reject test runs |
 | `tuvl validate` | Validate workflow and model YAML files |
@@ -157,6 +193,7 @@ Share a project by committing everything except `.env` — collaborators run `uv
 ```bash
 tuvl dev --port 9000 --project-dir ./my-project
 tuvl dev --show-key                  # print the dev API key (off by default)
+tuvl dev --auto-login                # automatically bypass the Tuvl Insight security screen
 tuvl run --host 0.0.0.0 --port 8000 --workers 2
 tuvl run --allow-host 10.0.0.0/8     # IP allowlist
 tuvl validate --project-dir ./my-project
@@ -219,7 +256,7 @@ Tuvl Insight is not just an observability tool — it is a complete **local deve
 
 | Section | Description |
 |---|---|
-| **IAM** | Create and manage users and roles. Assign and revoke role scopes. Full CRUD for the built-in identity and access management layer. |
+| **IAM** | Create and manage users and roles. Assign and revoke role scopes. The role editor shows a live scope-suggestion palette — click any scope pill to add it to the role without typing. Scope strings are served by `GET /admin/scopes` and cover every CRUD model, workflow, and system scope registered in the engine. Full CRUD for the built-in identity and access management layer. |
 | **Federation** | Configure OAuth2/OIDC federation providers (Google, GitHub, Microsoft, and custom). Manage client credentials and scopes. |
 
 ### Infrastructure & Reference
@@ -283,6 +320,7 @@ with tenant_scope("acme-corp"):
 
 ### Hardening Defaults
 
+- **CRUD endpoint scope enforcement** — every auto-generated model route (`/models/{model}/…`) enforces a Biscuit `scope()` fact. Default names are `{modelname.lower()}:read`, `{modelname.lower()}:write`, `{modelname.lower()}:delete`; override per model with `spec.access` in the `ModelDefinition` YAML. Tokens carrying `iam:admin` satisfy every scope check.
 - **Secrets file modes** — `.tuvl/.dev-session` and `.env` are created with mode `0600` so other accounts on shared hosts can't read them.
 - **Dev key handling** — never echoed to the terminal by default (`tuvl dev --show-key` opts in); always persisted owner-only.
 - **UI session storage** — the dev portal stores the bearer key in `sessionStorage` (tab-scoped) with a 15-minute idle expiry watchdog.
