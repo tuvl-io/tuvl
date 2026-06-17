@@ -1,6 +1,6 @@
 [project]
 name = "tuvl"
-version = "2026.2.3b1"
+version = "2026.2.3b3"
 description = "YAML-driven workflow orchestration engine — compose pipelines of functional nodes, LLM calls, API integrations, and MCP tools, served as a REST API with Postgres persistence and Redis-backed state"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -53,7 +53,7 @@ dependencies = [
 # and testing execution with Tuvl Lens and Tuvl Spectrum.
 # Install with: pip install tuvl[standard]
 standard = [
-    "tuvl-insight>=2026.2.3b1",
+    "tuvl-insight>=2026.2.3b3",
 ]
 dev = [
     "ruff>=0.15.0",
