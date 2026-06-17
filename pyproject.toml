@@ -1,0 +1,151 @@
+[project]
+name = "tuvl"
+version = "2026.2.3b1"
+description = "YAML-driven workflow orchestration engine — compose pipelines of functional nodes, LLM calls, API integrations, and MCP tools, served as a REST API with Postgres persistence and Redis-backed state"
+readme = "README.md"
+requires-python = ">=3.13"
+license = { text = "MIT" }
+authors = [{ name = "Sooraj Rajagopalan", email = "sooraj@tuvl.io" }]
+
+dependencies = [
+    # --- CLI ---
+    "typer==0.26.5", # Compatible with click 8.4.1
+    "rich>=15.0.0",
+    # --- Core Engine & AI (Strictly Pinned for Security) ---
+    "litellm[google]==1.86.2", # Security: Audited clean version
+    "pydantic==2.13.4", # Required by litellm
+    "python-dotenv==1.2.2", # Required by litellm
+    # --- REST API Server ---
+    "fastapi>=0.136.0",
+    "uvicorn[standard]>=0.44.0",
+    "python-multipart>=0.0.12",
+    # --- Data, Persistence & Protocols ---
+    "pydantic-settings==2.14.1",
+    "sqlmodel>=0.0.38",
+    "asyncpg>=0.31.0",
+    "greenlet>=3.4.0", # Required for async SQLAlchemy/SQLModel workflows
+    "pyyaml>=6.0.3",
+    "httpx>=0.27.0",
+    "mcp>=1.27.0", # Model Context Protocol
+    # --- Security ---
+    "biscuit-python>=0.4.0",
+    "bcrypt>=5.0.0",
+    # --- State & Queue ---
+    "redis>=5.0.0", # asyncio support is built-in since redis 7+
+    # --- Vector / RAG ---
+    "pgvector>=0.3.0",
+    # --- Streaming ---
+    "sse-starlette>=2.1.0", # SSE StreamingResponse helper
+    # --- Observability ---
+    "structlog>=24.0.0",
+    "opentelemetry-api>=1.42.0",
+    "opentelemetry-sdk>=1.42.0",
+    "opentelemetry-exporter-otlp-proto-grpc>=1.42.0",
+    "opentelemetry-instrumentation-fastapi>=0.63b0",
+    # --- gRPC-Web ---
+    "grpcio>=1.81.0", # gRPC core runtime
+    "sonora>=0.2.3", # ASGI gRPC-Web wrapper (no Envoy required)
+]
+
+[project.optional-dependencies]
+# Activates Tuvl Insight — a full browser-based developer portal for designing models
+# and workflows, configuring datasources and LLM providers, managing IAM and federation,
+# and testing execution with Tuvl Lens and Tuvl Spectrum.
+# Install with: pip install tuvl[standard]
+standard = [
+    "tuvl-insight>=2026.2.3b1",
+]
+dev = [
+    "ruff>=0.15.0",
+    "mypy>=2.0.0",
+    "grpcio-tools>=1.81.0",      # protoc code generation (run: make proto)
+    "pytest>=9.0.0",
+    "pytest-asyncio>=1.0.0",
+    "aiosqlite>=0.20.0",
+]
+
+[project.scripts]
+tuvl = "tuvl.cli.main:main"
+
+[tool.uv.workspace]
+members = ["src/tuvl_insight"]
+
+[tool.uv.sources]
+tuvl-insight = { workspace = true }
+tuvl = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tuvl"]
+# Exclude compiled UI assets — shipped separately via tuvl-insight
+exclude = ["src/tuvl/cli/ui"]
+
+[tool.hatch.build.targets.sdist]
+exclude = [
+    "ui/node_modules",
+    "ui/src",
+    ".github",
+    "tests",
+]
+
+# ── Ruff ──────────────────────────────────────────────────────────────────────
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "UP",  # pyupgrade
+    "N",   # pep8-naming
+    "C4",  # flake8-comprehensions
+    "SIM", # flake8-simplify
+]
+ignore = [
+    "E501",  # line too long — handled by ruff formatter
+    "B008",  # do not perform function calls in default argument (FastAPI Depends pattern)
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["tuvl"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+
+[tool.ruff.lint.per-file-ignores]
+# ASCII art in the banner intentionally contains trailing whitespace for alignment
+"src/tuvl/cli/__init__.py" = ["W291", "W293"]
+# Class-named variables are intentional (dynamic model/schema class creation)
+"src/tuvl/core/api/crud_router.py" = ["N806"]
+"src/tuvl/core/api/manager.py" = ["N806"]
+# Auto-generated protobuf files — do not lint
+"src/tuvl/core/grpc/*_pb2.py" = ["UP009", "E501", "F401", "I001"]
+"src/tuvl/core/grpc/*_pb2_grpc.py" = ["N802", "UP004", "I001", "F401", "E501"]
+# gRPC servicer method names must match proto-defined PascalCase names
+"src/tuvl/core/grpc/dev_servicer.py" = ["N802"]
+"src/tuvl/core/grpc/iam_servicer.py" = ["N802"]
+"src/tuvl/core/grpc/servicer.py" = ["N802"]
+
+# ── Mypy ──────────────────────────────────────────────────────────────────────
+[tool.mypy]
+python_version = "3.13"
+strict = false
+ignore_missing_imports = true
+warn_unused_ignores = true
+warn_return_any = true
+pretty = true
+
+# ── Pytest ─────────────────────────────────────────────────────────────────────
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
