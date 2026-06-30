@@ -17,6 +17,10 @@
 
 > **Hey there!** 👋 The source code is on its way — we're tidying things up before the public release. Keep an eye on this repo and star it so you don't miss the drop.
 
+> ⚠️ **Beta release.** tuvl 2026.2.4 is a beta intended for evaluation and
+> development — **not yet recommended for production deployments**. APIs and YAML
+> schemas may still change before the stable release, which is coming soon.
+
 `tuvl` lets you define, run, and manage multi-step AI workflows using plain YAML files. No boilerplate. No complex overhead. No lock-in.
 
 Install `tuvl[standard]` during development to get **Tuvl Insight** — a full browser-based developer portal for designing models, configuring datasources, managing LLM providers, building workflows visually, controlling access, and testing execution — all without leaving your local environment.
@@ -52,13 +56,13 @@ flowchart TD
     AuthZ -->|Auto-Generated CRUD| UoW[Workflow Unit of Work<br>Pydantic-Validated CRUD]
 
     subgraph Execution & Integrations
-        Engine -->|model-op| UoW
+        Engine -->|ModelOp| UoW
         UoW -->|SQLModel Object Mapper| PG[(PostgreSQL)]
-        Engine -->|agent| LLM[LiteLLM Any Provider]
+        Engine -->|Agent| LLM[LiteLLM Any Provider]
         Engine -->|DataSearch| RAG[(pgvector RAG)]
-        Engine -->|functional| Nodes[Custom Python Nodes]
-        Engine -->|mcp| MCP[MCP Tools]
-        Engine -->|api_call| ExtAPI[External APIs]
+        Engine -->|Functional| Nodes[Custom Python Nodes]
+        Engine -->|MCP| MCP[MCP Tools]
+        Engine -->|APICall| ExtAPI[External APIs]
     end
 ```
 
@@ -206,13 +210,15 @@ Workflows are YAML files defining a sequence of steps. Each step has a `kind`:
 
 | Kind | Description |
 |---|---|
-| `functional` | Execute a registered Python node function |
-| `agent` | Call an LLM (via litellm) with a prompt template, read context keys, write output back to context |
-| `api_call` | Make an outbound HTTP request and map the response into context |
-| `mcp` | Call a tool via the Model Context Protocol (stdio or SSE) |
-| `router` | Evaluate a condition and branch to a named route |
-| `model-op` | Perform CRUD operations on a registered data model |
-| `response` | Shape and return the final HTTP response from context keys |
+| `Functional` | Execute a registered Python node function |
+| `Agent` | Call an LLM (via litellm) with a prompt template, read context keys, write output back to context |
+| `AutonomousAgent` | Run a bounded tool-calling loop — the model calls declared tools (other steps) until it emits an `outcome.enum`, capped by `max_iterations` / `token_budget` |
+| `APICall` | Make an outbound HTTP request and map the response into context |
+| `MCP` | Call a tool via the Model Context Protocol (stdio or SSE) |
+| `Router` | Evaluate a condition and branch to a named route |
+| `ModelOp` | Perform CRUD operations on a registered data model |
+| `Response` | Shape and return the final HTTP response from context keys |
+| `HumanInTheLoop` | Pause for a human approve/reject decision, then resume where it left off |
 
 ---
 
@@ -228,9 +234,10 @@ make dev-core     # Run server in dev mode without UI
 make build-ui     # Compile React SPA into tuvl-insight wheel
 make build        # Build both tuvl and tuvl-insight wheels → dist/
 make publish      # build → publish both wheels to PyPI (set UV_PUBLISH_TOKEN)
-make lint         # Run ruff
-make fmt          # Run black
-make check        # Run ruff + black + mypy
+make lint         # Run ruff check
+make fmt          # Run ruff check --fix + ruff format
+make check        # CI gate: ruff check + ruff format --check
+make typecheck    # Run mypy (advisory)
 make clean        # Remove build artifacts
 ```
 
@@ -287,7 +294,7 @@ Tuvl Insight is not just an observability tool — it is a complete **local deve
 
 ---
 
-## �️ Security & Multi-Tenancy
+## 🔒 Security & Multi-Tenancy
 
 tuvl ships **single-tenant by default** and **multi-tenant by opt-in**. Both modes share the same auth, observability, and hardening primitives.
 
@@ -313,8 +320,11 @@ Embed the engine in your own host application via the public `tuvl.tenancy` modu
 ```python
 from tuvl.tenancy import tenant_scope
 
+# Set the tenant before invoking any tuvl handler. Every DB session opened
+# inside the scope binds `SET LOCAL app.current_tenant_id`, so RLS isolates
+# the tenant automatically. Use `async_tenant_scope` from async code.
 with tenant_scope("acme-corp"):
-    await engine.run_workflow("onboard_candidate", payload)
+    ...  # call your mounted tuvl workflow endpoints / handlers here
 ```
 
 ### Hardening Defaults
