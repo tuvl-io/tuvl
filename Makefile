@@ -1,4 +1,4 @@
-.PHONY: help setup setup-all setup-min apply-patches dev-core dev-ui install install-dev lint fmt check typecheck test test-verbose build-ui build publish clean ui-install proto
+.PHONY: help setup setup-all setup-min apply-patches dev-core dev-ui install install-dev lint fmt check typecheck test test-verbose build-ui build smoke publish publish-dry clean ui-install proto
 
 PYTHON := uv run python
 RUFF   := uv run ruff
@@ -24,7 +24,9 @@ help:
 	@echo "  build-ui     Compile React SPA and copy assets into tuvl-insight wheel"
 	@echo "  build        build-ui → build tuvl wheel → build tuvl-insight wheel"
 	@echo "  proto        Generate gRPC Python stubs from src/tuvl/core/grpc/execution.proto"
-	@echo "  publish      build → publish both wheels to PyPI (set UV_PUBLISH_TOKEN)"
+	@echo "  smoke        build → install both wheels in /tmp venv → verify tuvl --version + insight static assets"
+	@echo "  publish-dry  smoke → list what would be uploaded (no actual push)"
+	@echo "  publish      smoke → upload both wheels + sdists to PyPI (set UV_PUBLISH_TOKEN)"
 	@echo "  clean        Remove build artifacts"
 
 # ── Install ───────────────────────────────────────────────────────────────────
@@ -143,13 +145,78 @@ build: build-ui
 	$(UV) build --package tuvl-insight --out-dir dist/
 	@echo "✓ Both wheels ready in dist/"
 
+# ── Pre-publish smoke ────────────────────────────────────────────────────────
+# Install the *actual* artefacts we're about to publish into a throwaway venv
+# and prove three things before we ship them to PyPI:
+#
+#   1. `tuvl --version` resolves and matches the stamped pyproject version
+#      (catches packaging metadata bugs).
+#   2. `import tuvl_insight` works (catches the empty-wheel bug that shipped
+#      in 2026.2.3b1 — hatchling silently produced a metadata-only wheel).
+#   3. tuvl_insight's compiled React SPA is bundled — static/index.html
+#      exists in the installed package directory.
+#
+# This mirrors the `Smoke-test built wheel` step in `.github/workflows/publish.yml`
+# and runs locally before `make publish` so we never push a broken artefact.
+smoke: build
+	@echo "→ Smoke-testing built wheels in a throwaway venv..."
+	@PYPROJECT_VERSION=$$(grep '^version' pyproject.toml | head -1 | sed 's/.*= *"\(.*\)"/\1/'); \
+	  rm -rf /tmp/tuvl-publish-smoke; \
+	  python3 -m venv /tmp/tuvl-publish-smoke >/dev/null; \
+	  /tmp/tuvl-publish-smoke/bin/pip install --quiet \
+	    dist/tuvl-$$PYPROJECT_VERSION-py3-none-any.whl \
+	    dist/tuvl_insight-$$PYPROJECT_VERSION-py3-none-any.whl 2>&1 | tail -3; \
+	  REPORTED=$$(/tmp/tuvl-publish-smoke/bin/tuvl --version | awk '{print $$NF}' | sed 's/^v//'); \
+	  echo "  pyproject version: $$PYPROJECT_VERSION"; \
+	  echo "  tuvl --version  : $$REPORTED"; \
+	  if [ "$$REPORTED" != "$$PYPROJECT_VERSION" ]; then \
+	    echo "::error:: Built wheel reports $$REPORTED but pyproject is $$PYPROJECT_VERSION"; \
+	    rm -rf /tmp/tuvl-publish-smoke; \
+	    exit 1; \
+	  fi; \
+	  /tmp/tuvl-publish-smoke/bin/python -c '\
+import tuvl_insight, pathlib;\
+p = pathlib.Path(tuvl_insight.__file__).parent / "static" / "index.html";\
+assert p.exists(), f"static/index.html missing in tuvl_insight wheel — empty wheel bug returned!";\
+print(f"  tuvl_insight static/: {p.parent} ({len(list(p.parent.iterdir()))} files)")\
+' || { rm -rf /tmp/tuvl-publish-smoke; exit 1; }; \
+	  rm -rf /tmp/tuvl-publish-smoke
+	@echo "✓ Smoke test passed"
+
 # ── Publish ──────────────────────────────────────────────────────────────────
-publish: build
-	@echo "→ Publishing tuvl to PyPI..."
-	$(UV) publish dist/tuvl-*.whl
-	@echo "→ Publishing tuvl-insight to PyPI..."
-	$(UV) publish dist/tuvl_insight-*.whl
+# publish requires `smoke` (which requires `build`) to pass first so we never
+# upload an artefact we haven't proven importable.  Smoke also enforces the
+# pyproject ↔ `tuvl --version` match.
+#
+# Both .whl AND .tar.gz are uploaded so the sdist is available as a fallback
+# for systems that can't use the platform-independent wheel.  Engine first,
+# then tuvl-insight (which has `tuvl>=...` as a hard dep, so it must follow).
+#
+# Set UV_PUBLISH_TOKEN to a PyPI API token before running:
+#   export UV_PUBLISH_TOKEN=pypi-XXXX
+publish: smoke
+	@if [ -z "$$UV_PUBLISH_TOKEN" ]; then \
+	  echo "::error:: UV_PUBLISH_TOKEN not set. Generate a token at"; \
+	  echo "          https://pypi.org/manage/account/token/  then run:"; \
+	  echo "          export UV_PUBLISH_TOKEN=pypi-..."; \
+	  exit 1; \
+	fi
+	@PYPROJECT_VERSION=$$(grep '^version' pyproject.toml | head -1 | sed 's/.*= *"\(.*\)"/\1/'); \
+	  echo "→ Publishing tuvl $$PYPROJECT_VERSION to PyPI (wheel + sdist)..."; \
+	  $(UV) publish dist/tuvl-$$PYPROJECT_VERSION-py3-none-any.whl dist/tuvl-$$PYPROJECT_VERSION.tar.gz; \
+	  echo "→ Publishing tuvl-insight $$PYPROJECT_VERSION to PyPI (wheel + sdist)..."; \
+	  $(UV) publish dist/tuvl_insight-$$PYPROJECT_VERSION-py3-none-any.whl dist/tuvl_insight-$$PYPROJECT_VERSION.tar.gz
 	@echo "✓ Both packages published"
+	@echo ""
+	@echo "Verify on PyPI:"
+	@echo "  https://pypi.org/project/tuvl/"
+	@echo "  https://pypi.org/project/tuvl-insight/"
+
+# ── Publish dry-run — what would be uploaded without actually pushing ──────
+publish-dry: smoke
+	@PYPROJECT_VERSION=$$(grep '^version' pyproject.toml | head -1 | sed 's/.*= *"\(.*\)"/\1/'); \
+	  echo "→ Dry-run — would publish these to PyPI:"; \
+	  ls -la dist/tuvl-$$PYPROJECT_VERSION* dist/tuvl_insight-$$PYPROJECT_VERSION*
 
 # ── Clean ─────────────────────────────────────────────────────────────────────
 clean:

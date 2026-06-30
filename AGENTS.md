@@ -1,42 +1,55 @@
-# TUVL Framework Agent Rules
+# TUVL Framework — AI Agent Onboarding Guide
 
-This repository uses the **TUVL framework**, a declarative ASGI router that loads YAML configurations at startup to generate FastAPI routes, PostgreSQL models, and AI agent workflows.
+Welcome to the **tuvl** repository. You are an AI agent operating within the codebase of `tuvl`, a declarative, YAML-driven workflow orchestration engine built on FastAPI, PostgreSQL, and Redis.
 
-As an AI agent working in this codebase, you must follow these rules strictly to ensure the generated applications are valid and production-ready.
+This document serves as your primary reference for understanding the architecture, design philosophy, and strict coding conventions of this project. Read these rules carefully before suggesting or making changes.
 
-## 1. Declarative First
-- Always prefer YAML definitions over writing Python code. Business logic should be expressed as `Workflow` documents with sequences of steps.
-- **Never invent fields, step kinds, or document kinds.** Rely only on the specified TUVL vocabulary.
-- Allowed Document Kinds: `ModelDefinition`, `Workflow`, `DataSource`, `EmbeddingRegistry`, `CollectionRegistry`, `FederationProvider`, `AgentModel`, `ProjectConfig`, `TelemetryConfig`, `SystemConfig`.
+## 1. Project Overview & Philosophy
+- **Declarative First:** `tuvl` relies heavily on YAML configuration to generate FastAPI routes, PostgreSQL models, and AI workflows dynamically at startup. Always prefer YAML over writing Python boilerplate.
+- **No Black Boxes:** The engine executes exactly what is defined in the YAML pipelines.
+- **Data-Driven:** Business logic is modeled as a state-machine of operations passing context variables.
+- **Strict Scope Guarding:** All data operations enforce role-based access control (RBAC) scopes extracted from cryptographically verified Biscuit tokens.
 
-## 2. Directory Structure Conventions
-TUVL recursively searches the project directory for YAML files and dispatches them by their `kind:`. Though location doesn't matter strictly, we use these conventions:
-- `models/`: Contains `ModelDefinition`, `EmbeddingRegistry`, `CollectionRegistry`.
-- `workflows/`: Contains `Workflow` files.
-- `datasources/`: Contains `DataSource` configurations.
-- `llms/`: Contains `AgentModel` configurations.
-- `federation/`: Contains `FederationProvider` configurations.
-- `nodes/`: **Must** contain custom Python nodes.
+## 2. Directory Structure & Conventions
+The project strictly separates components by their YAML `kind`. When generating files for a `tuvl` project, place them in the correct directories:
+- `models/` ➔ `ModelDefinition`, `EmbeddingRegistry`, `CollectionRegistry`
+- `workflows/` ➔ `Workflow`
+- `datasources/` ➔ `DataSource`
+- `llms/` ➔ `AgentModel`
+- `federation/` ➔ `FederationProvider`
+- `nodes/` ➔ Custom Python implementation (`@node()` decorators)
 
-## 3. Python Custom Nodes Rules
-When YAML isn't enough, you can create a custom `functional` Python node.
-- **Crucial Rule:** You **MUST** put only one `@node()` decorator per file.
-- The Python file name **MUST** exactly match the runner name. E.g., `@node("score_resume")` must be in `nodes/score_resume.py`.
-- Do not group multiple nodes into one file.
+**Never invent fields, step kinds, or document kinds.** Rely only on the specified vocabulary.
 
-## 4. Workflow Context Strictness
-- `Workflow` triggers receive HTTP request data into a shared `context: dict[str, Any]`.
-- **Database Allowlist:** Every model accessed inside a workflow (via `model-op` or custom nodes) must be explicitly listed in `spec.context.models`. Missing this causes a `PermissionError`.
-- **Reserved Keys:** Do not write to `_session`, `_db`, `_step`, `_response`, `_last_error`, `_last_error_type`, `_api_status_code`, `_context_model_versions`, `_schema_version`, `_instance_id`, `_user_id`.
+## 3. Workflow Implementation Rules
+Workflows are sequences of steps defined in YAML. Triggers receive HTTP request data into a shared `context: dict[str, Any]`.
 
-## 5. Workflow Routing Requirements
-- Every step returns a signal (e.g., `default`, `error`, `true`, `false`).
-- You **MUST** define explicit mapping for every non-default signal the step might emit in the step's `routes:` map.
-- If a signal is emitted that is not in `routes:` (and is not `default`), a `RuntimeError` is raised.
+- **Database Allowlist:** Any model accessed inside a workflow (whether natively via `ModelOp` or in custom Python nodes) **must** be explicitly listed in the workflow's `spec.context.models`. Missing this triggers a `PermissionError`.
+- **Reserved Keys:** You are forbidden from mutating core engine context keys including: `_session`, `_db`, `_step`, `_response`, `_last_error`, `_last_error_type`, `_api_status_code`, `_context_model_versions`, `_schema_version`, `_instance_id`, `_user_id`.
+- **Routing Strictness:** Every step must return a signal (e.g., `default`, `true`, `false`, `error`). You must define an explicit mapping for every non-default signal in the step's `routes:` map. Unmapped non-default signals will raise a `RuntimeError`.
+- **Step Kinds (closed set):** `Functional`, `Agent`, `AutonomousAgent`, `Router`, `APICall`, `MCP`, `ModelOp`, `Response`, `HumanInTheLoop`. Never invent others.
+  - `Agent` is a single LLM call; **`AutonomousAgent`** is a bounded tool-calling loop where the model picks tools (each `agent.tools[].ref` names another step in the workflow), observes results, and re-decides until it emits one of a declared `outcome.enum`. Map every outcome plus the reserved exits `max_iterations` / `budget_exceeded` / `error` in `routes:`; the loop is capped by `max_iterations` / `token_budget`. Each tool's description (REQUIRED) is sourced from the referenced step's top-level `description:`, overridable by `agent.tools[].description`. Optional `agent.skills` lists project-relative `.md` files whose contents are injected into the agent's system prompt.
+  - `Router` supports a multi-way `match:` switch (`match: { field: user.country }`) for data-driven branching — keep deterministic routing here, never inside an agent.
 
-## 6. PostgreSQL & Multi-tenancy
-- Every `ModelDefinition` creates a Postgres table and auto-generates CRUD endpoints.
-- Do not emit `tenant_id` fields or RLS (Row Level Security) clauses. The project is single-tenant only.
-- PII fields must be marked with `secure: true`.
+## 4. Custom Python Nodes (`Functional` steps)
+When YAML is insufficient, you can create a custom `Functional` Python node.
+- **One Node Per File:** You **MUST** put only one `@node()` decorator per Python file.
+- **Filename Matching:** The Python filename must strictly match the node runner name. For example, a node decorated with `@node("score_resume")` **must** be placed in `nodes/score_resume.py`.
 
-> For complete syntax and schema details, refer to `docs/TUVL_AGENTIC_MANUAL.md`.
+## 5. PostgreSQL, Models, and Tenancy
+- Every `ModelDefinition` generates a Postgres table and auto-generates a full suite of CRUD REST endpoints.
+- **Multi-Tenancy:** The engine ships single-tenant by default, but can operate in multi-tenant mode via Postgres RLS (Row-Level Security). Do not emit `tenant_id` fields manually unless explicitly instructed.
+- **Security:** Fields containing PII or sensitive data must be marked with `secure: true` in their YAML definition.
+
+## 6. Security & Identity
+- **Biscuit Tokens:** The engine relies on offline-verifiable Biscuit tokens for authentication.
+- **Dev Sentinel:** During local development (`tuvl dev`), a dev sentinel keypair is used. Production refuses to boot if this sentinel is active.
+- **CRUD Scopes:** Auto-generated CRUD routes enforce Biscuit scopes (e.g., `{modelname.lower()}:read`).
+
+## 7. Developer Tooling
+If asked to test or run the project locally, use the CLI commands:
+- `tuvl dev` (or `uv run tuvl dev`): Starts the engine with hot-reloading and mounts the Tuvl Insight Developer Portal at `http://localhost:8000/insight`.
+- `tuvl dev --auto-login`: Bypasses the local security screen for rapid API testing.
+- `tuvl run`: Starts the highly-optimized production Uvicorn server without hot-reload.
+
+> **Agentic Note:** For complete syntax schemas and deep reference, consult `KNOWME.md` and `docs/TUVL_AGENTIC_MANUAL.md`. Always write minimal, functional code that conforms to these architectural invariants.

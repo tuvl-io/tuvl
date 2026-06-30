@@ -1,11 +1,23 @@
 [project]
 name = "tuvl"
-version = "2026.2.3b3"
+version = "2026.2.4"
 description = "YAML-driven workflow orchestration engine — compose pipelines of functional nodes, LLM calls, API integrations, and MCP tools, served as a REST API with Postgres persistence and Redis-backed state"
 readme = "README.md"
 requires-python = ">=3.13"
 license = { text = "MIT" }
 authors = [{ name = "Sooraj Rajagopalan", email = "sooraj@tuvl.io" }]
+keywords = ["workflow", "orchestration", "ai", "llm", "agents", "fastapi", "yaml", "backend"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.13",
+    "Framework :: FastAPI",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
 
 dependencies = [
     # --- CLI ---
@@ -53,7 +65,7 @@ dependencies = [
 # and testing execution with Tuvl Lens and Tuvl Spectrum.
 # Install with: pip install tuvl[standard]
 standard = [
-    "tuvl-insight>=2026.2.3b3",
+    "tuvl-insight>=2026.2.4",
 ]
 dev = [
     "ruff>=0.15.0",
@@ -66,6 +78,13 @@ dev = [
 
 [project.scripts]
 tuvl = "tuvl.cli.main:main"
+
+[project.urls]
+Homepage = "https://tuvl.io"
+Documentation = "https://tuvl.dev"
+Repository = "https://github.com/tuvl-io/tuvl"
+Changelog = "https://github.com/tuvl-io/tuvl/blob/main/CHANGELOG.md"
+Issues = "https://github.com/tuvl-io/tuvl/issues"
 
 [tool.uv.workspace]
 members = ["src/tuvl_insight"]
@@ -107,6 +126,8 @@ select = [
     "N",   # pep8-naming
     "C4",  # flake8-comprehensions
     "SIM", # flake8-simplify
+    "G",   # flake8-logging-format — bans f-strings + .format() + % in logger calls
+    "LOG", # flake8-logging — catches misuse of the stdlib logging module
 ]
 ignore = [
     "E501",  # line too long — handled by ruff formatter
