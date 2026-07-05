@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/tuvl-io/public/main/assets/logo.png" alt="" width="40" />&nbsp;&nbsp;<span style="font-size:2em"><strong>tuvl</strong></span><br/>
+  <img src="https://raw.githubusercontent.com/tuvl-io/tuvl/main/ui/public/logo.png" alt="" width="40" />&nbsp;&nbsp;<span style="font-size:2em"><strong>tuvl</strong></span><br/>
   <sub>/ˈtuːvəl/ &nbsp;·&nbsp; തൂവൽ &nbsp;·&nbsp; feather</sub>
 </p>
 
@@ -12,12 +12,12 @@
 <p align="center">
   <a href="https://tuvl.io">Website</a> &nbsp;·&nbsp;
   <a href="https://tuvl.dev">Docs</a> &nbsp;·&nbsp;
-  <a href="https://github.com/tuvl-io/public">GitHub</a>
+  <a href="https://github.com/tuvl-io/tuvl">GitHub</a>
 </p>
 
-> **Hey there!** 👋 The source code is on its way — we're tidying things up before the public release. Keep an eye on this repo and star it so you don't miss the drop.
+> Hey there! 👋 The source code is on its way — we're tidying things up before the public release. Keep an eye on this repo and star it so you don't miss the drop.
 
-> ⚠️ **Beta release.** tuvl 2026.2.4 is a beta intended for evaluation and
+> ⚠️ **Beta release.** tuvl 2026.2.6 is a beta intended for evaluation and
 > development — **not yet recommended for production deployments**. APIs and YAML
 > schemas may still change before the stable release, which is coming soon.
 
@@ -26,7 +26,7 @@
 Install `tuvl[standard]` during development to get **Tuvl Insight** — a full browser-based developer portal for designing models, configuring datasources, managing LLM providers, building workflows visually, controlling access, and testing execution — all without leaving your local environment.
 
 - **Website:** [tuvl.io](https://tuvl.io)
-- **GitHub:** [tuvl-io/public](https://github.com/tuvl-io/public)
+- **GitHub:** [tuvl-io/tuvl](https://github.com/tuvl-io/tuvl)
 
 ---
 
@@ -183,9 +183,10 @@ Share a project by committing everything except `.env` — collaborators run `uv
 | `tuvl init <name> --sample` | Same as above, plus sample recruitment pipeline covering every step kind |
 | `tuvl init <name> --multi-tenant` | Scaffold in **multi-tenant** mode — locks `deployment_mode: multi_tenant` in `.tuvl/system.yaml`, injects `tenant_id` columns into every model, and enables Postgres Row-Level Security tooling |
 | `tuvl dev` | Start the engine in dev mode with hot reload. The dev key is written to `.tuvl/.dev-session` (mode 0600); pass `--show-key` to print it, and `--auto-login` to automatically bypass the Insight security screen |
-| `tuvl run` | Start the production server |
+| `tuvl run` | Start the production server. Requires a persistent `TUVL_BISCUIT_PRIVATE_KEY` in `.env` (generate one with `tuvl keys generate`) — unlike `tuvl dev`, it will **not** fall back to an ephemeral signing key |
 | `tuvl test` | Run LLM-as-a-Judge tests against workflow definitions. In multi-tenant projects, automatically injects a synthetic tenant so the data-layer guard doesn't reject test runs |
 | `tuvl validate` | Validate workflow and model YAML files |
+| `tuvl keys generate` | Print a fresh Ed25519 Biscuit signing key (64-hex) plus the `.env` line; add `--write` to write it into the project `.env` (owner-only perms, `--force` to overwrite) |
 | `tuvl db generate-rls` | Emit `ALTER TABLE … ENABLE ROW LEVEL SECURITY` + tenant-scoped policy SQL for every tenant-aware model (multi-tenant only) |
 | `tuvl db check-rls` | Verify that RLS is enabled and policies are present on every tenant-aware table |
 | `tuvl stream-watch` | Tail workflow execution events from the engine's SSE stream |
@@ -199,6 +200,8 @@ tuvl dev --show-key                  # print the dev API key (off by default)
 tuvl dev --auto-login                # automatically bypass the Tuvl Insight security screen
 tuvl run --host 0.0.0.0 --port 8000 --workers 2
 tuvl run --allow-host 10.0.0.0/8     # IP allowlist
+tuvl keys generate                   # print a production Biscuit key + the .env line
+tuvl keys generate --write           # write TUVL_BISCUIT_PRIVATE_KEY into .env (needed by `tuvl run`)
 tuvl validate --project-dir ./my-project
 ```
 
@@ -212,7 +215,7 @@ Workflows are YAML files defining a sequence of steps. Each step has a `kind`:
 |---|---|
 | `Functional` | Execute a registered Python node function |
 | `Agent` | Call an LLM (via litellm) with a prompt template, read context keys, write output back to context |
-| `AutonomousAgent` | Run a bounded tool-calling loop — the model calls declared tools (other steps) until it emits an `outcome.enum`, capped by `max_iterations` / `token_budget` |
+| `AutonomousAgent` | Run a bounded tool-calling loop — the model calls declared tools (other steps) until it emits an `outcome.enum`, capped by `max_iterations` / `token_budget`. Guided by `agent.steering` + per-agent scoped `steering_files`/`skills`; optionally watched by a `spec.supervisor` |
 | `APICall` | Make an outbound HTTP request and map the response into context |
 | `MCP` | Call a tool via the Model Context Protocol (stdio or SSE) |
 | `Router` | Evaluate a condition and branch to a named route |
@@ -279,6 +282,8 @@ Tuvl Insight is not just an observability tool — it is a complete **local deve
 | **Tuvl Lens** | Spectrum page (`/insight`) | Execute a single workflow node in isolation with mock state — unit-test individual steps without running a full workflow |
 | **Tuvl Spectrum** | Spectrum page (`/insight`) | Run a complete workflow and capture a deep-copy state snapshot after every step — full execution trace with per-step timing |
 | **Workflow Canvas Test Mode** | Workflow editor toolbar | Run any workflow directly from the canvas with a custom JSON input. Results stream live: nodes light up with status badges, the right-hand **Test Out** panel shows a step-by-step context diff, and a bottom status bar tracks overall progress |
+| **Agents dashboard** | Agents page (`/insight`) | Live view of in-flight `AutonomousAgent` runs — iteration/token progress, an expandable per-run trace timeline, and **pause / resume / abort / steer** controls (operator API: `/api/agents/runs`) |
+| **Agent Supervisor** | `spec.supervisor` (workflow YAML) — or the off-spine **Supervisor** node in the Insight canvas | A per-workflow watcher that observes each `AutonomousAgent` run and pauses/aborts/steers it via deterministic `rules` and/or an LLM judge (`criteria`, or a scoped `criteria_file` `.md` policy) — breaking a runaway loop mid-flight. Author it visually: drop the Supervisor node, pick a model + policy, and it serializes to `spec.supervisor`. Emits OTel agent metrics (`agent.iterations`/`tool_calls`/`aborts`/…) |
 | **Portal UI** | `GET /insight` | Browser interface to the full developer portal |
 
 #### Workflow Canvas Test Mode — at a glance

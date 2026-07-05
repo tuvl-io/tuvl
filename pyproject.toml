@@ -1,6 +1,6 @@
 [project]
 name = "tuvl"
-version = "2026.2.4"
+version = "2026.2.6.1"
 description = "YAML-driven workflow orchestration engine — compose pipelines of functional nodes, LLM calls, API integrations, and MCP tools, served as a REST API with Postgres persistence and Redis-backed state"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -20,20 +20,24 @@ classifiers = [
 ]
 
 dependencies = [
+    # Ranges here are what downstream resolvers see (this is published-library
+    # metadata); uv.lock carries the exact audited pins for our own builds.
     # --- CLI ---
-    "typer==0.26.5", # Compatible with click 8.4.1
+    "typer>=0.26.5,<0.27", # Compatible with click 8.4.1
     "rich>=15.0.0",
-    # --- Core Engine & AI (Strictly Pinned for Security) ---
-    "litellm[google]==1.86.2", # Security: Audited clean version
-    "pydantic==2.13.4", # Required by litellm
-    "python-dotenv==1.2.2", # Required by litellm
+    # --- Core Engine & AI (audited minor kept narrow for security) ---
+    "litellm[google]>=1.86.2,<1.87",
+    "pydantic>=2.13.4,<3", # Required by litellm
+    "python-dotenv>=1.2.2,<2", # Required by litellm
     # --- REST API Server ---
     "fastapi>=0.136.0",
+    "starlette>=0.49.0", # imported directly (request plumbing)
     "uvicorn[standard]>=0.44.0",
-    "python-multipart>=0.0.12",
+    "python-multipart>=0.0.12", # OAuth2PasswordRequestForm (login) needs it at import
     # --- Data, Persistence & Protocols ---
-    "pydantic-settings==2.14.1",
+    "pydantic-settings>=2.14.1,<3",
     "sqlmodel>=0.0.38",
+    "sqlalchemy[asyncio]>=2.0,<2.1", # imported directly, not only via sqlmodel
     "asyncpg>=0.31.0",
     "greenlet>=3.4.0", # Required for async SQLAlchemy/SQLModel workflows
     "pyyaml>=6.0.3",
@@ -46,8 +50,6 @@ dependencies = [
     "redis>=5.0.0", # asyncio support is built-in since redis 7+
     # --- Vector / RAG ---
     "pgvector>=0.3.0",
-    # --- Streaming ---
-    "sse-starlette>=2.1.0", # SSE StreamingResponse helper
     # --- Observability ---
     "structlog>=24.0.0",
     "opentelemetry-api>=1.42.0",
@@ -65,8 +67,11 @@ dependencies = [
 # and testing execution with Tuvl Lens and Tuvl Spectrum.
 # Install with: pip install tuvl[standard]
 standard = [
-    "tuvl-insight>=2026.2.4",
+    "tuvl-insight>=2026.2.6.1",
 ]
+
+# Dev tooling is a PEP 735 dependency group (uv-native), not a published extra.
+[dependency-groups]
 dev = [
     "ruff>=0.15.0",
     "mypy>=2.0.0",
@@ -128,10 +133,12 @@ select = [
     "SIM", # flake8-simplify
     "G",   # flake8-logging-format — bans f-strings + .format() + % in logger calls
     "LOG", # flake8-logging — catches misuse of the stdlib logging module
+    "ANN", # flake8-annotations — ratchet: new code must be annotated
 ]
 ignore = [
-    "E501",  # line too long — handled by ruff formatter
-    "B008",  # do not perform function calls in default argument (FastAPI Depends pattern)
+    "E501",   # line too long — handled by ruff formatter
+    "B008",   # do not perform function calls in default argument (FastAPI Depends pattern)
+    "ANN401", # Any is a deliberate choice in this dict-driven engine
 ]
 
 [tool.ruff.lint.isort]
@@ -150,12 +157,17 @@ line-ending = "auto"
 "src/tuvl/core/api/crud_router.py" = ["N806"]
 "src/tuvl/core/api/manager.py" = ["N806"]
 # Auto-generated protobuf files — do not lint
-"src/tuvl/core/grpc/*_pb2.py" = ["UP009", "E501", "F401", "I001"]
-"src/tuvl/core/grpc/*_pb2_grpc.py" = ["N802", "UP004", "I001", "F401", "E501"]
-# gRPC servicer method names must match proto-defined PascalCase names
-"src/tuvl/core/grpc/dev_servicer.py" = ["N802"]
-"src/tuvl/core/grpc/iam_servicer.py" = ["N802"]
-"src/tuvl/core/grpc/servicer.py" = ["N802"]
+"src/tuvl/core/grpc/*_pb2.py" = ["UP009", "E501", "F401", "I001", "ANN"]
+"src/tuvl/core/grpc/*_pb2_grpc.py" = ["N802", "UP004", "I001", "F401", "E501", "ANN"]
+# gRPC servicer method names must match proto-defined PascalCase names.
+# ANN exempt until the dedicated servicer annotation pass (separate branch).
+"src/tuvl/core/grpc/dev_servicer.py" = ["N802", "ANN"]
+"src/tuvl/core/grpc/iam_servicer.py" = ["N802", "ANN"]
+"src/tuvl/core/grpc/servicer.py" = ["N802", "ANN"]
+# Dev-mode-only surface — annotate when its endpoints get pydantic models.
+"src/tuvl/core/dev/router.py" = ["ANN"]
+# The annotation ratchet is for src/ — test signatures stay lightweight.
+"tests/**" = ["ANN"]
 
 # ── Mypy ──────────────────────────────────────────────────────────────────────
 [tool.mypy]
