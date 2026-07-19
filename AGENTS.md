@@ -53,5 +53,7 @@ If asked to test or run the project locally, use the CLI commands:
 - `tuvl dev` (or `uv run tuvl dev`): Starts the engine with hot-reloading and mounts the Tuvl Insight Developer Portal at `http://localhost:8000/insight`.
 - `tuvl dev --auto-login`: Bypasses the local security screen for rapid API testing.
 - `tuvl run`: Starts the highly-optimized production Uvicorn server without hot-reload.
+- `tuvl validate`: Validates every YAML config, node, and cross-reference without starting the server.
+- `tuvl ship`: Packages the project for production — validates it, generates a production `Dockerfile` and a Helm chart under `deploy/chart/<name>/`, then builds the container image (`--no-build` to skip the build, `--push` to publish).
 
 > **Agentic Note:** For complete syntax schemas and deep reference, consult `KNOWME.md` and `docs/tuvl-agentic-manual.md`. Always write minimal, functional code that conforms to these architectural invariants.

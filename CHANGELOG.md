@@ -10,6 +10,70 @@ contract.
 
 ---
 
+## [2026.3.2.0] — 2026-07-18
+
+Security release — two fixes from an internal full-codebase audit.
+
+### Security
+
+- **Token revocation is now enforced on gRPC transports.** The gRPC verifiers
+  checked signature and expiry but never the revocation blacklist, so a token
+  revoked via `Logout`/`RefreshToken` was still accepted over gRPC (the Insight
+  UI's primary transport) until its natural expiry. Both servicers now verify
+  through a shared helper that delegates to the same chain as REST — signature,
+  revocation, and expiry checks can no longer drift per transport.
+- **`tuvl init` no longer writes the database password into
+  `datasources/postgres.yaml`.** The generated DataSource YAML now references
+  `${POSTGRES_PASSWORD}` (env-only — loading fails closed when unset) and
+  `${POSTGRES_HOST:<default>}`-style references for the non-secret connection
+  fields, so the committable YAML and `tuvl ship`-built images carry no
+  secrets, and the Helm chart's `env`/`existingSecret` injection takes effect
+  in-cluster. Existing projects: replace the literal `password:` in
+  `datasources/postgres.yaml` with `${POSTGRES_PASSWORD}` (the value already
+  lives in `.env`).
+
+### Changed
+
+- Marketing portal (`tuvl.io`) and docs site (`tuvl.dev`) align to
+  `v2026.3.2.0`; the TypeScript SDK `@tuvl/client` bumps to `2026.3.2`
+  (semver form) in lockstep.
+
+---
+
+## [2026.3.1.0] — 2026-07-13
+
+Adds a first-class path from a validated project to a production deployment.
+
+### Added
+
+- **`tuvl ship`** — package a project for production in one command. It runs the
+  full `tuvl validate` pass (errors abort the ship; `--strict` also blocks on
+  warnings), generates a production `Dockerfile` and `.dockerignore` plus a Helm
+  chart under `deploy/chart/<name>/`, then builds the container image. Flags:
+  `--tag` sets the image reference (defaults to `<name>:<version>`), `--no-build`
+  writes the artifacts only, `--push` pushes after a successful build, and
+  `--force` regenerates files that already exist (otherwise hand-edited artifacts
+  are left untouched).
+- The generated image is production-shaped by construction: a multi-stage `uv`
+  build, a non-root runtime user, `TUVL_ENV=production` (no dev routes, no Insight
+  UI, JSON logs, telemetry on), a `/health` HEALTHCHECK, and `tuvl run` as the
+  entrypoint. The Helm chart wires liveness/readiness probes to `/health` and
+  reads secrets (`TUVL_BISCUIT_PRIVATE_KEY`, `POSTGRES_PASSWORD`, LLM keys) from a
+  referenced Kubernetes Secret.
+
+### Changed
+
+- The validation pass is now exposed as a reusable `run_validation()` entry point
+  shared by `tuvl validate` and `tuvl ship`.
+- Marketing portal (`tuvl.io`) and docs site (`tuvl.dev`) align to `v2026.3.1.0`;
+  the TypeScript SDK `@tuvl/client` bumps to `2026.3.1` (semver form) in lockstep.
+- **Positioning moves from "beta" to "early stable."** The API and YAML schemas
+  are now treated as stable and versioned; the PyPI classifier is
+  `Development Status :: 5 - Production/Stable`. "Early" signals the release is
+  still maturing quickly with additive changes, not that it is pre-production.
+
+---
+
 ## [2026.2.6.1] — 2026-07-05
 
 Hardening patch from the first real-world shakedown: every fix below was found

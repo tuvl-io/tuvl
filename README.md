@@ -17,9 +17,9 @@
 
 > Hey there! 👋 The source code is on its way — we're tidying things up before the public release. Keep an eye on this repo and star it so you don't miss the drop.
 
-> ⚠️ **Beta release.** tuvl 2026.2.6 is a beta intended for evaluation and
-> development — **not yet recommended for production deployments**. APIs and YAML
-> schemas may still change before the stable release, which is coming soon.
+> **Early stable release.** tuvl 2026.3.2.0 is production-ready — the API and YAML
+> schemas are stable and versioned. As an early release in the stable line it is
+> still maturing quickly, so expect additive improvements between versions.
 
 `tuvl` lets you define, run, and manage multi-step AI workflows using plain YAML files. No boilerplate. No complex overhead. No lock-in.
 
@@ -103,7 +103,7 @@ uv tool install tuvl
 | SDK | Package | Status |
 |-----|---------|--------|
 | Python | `pip install tuvl-sdk` / `uv add tuvl-sdk` | Coming soon |
-| JavaScript / TypeScript | `npm install @tuvl/client` | Beta — [`@tuvl/client`](https://www.npmjs.com/package/@tuvl/client) |
+| JavaScript / TypeScript | `npm install @tuvl/client` | Early stable — [`@tuvl/client`](https://www.npmjs.com/package/@tuvl/client) |
 
 The SDKs provide typed clients for triggering workflows, subscribing to execution events via SSE, and managing workflow instances from your own applications.
 
@@ -150,6 +150,14 @@ tuvl run --project-dir /path/to/project --workers 4
 
 Starts the production uvicorn server without hot reload.
 
+**5. Ship it:**
+
+```bash
+tuvl ship
+```
+
+Validates the project, builds a production container image, and generates a Helm chart under `deploy/chart/<name>/` ready for `helm install`.
+
 ---
 
 ## 🗂️ Project Structure
@@ -186,6 +194,7 @@ Share a project by committing everything except `.env` — collaborators run `uv
 | `tuvl run` | Start the production server. Requires a persistent `TUVL_BISCUIT_PRIVATE_KEY` in `.env` (generate one with `tuvl keys generate`) — unlike `tuvl dev`, it will **not** fall back to an ephemeral signing key |
 | `tuvl test` | Run LLM-as-a-Judge tests against workflow definitions. In multi-tenant projects, automatically injects a synthetic tenant so the data-layer guard doesn't reject test runs |
 | `tuvl validate` | Validate workflow and model YAML files |
+| `tuvl ship` | Package the project for production: validates it, generates a production `Dockerfile` + `.dockerignore` and a Helm chart under `deploy/chart/<name>/`, then builds the container image. `--tag` sets the image reference, `--no-build` writes artifacts only, `--push` pushes after building, `--force` regenerates existing files |
 | `tuvl keys generate` | Print a fresh Ed25519 Biscuit signing key (64-hex) plus the `.env` line; add `--write` to write it into the project `.env` (owner-only perms, `--force` to overwrite) |
 | `tuvl db generate-rls` | Emit `ALTER TABLE … ENABLE ROW LEVEL SECURITY` + tenant-scoped policy SQL for every tenant-aware model (multi-tenant only) |
 | `tuvl db check-rls` | Verify that RLS is enabled and policies are present on every tenant-aware table |
@@ -203,6 +212,7 @@ tuvl run --allow-host 10.0.0.0/8     # IP allowlist
 tuvl keys generate                   # print a production Biscuit key + the .env line
 tuvl keys generate --write           # write TUVL_BISCUIT_PRIVATE_KEY into .env (needed by `tuvl run`)
 tuvl validate --project-dir ./my-project
+tuvl ship --tag ghcr.io/acme/my-project:1.0.0 --push   # container + Helm chart
 ```
 
 ---
