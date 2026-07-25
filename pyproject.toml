@@ -1,9 +1,9 @@
 [project]
 name = "tuvl"
-version = "2026.3.2.0"
+version = "1.0.0"
 description = "YAML-driven workflow orchestration engine — compose pipelines of functional nodes, LLM calls, API integrations, and MCP tools, served as a REST API with Postgres persistence and Redis-backed state"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.13,<3.14"
 license = { text = "MIT" }
 authors = [{ name = "Sooraj Rajagopalan", email = "sooraj@tuvl.io" }]
 keywords = ["workflow", "orchestration", "ai", "llm", "agents", "fastapi", "yaml", "backend"]
@@ -67,7 +67,7 @@ dependencies = [
 # and testing execution with Tuvl Lens and Tuvl Spectrum.
 # Install with: pip install tuvl[standard]
 standard = [
-    "tuvl-insight>=2026.3.2.0",
+    "tuvl-insight>=1.0.0",
 ]
 
 # Dev tooling is a PEP 735 dependency group (uv-native), not a published extra.

@@ -3,10 +3,141 @@
 All notable changes to **tuvl** are recorded here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
-this project follows [PEP 440](https://peps.python.org/pep-0440/) calendar
-versioning (`YEAR.MAJOR.MINOR`), with a semver-shaped git tag form (`v2026.2.4`)
-normalised at publish time. See `release-please-config.json` for the automation
-contract.
+this project follows [Semantic Versioning](https://semver.org) as of `1.0.0`.
+See `release-please-config.json` for the automation contract.
+
+> **A note on version history.** Before v1.0.0, tuvl used calendar-style
+> version numbers (`2026.x`) during its internal development and testing
+> phase. With the first official stable release we moved to standard semantic
+> versioning, and the `2026.x` test builds were yanked on PyPI to keep the
+> registry history clean — they remain installable for anyone who pinned
+> them, but new installs resolve to v1.0.0. From here on: breaking changes
+> bump the major version, features the minor, fixes the patch. The `2026.x`
+> entries below are kept for the historical record.
+
+---
+
+## [1.0.0] — 2026-07-23
+
+First stable release under semantic versioning. The payload is identical to
+`2026.4.0.0` — this is a re-version establishing the SemVer baseline, not a
+feature release.
+
+### Changed
+
+- **Versioning scheme: calendar (`YEAR.MAJOR.MINOR`) → SemVer.** `1.0.0` is
+  the first official stable release; breaking changes bump the major version
+  from here on.
+- All `2026.x` releases of `tuvl` and `tuvl-insight` are yanked on PyPI
+  (pre-1.0 internal line). Pinned installs keep resolving with a warning;
+  unpinned installs now land on `1.0.0`. If a project pins `tuvl>=2026.*`,
+  change the floor to `tuvl>=1.0.0`.
+- `tuvl ship` Dockerfiles float the engine to the latest release the project's
+  `pyproject.toml` allows (`uv sync --upgrade-package tuvl`); all other
+  dependencies stay lockfile-pinned.
+
+### Version map
+
+| Surface | Package | Version | Channel |
+|---|---|---|---|
+| Engine | `tuvl` | `1.0.0` | PyPI |
+| Developer portal | `tuvl-insight` | `1.0.0` | PyPI (via `tuvl[standard]`) |
+| TypeScript SDK | `@tuvl/client` | `1.0.0` | npm |
+| Documentation | `tuvl.io/docs` | `1.0.0` | GitHub Pages |
+| Marketing site | `tuvl.io` | `v1.0.0` | static |
+
+## [2026.4.0.0] — 2026-07-20
+
+The artifact release — a breaking redesign of the agent surface. Prompts,
+steering, skills, guardrails, hooks, and MCP server configs become named,
+versioned **artifacts**; the two agent kinds collapse into one `kind: Agent`
+with an explicit `mode`. No deprecation phases: the legacy shapes are rejected
+with pointed validator errors.
+
+### Added
+
+- **Artifact subsystem.** A closed taxonomy (`prompt · steering · skill ·
+  guardrail · hook · mcp`) of named, versioned, browsable assets referenced
+  everywhere via `artifact://name[@version]` (unpinned → latest enabled).
+  Prose artifacts are front-matter markdown under `artifacts/`; structured
+  artifacts use the standard `kind: Artifact` envelope. Three sources, one
+  boot-loaded in-memory registry with name-collision precedence *project file
+  → DB upload → external pack*: uploads land in the new
+  `tuvl_system_artifacts` table behind `artifacts:read` / `artifacts:write`
+  scopes (`/api/artifacts`, upload = new version row, never in-place);
+  external `spec.artifact_sources` require a `sha256` pin (unpinned sources
+  are refused), verify before anything enters the registry, and cache under
+  `.tuvl/artifacts/cache/<sha256>/` for offline restarts. Per-artifact content
+  cap: 512 KB. Every ref resolves and type-checks at boot — production
+  refuses to start on a dangling ref; dev warns and errors at runtime with a
+  precise message. `.md` edits apply without a dev-server restart.
+- **Guardrails.** `type: guardrail` artifacts declare a closed check set —
+  `json_schema`, `regex_deny`, `max_chars`, `pii_mask` (masks declared secure
+  fields, never fails), `llm_judge` (shared judge core, timeout-governed,
+  `on_judge_error: ignore | violation`). Attached via `agent.guardrails
+  {input, output, tools}`; a failing check routes the new reserved
+  **`guardrail_violation`** signal — no exceptions, no 500s.
+- **Hooks (observe-only).** `type: hook` artifacts subscribe to
+  `before_step / after_step / before_tool / after_tool / on_error` with
+  `action: log | metric | notify` (notify fires a declared `APICall` step —
+  author-declared wiring). Attached per step (`hooks:`) or workflow-wide
+  (`spec.hooks:`). New `tuvl.hook.events` counter.
+- Insight: an **Artifacts** page (browse/filter/view/create/delete with a
+  "referenced by" reverse index), artifact pickers in the agent and MCP
+  editors, and dev-mode CRUD under `/dev/artifacts`.
+
+### Changed
+
+- **One `kind: Agent`, explicit `mode: completion | autonomous`** (required,
+  no default — a step can never silently become autonomous; autonomous mode
+  requires `agent.tools`). One runtime core replaces the two parallel
+  runners; `retry`, `context_injection`, and `skills` now work in both modes.
+- **One `outcome` contract for both modes:** `agent.outcome {write, format,
+  enum, map}`. With `enum` declared the model must return an `outcome` field
+  holding exactly one declared value — an arbitrary LLM string can never
+  become a routing signal — and every enum value must be mapped in `routes:`.
+- **MCP connection config lives in `type: mcp` artifacts** — one server, one
+  definition, N steps; the step keeps `server`, `tool`, `arguments`,
+  `timeout`, and the `response` mapping.
+- Supervisor `criteria` accepts inline text or a steering-artifact ref.
+- The spec-wrapped document envelope is the **only** accepted form for every
+  kind; `AgentModel`s load through the central config loader at startup (a
+  disabled model now fails loudly instead of being silently ignored); one
+  `{{ }}` templating implementation and one `${VAR}`/`${VAR:default}`
+  expansion (`${VAR}` is never expanded in prose artifacts).
+- Every execution surface (engine, streaming, Spectrum, test runner) now
+  funnels through a single per-kind dispatch. Agent spans renamed
+  `agent.iteration` / `agent.tool_call` under `node.Agent`.
+- TypeScript SDK `@tuvl/client` `2026.4.0`: `agentProgress()` reads frames
+  from `kind: "Agent"` (breaking; wire shape otherwise unchanged).
+
+### Removed
+
+- `kind: AutonomousAgent` (→ `kind: Agent` + `mode: autonomous`); the step
+  closed set is now **eight** kinds.
+- `output.{format, map, signal_from}` and `outcome.{enum, output_key}`
+  (→ the unified `outcome` block); the `output:`-as-string shorthand.
+- `agent.steering_files`, the per-agent `agents/<workflow>__<stepId>/`
+  scope-lock directories, the `.agents/skills/` runtime library, and the
+  `/dev/skills*` + scoped-asset dev endpoints (→ artifacts).
+- `supervisor.criteria_file` (→ `criteria`, inline or artifact ref).
+- Inline MCP transport blocks (→ `mcp.server: artifact://…`).
+- The legacy root-level (flat) document form; the tool-entry `description`
+  fallback (the referenced step's `description` is the single source).
+
+Migration: declare `mode:` on every Agent step, rename `output`/`output_key`
+to the `outcome` block, replace `signal_from` with a closed `outcome.enum`,
+move scoped markdown into `artifacts/` and reference it with
+`artifact://name@version`, and move MCP connection config into `type: mcp`
+artifacts. `tuvl validate` names each removed field and its replacement.
+
+| Surface | Package | Version | Channel |
+|---|---|---|---|
+| Engine | `tuvl` | `2026.4.0.0` | PyPI |
+| Developer portal | `tuvl-insight` | `2026.4.0.0` | PyPI (via `tuvl[standard]`) |
+| TypeScript SDK | `@tuvl/client` | `2026.4.0` | npm |
+| Documentation | `tuvl.io/docs` | `2026.4.0.0` | GitHub Pages |
+| Marketing site | `tuvl.io` | `v2026.4.0.0` | static |
 
 ---
 

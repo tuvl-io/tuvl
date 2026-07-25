@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/tuvl-io/tuvl/main/ui/public/logo.png" alt="" width="40" />&nbsp;&nbsp;<span style="font-size:2em"><strong>tuvl</strong></span><br/>
+  <img src="https://raw.githubusercontent.com/tuvl-io/tuvl/main/assets/logo.png" alt="" width="40" />&nbsp;&nbsp;<span style="font-size:2em"><strong>tuvl</strong></span><br/>
   <sub>/ˈtuːvəl/ &nbsp;·&nbsp; തൂവൽ &nbsp;·&nbsp; feather</sub>
 </p>
 
@@ -15,11 +15,9 @@
   <a href="https://github.com/tuvl-io/tuvl">GitHub</a>
 </p>
 
-> Hey there! 👋 The source code is on its way — we're tidying things up before the public release. Keep an eye on this repo and star it so you don't miss the drop.
-
-> **Early stable release.** tuvl 2026.3.2.0 is production-ready — the API and YAML
-> schemas are stable and versioned. As an early release in the stable line it is
-> still maturing quickly, so expect additive improvements between versions.
+> **Stable release.** tuvl 1.0.0 is production-ready — the API and YAML schemas
+> are stable and versioned under [SemVer](https://semver.org): breaking changes
+> bump the major version.
 
 `tuvl` lets you define, run, and manage multi-step AI workflows using plain YAML files. No boilerplate. No complex overhead. No lock-in.
 
@@ -103,7 +101,7 @@ uv tool install tuvl
 | SDK | Package | Status |
 |-----|---------|--------|
 | Python | `pip install tuvl-sdk` / `uv add tuvl-sdk` | Coming soon |
-| JavaScript / TypeScript | `npm install @tuvl/client` | Early stable — [`@tuvl/client`](https://www.npmjs.com/package/@tuvl/client) |
+| JavaScript / TypeScript | `npm install @tuvl/client` | Stable — [`@tuvl/client`](https://www.npmjs.com/package/@tuvl/client) |
 
 The SDKs provide typed clients for triggering workflows, subscribing to execution events via SSE, and managing workflow instances from your own applications.
 
@@ -174,6 +172,7 @@ my-project/
 ├── datasources/          # Datasource definitions (YAML)
 ├── llms/                 # LLM / AgentModel configs (YAML)
 ├── nodes/                # Custom Python node implementations
+├── artifacts/            # Versioned prompts/steering/skills (.md) + guardrail/hook/MCP configs (kind: Artifact)
 └── workflows/            # Workflow definitions (YAML)
 ```
 
@@ -224,10 +223,9 @@ Workflows are YAML files defining a sequence of steps. Each step has a `kind`:
 | Kind | Description |
 |---|---|
 | `Functional` | Execute a registered Python node function |
-| `Agent` | Call an LLM (via litellm) with a prompt template, read context keys, write output back to context |
-| `AutonomousAgent` | Run a bounded tool-calling loop — the model calls declared tools (other steps) until it emits an `outcome.enum`, capped by `max_iterations` / `token_budget`. Guided by `agent.steering` + per-agent scoped `steering_files`/`skills`; optionally watched by a `spec.supervisor` |
+| `Agent` | The one LLM step — `mode: completion` (a single retried litellm call) or `mode: autonomous` (a bounded tool-calling loop: the model calls declared tools — other steps — until it emits an `outcome.enum`, capped by `max_iterations` / `token_budget`). Guided by inline text or versioned `artifact://` prompts/steering/skills; gated by guardrail artifacts; optionally watched by a `spec.supervisor` |
 | `APICall` | Make an outbound HTTP request and map the response into context |
-| `MCP` | Call a tool via the Model Context Protocol (stdio or SSE) |
+| `MCP` | Call a tool via the Model Context Protocol — the server connection (stdio or SSE) is declared once as a `type: mcp` artifact and referenced via `mcp.server: artifact://<name>` |
 | `Router` | Evaluate a condition and branch to a named route |
 | `ModelOp` | Perform CRUD operations on a registered data model |
 | `Response` | Shape and return the final HTTP response from context keys |
@@ -292,8 +290,8 @@ Tuvl Insight is not just an observability tool — it is a complete **local deve
 | **Tuvl Lens** | Spectrum page (`/insight`) | Execute a single workflow node in isolation with mock state — unit-test individual steps without running a full workflow |
 | **Tuvl Spectrum** | Spectrum page (`/insight`) | Run a complete workflow and capture a deep-copy state snapshot after every step — full execution trace with per-step timing |
 | **Workflow Canvas Test Mode** | Workflow editor toolbar | Run any workflow directly from the canvas with a custom JSON input. Results stream live: nodes light up with status badges, the right-hand **Test Out** panel shows a step-by-step context diff, and a bottom status bar tracks overall progress |
-| **Agents dashboard** | Agents page (`/insight`) | Live view of in-flight `AutonomousAgent` runs — iteration/token progress, an expandable per-run trace timeline, and **pause / resume / abort / steer** controls (operator API: `/api/agents/runs`) |
-| **Agent Supervisor** | `spec.supervisor` (workflow YAML) — or the off-spine **Supervisor** node in the Insight canvas | A per-workflow watcher that observes each `AutonomousAgent` run and pauses/aborts/steers it via deterministic `rules` and/or an LLM judge (`criteria`, or a scoped `criteria_file` `.md` policy) — breaking a runaway loop mid-flight. Author it visually: drop the Supervisor node, pick a model + policy, and it serializes to `spec.supervisor`. Emits OTel agent metrics (`agent.iterations`/`tool_calls`/`aborts`/…) |
+| **Agents dashboard** | Agents page (`/insight`) | Live view of in-flight autonomous `Agent` runs — iteration/token progress, an expandable per-run trace timeline, and **pause / resume / abort / steer** controls (operator API: `/api/agents/runs`) |
+| **Agent Supervisor** | `spec.supervisor` (workflow YAML) — or the off-spine **Supervisor** node in the Insight canvas | A per-workflow watcher that observes each autonomous `Agent` run and pauses/aborts/steers it via deterministic `rules` and/or an LLM judge (`criteria` — inline policy text or an `artifact://` steering artifact) — breaking a runaway loop mid-flight. Author it visually: drop the Supervisor node, pick a model + policy, and it serializes to `spec.supervisor`. Emits OTel agent metrics (`agent.iterations`/`tool_calls`/`aborts`/…) |
 | **Portal UI** | `GET /insight` | Browser interface to the full developer portal |
 
 #### Workflow Canvas Test Mode — at a glance

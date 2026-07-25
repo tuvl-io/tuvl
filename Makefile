@@ -34,7 +34,7 @@ help:
 # and lint immediately after cloning.
 setup:
 	@echo "→ Syncing core + Tuvl Insight + dev tools..."
-	$(UV) sync --extra standard --extra dev
+	$(UV) sync --extra standard --group dev
 	$(MAKE) apply-patches
 
 # Alias kept for legacy docs/scripts — equivalent to `make setup`.
@@ -43,7 +43,7 @@ setup-all: setup
 # Production-style install: runtime engine deps only, no Insight or dev tools.
 # Use this when baking a container image from source.
 setup-min:
-	$(UV) sync
+	$(UV) sync --no-dev
 	$(MAKE) apply-patches
 
 install: setup
