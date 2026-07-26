@@ -17,10 +17,37 @@ Instead, please report it privately by emailing [security@tuvl.io](mailto:securi
 
 Please provide a clear and concise description of the issue, along with steps to reproduce it. We will acknowledge receipt of your vulnerability report within 48 hours and strive to send you regular updates about our progress.
 
+Machine-readable contact details are published at
+[`https://tuvl.io/.well-known/security.txt`](https://tuvl.io/.well-known/security.txt) (RFC 9116).
+
 ### What to include in your report:
 - TUVL version(s) affected
 - A detailed description of the vulnerability and its potential impact
 - Steps to reproduce the issue
 - Any potential mitigations you've identified
+
+### Encrypted reports
+
+If your report contains sensitive details (for example a working exploit), you
+can request our PGP public key at [security@tuvl.io](mailto:security@tuvl.io)
+and send the report encrypted.
+
+### Safe harbor
+
+We consider security research and vulnerability disclosure conducted in good
+faith under this policy to be authorized, and we will not pursue or support
+legal action against you for it. "Good faith" means: you make a reasonable
+effort to avoid privacy violations, data destruction, and service disruption;
+you only access the minimum data needed to demonstrate the issue; and you give
+us a reasonable opportunity to remediate before disclosing publicly. If in
+doubt about whether a specific action is authorized, ask us first at
+security@tuvl.io.
+
+### Reporting channels
+
+Email is the primary channel today. The tuvl engine source is currently
+developed privately and will be published in a future release; once the code is
+public we will also enable **GitHub Private Vulnerability Reporting** on the
+public repository and list it here as an alternative.
 
 Thank you for helping keep TUVL secure!
