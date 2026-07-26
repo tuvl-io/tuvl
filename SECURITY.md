@@ -29,8 +29,13 @@ Machine-readable contact details are published at
 ### Encrypted reports
 
 If your report contains sensitive details (for example a working exploit), you
-can request our PGP public key at [security@tuvl.io](mailto:security@tuvl.io)
-and send the report encrypted.
+can encrypt it to our OpenPGP key, published at
+[`https://tuvl.io/.well-known/security-pgp.asc`](https://tuvl.io/.well-known/security-pgp.asc)
+(also referenced from `security.txt`). Verify the fingerprint before use:
+
+```
+BA7B 4C3D A0C3 3120 113D EECB 9C9F 1F4E A206 4503
+```
 
 ### Safe harbor
 
