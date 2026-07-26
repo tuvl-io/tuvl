@@ -7,7 +7,6 @@ Security updates are provided for the latest release of the TUVL engine. Please 
 | Version | Supported          |
 | ------- | ------------------ |
 | 1.x     | :white_check_mark: |
-| 2026.x (pre-1.0 test builds) | :x: |
 
 ## Reporting a Vulnerability
 
