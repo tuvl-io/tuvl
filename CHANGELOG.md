@@ -532,6 +532,6 @@ served in production:
 | Documentation | `tuvl.dev` | `2026.2.4` (`latest`) | GitHub Pages |
 | Marketing site | `tuvl.io` | `v2026.2.4` | static |
 
-— Sooraj Rajagopalan, tuvl.io
+— the tuvl.io team
 
 [2026.2.4]: https://github.com/tuvl-io/tuvl/releases/tag/v2026.2.4
