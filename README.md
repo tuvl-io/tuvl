@@ -138,7 +138,7 @@ Installs `tuvl` and any project-level packages into a local `.venv`. Add extra p
 uv run tuvl dev
 ```
 
-Starts the engine with hot reload on `http://localhost:8000`. If `tuvl[standard]` is installed, the Insight dashboard is available at `http://localhost:8000/insight`.
+Starts the engine with hot reload on `http://localhost:8885`. If `tuvl[standard]` is installed, the Insight dashboard is available at `http://localhost:8885/insight`.
 
 **4. Run in production:**
 
@@ -192,12 +192,12 @@ Share a project by committing everything except `.env` — collaborators run `uv
 | `tuvl dev` | Start the engine in dev mode with hot reload. The dev key is written to `.tuvl/.dev-session` (mode 0600); pass `--show-key` to print it, and `--auto-login` to automatically bypass the Insight security screen |
 | `tuvl run` | Start the production server. Requires a persistent `TUVL_BISCUIT_PRIVATE_KEY` in `.env` (generate one with `tuvl keys generate`) — unlike `tuvl dev`, it will **not** fall back to an ephemeral signing key |
 | `tuvl test` | Run LLM-as-a-Judge tests against workflow definitions. In multi-tenant projects, automatically injects a synthetic tenant so the data-layer guard doesn't reject test runs |
-| `tuvl validate` | Validate workflow and model YAML files |
+| `tuvl validate` | Validate every YAML/`.yml` file anywhere in the project tree, dispatched by `kind:` — the same recursive discovery the runtime uses. Checks models, workflows, datasources, LLM presets, embeddings, collections, and federation providers; an unrecognized `kind:` is an error. `--strict` treats warnings as errors |
 | `tuvl ship` | Package the project for production: validates it, generates a production `Dockerfile` + `.dockerignore` and a Helm chart under `deploy/chart/<name>/`, then builds the container image. `--tag` sets the image reference, `--no-build` writes artifacts only, `--push` pushes after building, `--force` regenerates existing files |
 | `tuvl keys generate` | Print a fresh Ed25519 Biscuit signing key (64-hex) plus the `.env` line; add `--write` to write it into the project `.env` (owner-only perms, `--force` to overwrite) |
 | `tuvl db generate-rls` | Emit `ALTER TABLE … ENABLE ROW LEVEL SECURITY` + tenant-scoped policy SQL for every tenant-aware model (multi-tenant only) |
 | `tuvl db check-rls` | Verify that RLS is enabled and policies are present on every tenant-aware table |
-| `tuvl stream-watch` | Tail workflow execution events from the engine's SSE stream |
+| `tuvl stream-watch` | Tail workflow execution events from the engine's SSE stream. `--timeout` sets a read-timeout in seconds for the stream body (default: none, so a slow agent iteration or HITL wait won't abort the connection) |
 | `tuvl help` | Show all commands |
 
 ### Common options
@@ -206,12 +206,13 @@ Share a project by committing everything except `.env` — collaborators run `uv
 tuvl dev --port 9000 --project-dir ./my-project
 tuvl dev --show-key                  # print the dev API key (off by default)
 tuvl dev --auto-login                # automatically bypass the Tuvl Insight security screen
-tuvl run --host 0.0.0.0 --port 8000 --workers 2
+tuvl run --host 0.0.0.0 --port 8885 --workers 2
 tuvl run --allow-host 10.0.0.0/8     # IP allowlist
 tuvl keys generate                   # print a production Biscuit key + the .env line
 tuvl keys generate --write           # write TUVL_BISCUIT_PRIVATE_KEY into .env (needed by `tuvl run`)
 tuvl validate --project-dir ./my-project
 tuvl ship --tag ghcr.io/acme/my-project:1.0.0 --push   # container + Helm chart
+tuvl stream-watch screen-candidate --timeout 30        # bound the SSE read-timeout (default: none)
 ```
 
 ---
@@ -230,6 +231,8 @@ Workflows are YAML files defining a sequence of steps. Each step has a `kind`:
 | `ModelOp` | Perform CRUD operations on a registered data model |
 | `Response` | Shape and return the final HTTP response from context keys |
 | `HumanInTheLoop` | Pause for a human approve/reject decision, then resume where it left off |
+
+Workflows are triggered over HTTP (`trigger.path` + `method`), on a cron schedule (`trigger.schedule: "*/5 * * * *"` — UTC, single-fire across workers via a Postgres advisory lock, skip-on-miss), or both. Schedule-only workflows mount no HTTP route at all.
 
 ---
 
@@ -280,7 +283,7 @@ Tuvl Insight is not just an observability tool — it is a complete **local deve
 
 | Section | Description |
 |---|---|
-| **Settings** | Configure infrastructure components — Redis connection and other runtime settings. |
+| **Settings** | Configure infrastructure components — Redis connection, the CRUD API kill switch (API Access section), and other runtime settings. |
 | **API Docs** | Embedded Swagger UI and ReDoc viewer for the live tuvl REST API, including all dynamically-generated workflow and model endpoints. |
 
 ### Execution Testing
@@ -342,7 +345,9 @@ with tenant_scope("acme-corp"):
 
 ### Hardening Defaults
 
-- **CRUD endpoint scope enforcement** — every auto-generated model route (`/models/{model}/…`) enforces a Biscuit `scope()` fact. Default names are `{modelname.lower()}:read`, `{modelname.lower()}:write`, `{modelname.lower()}:delete`; override per model with `spec.access` in the `ModelDefinition` YAML. Tokens carrying `iam:admin` satisfy every scope check.
+- **CRUD endpoint scope enforcement** — every auto-generated model route (`/models/{model}/…`) enforces a Biscuit `scope()` fact. Default names are `{modelname.lower()}:read`, `{modelname.lower()}:write`, `{modelname.lower()}:delete`; override per model with `spec.access` in the `ModelDefinition` YAML, optionally pinning a tier to specific IAM groups via `spec.access.{read,write,delete}_groups` (scope AND group both required; an undeclared tier cascades down from the next-more-privileged one). Tokens carrying `iam:admin` satisfy every scope and group check.
+- **CRUD kill switch** — turn off the entire `/models/*` surface project-wide with `spec.api.expose_model_crud: false` in `.tuvl/system.yaml`, or the `TUVL_EXPOSE_MODEL_CRUD` env var (wins over the YAML); toggle it live from the Insight Settings page in dev mode. Restart required to take effect.
+- **Workflow trigger default-deny** — in production, every trigger route (REST mount, versioned run route, gRPC `RunWorkflow`) requires a valid bearer token even when the workflow declares no `required_scope`/`required_group`; anonymous access needs an explicit `spec.trigger.public: true`. Dev mode exempts unscoped workflows so quickstarts run tokenless.
 - **Secrets file modes** — `.tuvl/.dev-session` and `.env` are created with mode `0600` so other accounts on shared hosts can't read them.
 - **Dev key handling** — never echoed to the terminal by default (`tuvl dev --show-key` opts in); always persisted owner-only.
 - **UI session storage** — the dev portal stores the bearer key in `sessionStorage` (tab-scoped) with a 15-minute idle expiry watchdog.
@@ -360,6 +365,14 @@ with tenant_scope("acme-corp"):
 
 ---
 
+## License & contributing
 
+tuvl is licensed under the **MIT License** — see [LICENSE](LICENSE) — and will
+remain MIT-licensed. It is, and will stay, free to use, modify, and distribute.
 
-MIT — see [LICENSE](LICENSE).
+Development currently happens in a private repository, so the full source is not
+yet publicly browsable. This is temporary: the complete codebase will be
+published openly in a future release. In the meantime the project is **open to
+contribution** — bug reports, feature proposals, and patches are all welcome.
+See [CONTRIBUTING](CONTRIBUTING.md) to get started, or reach out at
+[developer@tuvl.io](mailto:developer@tuvl.io).

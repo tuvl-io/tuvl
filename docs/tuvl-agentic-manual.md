@@ -114,7 +114,7 @@ metadata:
 enabled: true
 spec:
   tablename: candidates         # OPTIONAL — defaults to name.lower()
-  datasource: main_postgres     # OPTIONAL — defaults to "main_postgres"
+  datasource: main_postgres     # OPTIONAL — defaults to the primary DataSource (metadata.primary: true)
   schema: true                  # OPTIONAL — default true. false → no CRUD endpoints
   fields:
     - name: id
@@ -177,6 +177,19 @@ spec:
     delete_scope: hr_data:delete  # default: {modelname.lower()}:delete
 ```
 
+**Group ACLs** (`spec.access.{read,write,delete}_groups` — OPTIONAL): pin CRUD tiers to IAM group/role names (a bare string is accepted in place of a one-element list). When a `*_groups` key is set, that tier requires **both** the scope **and** membership in one of the listed groups — `iam:admin` bypasses either check. A tier with no groups declared stays scope-only (unchanged behavior). Absent tiers cascade downward from the tier above: `write_groups` falls back to `read_groups`, `delete_groups` falls back to `write_groups` — so declaring only `read_groups` restricts every tier, never just reads.
+
+```yaml
+spec:
+  access:
+    read_scope:   hr_data:read
+    write_scope:  hr_data:write
+    delete_scope: hr_data:delete
+    read_groups:  [hr_staff]      # read requires hr_data:read AND hr_staff
+    write_groups: [hr_managers]   # write requires hr_data:write AND hr_managers
+    # delete_groups omitted → cascades to write_groups (hr_managers)
+```
+
 `GET /admin/scopes` returns all scope strings registered in the live engine — CRUD scopes (respecting any `spec.access` overrides), workflow `required_scope` values, and system scopes — grouped by source. The IAM role editor in Tuvl Insight surfaces this as a clickable scope-suggestion palette so administrators can assign the correct scope strings without consulting YAML files.
 
 **Reserved Python attribute names**: `metadata`. If used, the SQLAlchemy attribute becomes `extra_metadata` but the DB column and JSON key remain `metadata`. Agents may use `metadata` as a field name freely; the loader handles aliasing.
@@ -204,14 +217,18 @@ spec:
   trigger:
     path: /api/onboard          # REQUIRED to mount as HTTP route. Omit → workflow exists but is not mounted (callable via /{schema_version}/run/{name})
     method: POST                # GET | POST | PUT | PATCH | DELETE
+    schedule: "*/15 * * * *"    # OPTIONAL — 5-field cron (UTC); runs the workflow on a schedule. Coexists with path, or stands alone. See §2.3.2a.
     input_schema: context       # see §2.3.2
     response_schema: Candidate.read
+    public: false                # OPTIONAL, default false — see below
   steps:
     - id: ...
       kind: ...
       routes: { default: END }
   output: candidate             # OPTIONAL — top-level context key returned as HTTP body. Overridden by `kind: Response` steps.
 ```
+
+**Trigger auth default.** In production, every trigger route (REST, the versioned `/{schema_version}/run/{name}` route, and gRPC `RunWorkflow`) requires a valid bearer token by default, even when neither `required_scope` nor `required_group` is set. `trigger.public: true` (bool, default `false`) opts a route into anonymous (no-token) access — use it for endpoints like user registration. Setting `trigger.public: true` together with `required_scope` or `required_group` is a `tuvl validate` **error**: the engine fails closed and enforces the declared scope/group instead of treating the route as public. In dev mode (`tuvl dev`), workflows with no `required_scope`/`required_group` stay tokenless regardless of `public` so quickstarts run unchanged.
 
 #### 2.3.1 `context:` — three forms (mutually exclusive)
 
@@ -236,6 +253,22 @@ Accepted shapes:
 | `"list[<ModelName>.<variant>]"` | Array of records. |
 | Inline list of `{name,type,required,default,description}` | Ad-hoc schema (`type` ∈ `string|integer|float|boolean`). |
 | omitted | Untyped — request body becomes the raw context dict. |
+
+#### 2.3.2a `trigger.schedule` — scheduled (cron) execution
+
+```yaml
+trigger:
+  schedule: "*/15 * * * *"    # every 15 minutes, UTC
+```
+
+A workflow with `schedule` runs on a cron cadence with no HTTP request involved. Semantics:
+
+- **5-field cron, UTC.** Standard `min hour dom month dow` syntax; validated by `tuvl validate` (invalid expression = error). Minimum granularity is one minute.
+- **Coexists with `path`** — a workflow can be both HTTP-triggered and scheduled; `schedule` alone is also valid (the workflow is not mounted as a route, and `tuvl validate` does not warn about the missing path).
+- **Exactly one fire per slot across workers.** Every worker's scheduler wakes at the fire time; a Postgres advisory lock keyed on (workflow, fire-time) guarantees a single execution regardless of `--workers` count or replica count.
+- **Empty initial context, no principal.** Scheduled runs start with an empty context (plus `_scheduled: true`) and carry no `_user_id`/`_tenant_id`. Steps that need input must produce it (e.g. a leading `Functional` step). Multi-tenant deployments: scheduled workflows run outside tenant context and are not supported.
+- **Skip on miss, no catch-up.** Fires that pass while the process is down are skipped; the scheduler resumes at the next future slot.
+- Disable globally with `TUVL_SCHEDULER_ENABLED=false`.
 
 #### 2.3.3 Step envelope (common to every `kind:`)
 
@@ -498,6 +531,8 @@ Artifact
 ```
 
 `ProjectConfig`, `TelemetryConfig`, `SystemConfig` are out-of-band and loaded by their own subsystems. Prose (`.md`) artifacts are loaded by the artifact file walk (§2.11), not this YAML dispatch.
+
+**`SystemConfig` (`.tuvl/system.yaml`).** Written by `tuvl init`; hand-editing is unsupported outside the one documented knob below. `spec.api.expose_model_crud` (bool, default `true`) controls whether the auto-generated `/models/*` CRUD routers are mounted at all — set `false` to expose only workflow-defined APIs. Takes effect on restart. `TUVL_EXPOSE_MODEL_CRUD` (env var) overrides the YAML value when set. Editable from the Insight Settings page in dev mode.
 
 ### 3.2 Multi-document YAML streams (`---`)
 
@@ -1263,10 +1298,10 @@ These are **hard constraints**. Violating any one of them produces invalid YAML 
 17. **When pinning a model version in a workflow, ensure that exact `schema_version` is `enabled: true`** in its `ModelDefinition`. Mismatch raises `RuntimeError` at runtime.
 18. **Never use the same `spec.tablename` for two enabled versions of the same model.** The loader rejects this with a cross-version collision error.
 19. **One `kind: DataSource` must carry `primary: true`** in any project with auth, HITL, or RAG. System tables (workflow_versions, model_versions, IAM, HITL, system_vector_store) are created on it.
-20. **Auth gates on workflows go in `metadata.required_scope` / `metadata.required_group`** — never in `spec`. The loader reads them from metadata only.
+20. **Auth gates on workflows go in `metadata.required_scope` / `metadata.required_group`** — never in `spec`. The loader reads them from metadata only. In production a trigger requires a valid bearer token by default even with neither set; anonymous access must be declared explicitly with `spec.trigger.public: true` (Rule 31).
 21. **Multi-tenancy is out of scope.** Do not emit `tenant_id` fields, RLS clauses, `tenancy:` blocks, or any reference to multi-tenant isolation. Treat every project as single-tenant.
 22. **Use `type: enum` (not `type: string` with a `description:` listing values) whenever a field has a finite, stable closed set of valid values.** Always supply `enum_values: [...]`; omitting it silently creates a string column. The DB enforces the constraint independently of application code; the Pydantic layer rejects invalid values before any DB round-trip.
-23. **Every CRUD route is scope-gated by default.** The auto-generated `/models/{model}/` endpoints require a valid Biscuit token. Scope names default to `{modelname.lower()}:read`, `{modelname.lower()}:write`, `{modelname.lower()}:delete`. When a model's CRUD actions should fall under a different IAM domain, use `spec.access.{read,write,delete}_scope` in the `ModelDefinition`. Tokens carrying `iam:admin` bypass all scope checks. Always ensure the IAM role that owns CRUD access has these scopes assigned — use `GET /admin/scopes` to verify the exact strings.
+23. **Every CRUD route is scope-gated by default.** The auto-generated `/models/{model}/` endpoints require a valid Biscuit token. Scope names default to `{modelname.lower()}:read`, `{modelname.lower()}:write`, `{modelname.lower()}:delete`. When a model's CRUD actions should fall under a different IAM domain, use `spec.access.{read,write,delete}_scope` in the `ModelDefinition`. Tokens carrying `iam:admin` bypass all scope checks. Always ensure the IAM role that owns CRUD access has these scopes assigned — use `GET /admin/scopes` to verify the exact strings. `spec.access.{read,write,delete}_groups` layers an IAM group requirement on top (Rule 32).
 24. **All log output from tuvl is structured (structlog kwargs).** In production (`TUVL_ENV=production`) logs are emitted as JSON lines; in development they use a human-readable console renderer. When writing custom nodes or debugging, prefer reading the `event` key and the named kwargs rather than parsing f-string message text.
 25. **Autonomous-agent tools are a declared closed set, and its exits are bounded.** In `mode: autonomous`, `agent.tools` is REQUIRED; every `agent.tools[].ref` must name another step in the same workflow; give each tool a `description`. Every `outcome.enum` value must be mapped in `routes:` (rule 6), and you should also map the reserved abnormal exits `max_iterations` / `budget_exceeded` / `error`. Never push deterministic branching (country, tier, region) into the agent — do it in a downstream `Router` (`match:`) or `Functional` step.
 26. **When a workflow declares a `spec.supervisor` (§4.14) whose rules or judge can `abort`, map `aborted:` in the autonomous `Agent` step's `routes:`.** A supervisor or operator abort exits the agent through the reserved `aborted` signal; leaving it unmapped is a `tuvl validate` warning and, at runtime, ends the run without your fallback branch.
@@ -1274,6 +1309,8 @@ These are **hard constraints**. Violating any one of them produces invalid YAML 
 28. **Every `artifact://` reference must resolve and type-check, and every routed signal must have an exit.** A ref must name a registered artifact of a type the site accepts (§2.11 compat table); every `outcome.enum` value and every applicable reserved exit — including `guardrail_violation` when guardrails are attached — must be mapped in `routes:`. Unresolved refs fail startup in production and fail `tuvl validate` always.
 29. **MCP connection configuration goes ONLY in a `type: mcp` artifact.** The step declares `mcp.server: artifact://<name>` plus the tool call; inline `transport` / `url` / `headers` / `command` / `args` / `env` on the step are rejected with a pointed error.
 30. **Pin artifact versions (`artifact://name@N`) for production.** A floating (unpinned) ref is a `tuvl validate` warning, so `tuvl ship --strict` fails on it; pinned refs make deploys reproducible. External `artifact_sources` must always pin `sha256` — unpinned sources are refused at boot.
+31. **Workflow triggers require a bearer token by default in production.** This applies to the REST trigger route, the versioned `/{schema_version}/run/{name}` route, and gRPC `RunWorkflow` alike — even when neither `required_scope` nor `required_group` is set. Anonymous access must be declared explicitly with `spec.trigger.public: true`; combining it with `required_scope` or `required_group` is a `tuvl validate` **error** (the engine fails closed and enforces the declared scope/group). `tuvl dev` exempts workflows with no `required_scope`/`required_group` from this so quickstarts run tokenless.
+32. **The `/models/*` CRUD API can be globally disabled.** Set `spec.api.expose_model_crud: false` in `.tuvl/system.yaml` (`SystemConfig`) to unmount every auto-generated CRUD router and expose only workflow-defined APIs; restart required; `TUVL_EXPOSE_MODEL_CRUD` overrides the YAML value at the env level. Per model, `spec.access.{read,write,delete}_groups` add an IAM group requirement on top of the scope check (Rule 23) — both scope and group must pass, and `iam:admin` bypasses either.
 
 ---
 
@@ -1526,6 +1563,7 @@ nodes/
 Business requirement
 ├── "Store and CRUD a domain entity"         → ModelDefinition (+ schema: true)
 ├── "Trigger logic on an HTTP request"       → Workflow with trigger.path
+├── "Run a workflow on a schedule"           → Workflow with trigger.schedule (5-field cron, UTC — §2.3.2a)
 ├── "Call an LLM once"                       → step kind: Agent, mode: completion (+ AgentModel if reused)
 ├── "Let an LLM pick & call tools in a loop" → step kind: Agent, mode: autonomous (tools = other steps)
 ├── "Call an external HTTP API"              → step kind: APICall
@@ -1543,8 +1581,9 @@ Business requirement
 ├── "Switch DB / add a separate DB"          → DataSource + spec.datasource on ModelDefinition
 ├── "Cache / OAuth state for multi-worker"   → DataSource type: redis
 ├── "OAuth login (Google/GitHub/MS/custom)"  → FederationProvider
-├── "Restrict who can call a workflow"       → metadata.required_scope / metadata.required_group
-└── "Restrict who can call CRUD endpoints"   → spec.access on ModelDefinition (default: {model}:read/write/delete)
+├── "Restrict who can call a workflow"       → metadata.required_scope / metadata.required_group (token required by default even without these)
+├── "Allow anonymous (no-token) workflow access" → spec.trigger.public: true (invalid combined with required_scope/required_group)
+└── "Restrict who can call CRUD endpoints"   → spec.access on ModelDefinition (default: {model}:read/write/delete; *_groups adds an IAM group AND-check)
 ```
 
 ---

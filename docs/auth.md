@@ -218,9 +218,9 @@ Users and roles are administered under `/auth/admin/users` and `/auth/admin/role
 
 | Surface | Route(s) | Requirement |
 |---|---|---|
-| Model CRUD | `/models/{model}/…` | `{model.lower()}:read` / `:write` / `:delete` by convention; overridable per model via `spec.access.{read,write,delete}_scope` in the model YAML |
-| Workflow triggers | `trigger.path` from the workflow YAML | `metadata.required_scope` and/or `metadata.required_group`; **omit both and the route is public (unauthenticated)** |
-| Versioned execution | `/{api_version}/run/{workflow}` | same `metadata.required_scope` / `required_group`, enforced in-handler after the versioned config is resolved |
+| Model CRUD | `/models/{model}/…` | `{model.lower()}:read` / `:write` / `:delete` by convention; overridable per model via `spec.access.{read,write,delete}_scope`, optionally pinned to IAM groups via `spec.access.{read,write,delete}_groups`; absent entirely when `spec.api.expose_model_crud: false` |
+| Workflow triggers | `trigger.path` from the workflow YAML | `metadata.required_scope` and/or `metadata.required_group`; in production a valid bearer token is required even when both are omitted, unless the workflow opts into `spec.trigger.public: true` |
+| Versioned execution | `/{api_version}/run/{workflow}` | same policy as workflow triggers, enforced in-handler after the versioned config is resolved |
 | Engine admin | `/admin/*` (workflow toggle, fork, scope catalogue, …) | `iam:admin` |
 | IAM admin | `/auth/admin/*` (users, roles, federation) | `iam:admin` |
 | Operator API | `/api/agents/*` | `agent:observe` to read, `agent:control` to act |
@@ -231,10 +231,13 @@ Users and roles are administered under `/auth/admin/users` and `/auth/admin/role
 Notes:
 
 - **CRUD scope derivation** happens in `tuvl/core/api/crud_router.py`: `read_scope = spec.access.read_scope or f"{model_name.lower()}:read"`, and likewise for write (POST/PATCH) and delete. Every CRUD route also runs `bind_principal_context`, so all requests are authenticated even for read.
+- **CRUD group pinning.** `spec.access.read_groups` / `write_groups` / `delete_groups` (a list, or a bare group name) add an IAM-group requirement alongside the scope — both must be satisfied; `require_access(scope, groups)` in `biscuit_auth.py` is the dependency factory each CRUD route depends on, wrapping `authorize_token`. A tier left undeclared cascades from the next-more-privileged tier (`write_groups` falls back to `read_groups`, `delete_groups` falls back to `write_groups`), so pinning only `read_groups` never leaves mutations open to a wider audience than reads. Declaring no groups at all is scope-only. `iam:admin` bypasses every scope and group.
 - **Workflow gates are metadata-only.** `_build_route_deps` in `tuvl/core/api/manager.py` reads exactly `metadata.required_scope` and `metadata.required_group` from the workflow YAML — nothing inside `steps:` changes route auth. `required_group` names an IAM role; membership in that single group is required (alongside the scope, when both are declared).
-- **Scope discovery.** `GET /admin/scopes` (itself `iam:admin`) returns every enforceable scope grouped by source — `crud` (per model, honoring overrides), `workflows` (per `required_scope`), and `system` (`["iam:admin"]`) — so an admin composing roles doesn't have to grep YAML.
+- **Trigger default-deny in production.** Every trigger route — the REST mount, the versioned run route, and gRPC `RunWorkflow` — requires a valid bearer token by default, even for a workflow that declares neither `required_scope` nor `required_group`. Anonymous access is an explicit opt-in via `spec.trigger.public: true`; `tuvl validate` rejects a workflow combining `public: true` with a declared scope or group, and a declared scope/group always wins over `public` at runtime, so a contradictory config fails closed rather than silently authenticating. In dev mode (`tuvl dev`), workflows with no scope/group requirement stay tokenless so quickstarts run without a login step — the same trust envelope as the dev-key superuser shortcut (§9), and boot-blocked in production by the dev-mode sentinel. The policy is centralized in `resolve_workflow_auth` / `WorkflowAuthPolicy` (`tuvl/core/auth/workflow_policy.py`) and consumed identically by `manager._build_route_deps`, the versioned run route, and the gRPC servicer, so the enforcement sites can't drift. The manifest endpoints (`GET /api/_system/workflows`, `GET /api/_system/workflows/{name}`) expose the declared `public` flag for SDK tooling; `required_scope` / `required_group` stay out of those responses so the manifest doesn't hand out a map of exactly which credential to forge.
+- **Scope discovery.** `GET /admin/scopes` (itself `iam:admin`) returns every enforceable scope grouped by source — `crud` (per model, honoring overrides), `workflows` (per `required_scope`), and `system` (`["iam:admin"]`) — so an admin composing roles doesn't have to grep YAML. The same response's `crud_api_enabled` field reports whether the CRUD kill switch (below) is currently on.
 - The operator API additionally scopes runs by tenant and returns 404 for foreign-tenant run ids rather than leaking existence.
 - **Artifact uploads are prompt-level trust.** A prompt/steering artifact carries instruction-level authority once a workflow references it, so `artifacts:write` belongs to the same principals who may edit workflows; `iam:admin` bypasses both artifact scopes.
+- **CRUD kill switch.** The entire auto-generated `/models/*` surface can be turned off project-wide with `spec.api.expose_model_crud: false` in `.tuvl/system.yaml` (`SystemConfig`), overridable by the `TUVL_EXPOSE_MODEL_CRUD` env var (env wins over YAML), and editable from the Insight Settings page's API Access section in dev mode. When disabled, `build_crud_routers` (`tuvl/core/api/crud_router.py`) never mounts the CRUD routers — the routes are absent, not merely scope-denied — leaving only hand-authored `Workflow` triggers exposed. Takes effect on restart.
 
 Example workflow gate:
 
@@ -250,14 +253,17 @@ metadata:
 
 ## 8. REST & gRPC Parity
 
-The gRPC-Web surface (used by the Insight UI) enforces the same contract with the same primitives:
+The entire IAM surface — bootstrap, login, session lifecycle, user/role CRUD, federation-provider admin — has exactly one implementation: `tuvl/core/auth/iam_service.py`. It is transport-neutral (plain DB session and Python inputs in, plain results or a typed `IamError` out — no FastAPI or gRPC types). `tuvl/core/auth/router.py` (REST) and `tuvl/core/grpc/iam_servicer.py` (gRPC-Web, used by the Insight UI) are both **thin adapters** over it: they parse transport input, call into `iam_service`, and map the result (or a raised `IamError` subclass) onto their transport's status representation. Because the logic lives in one place, REST and gRPC have identical behavior by construction rather than by convention — including the login timing-equalization (`iam_service.login` always performs one bcrypt comparison, even against `DUMMY_PW_HASH` for a missing/passwordless account) and the federation-provider path sanitizer (`iam_service.safe_federation_path`, the single path-traversal guard both transports call).
 
-- `tuvl/core/grpc/iam_servicer.py` mirrors the entire `/auth` REST surface (`Bootstrap`, `Login`, `GetMe`, `RefreshToken`, `Logout`, user/role CRUD, role assignment, federation-provider management). Its `_verify_biscuit` performs signature validation **and** calls `enforce_token_security`, matching the REST `verify_token` contract; `_require_admin` then checks for the `iam:admin` scope.
+What's still transport-specific:
+
+- `tuvl/core/grpc/iam_servicer.py` covers the full `/auth` REST surface (`Bootstrap`, `Login`, `GetMe`, `RefreshToken`, `Logout`, user/role CRUD, role assignment, federation-provider management). Its `_verify_biscuit` performs signature validation **and** calls `enforce_token_security`, matching the REST `verify_token` contract; `GetMe` and `RefreshToken` both call the shared `get_current_user`, so the same authorizer policy and `TokenUser` extraction run on both transports; `_require_admin` then checks for the `iam:admin` scope.
 - `tuvl/core/grpc/servicer.py` (`ExecutionServicer.RunWorkflow`) authenticates the token from call metadata, then enforces the workflow's `metadata.required_scope` / `required_group` through the shared `authorize_token` — the same function the REST route dependencies use.
-- Error mapping is mechanical: `TokenUnauthorizedError` / expired / invalid → `UNAUTHENTICATED`; missing scope or group → `PERMISSION_DENIED`.
+- **Anti-enumeration ordering.** `RunWorkflow` resolves the target workflow's config (needed to evaluate its `resolve_workflow_auth` policy) before deciding whether a token is required, but defers the `NOT_FOUND` abort until after the token/scope checks. An anonymous caller hitting an unknown or non-public workflow name gets `UNAUTHENTICATED`, never `NOT_FOUND` — so probing the workflow namespace without a valid token can't distinguish "wrong credential" from "no such workflow."
+- Error mapping is mechanical: `TokenUnauthorizedError` / expired / invalid → `UNAUTHENTICATED`; missing scope or group → `PERMISSION_DENIED`; an `iam_service` domain error (`NotFoundError`, `ConflictError`, `ValidationError`, …) maps to the matching gRPC `StatusCode` the same way REST maps it to an HTTP status.
 - Every IAM RPC is wrapped in the `@_managed` decorator, which scopes database-session cleanup to the single call: any session opened during the handler is deterministically closed when the call returns, raises, or aborts.
 
-Password verification on the gRPC login path routes through the same threadpool bcrypt wrappers as REST.
+Password verification on the gRPC login path routes through `iam_service.login`, which itself dispatches to the same threadpool bcrypt wrappers as REST.
 
 ---
 
@@ -326,13 +332,16 @@ Rules of thumb: 401 always carries `WWW-Authenticate: Bearer` and means "re-auth
 | `tuvl/core/auth/models.py` | The four `tuvl_system_iam_*` tables |
 | `tuvl/core/auth/crypto.py` | bcrypt hashing/verification + threadpool wrappers |
 | `tuvl/core/auth/blacklist.py` | Token revocation store (Redis / in-process) |
-| `tuvl/core/auth/router.py` | `/auth` REST surface: bootstrap, login, me/refresh/logout, user & role admin, OAuth federation flow |
+| `tuvl/core/auth/iam_service.py` | Transport-neutral IAM service — the one implementation of bootstrap, login, refresh/logout, user & role CRUD, and federation-provider admin; `router.py` and `iam_servicer.py` are thin adapters over it |
+| `tuvl/core/auth/router.py` | `/auth` REST surface: bootstrap, login, me/refresh/logout, user & role admin, OAuth federation flow — a thin adapter over `iam_service.py` |
 | `tuvl/core/auth/federation_loader.py` | `kind: FederationProvider` YAML loader and registry |
-| `tuvl/core/api/crud_router.py` | CRUD scope derivation and enforcement |
+| `tuvl/core/api/crud_router.py` | CRUD scope/group derivation, enforcement, `build_crud_routers` kill-switch gate |
+| `tuvl/core/auth/workflow_policy.py` | `resolve_workflow_auth` / `WorkflowAuthPolicy` — shared trigger auth policy (default-deny, `public`, dev exemption) |
+| `tuvl/core/system_config.py` | `expose_model_crud` — `.tuvl/system.yaml` / `TUVL_EXPOSE_MODEL_CRUD` resolution for the CRUD kill switch |
 | `tuvl/core/api/manager.py` | `_build_route_deps` — workflow `metadata.required_scope` / `required_group` gates |
 | `tuvl/core/api/execution_router.py` | Versioned run route auth, `/admin/*` guard, `GET /admin/scopes` |
 | `tuvl/core/api/orchestrator_router.py` | Operator API (`agent:observe` / `agent:control`) |
-| `tuvl/core/grpc/iam_servicer.py` | gRPC IAM surface, `_verify_biscuit`, `@_managed` session lifecycle |
+| `tuvl/core/grpc/iam_servicer.py` | gRPC IAM surface, `_verify_biscuit`, `@_managed` session lifecycle — a thin adapter over `iam_service.py` |
 | `tuvl/core/grpc/servicer.py` | gRPC workflow execution auth (shared `authorize_token`) |
 | `tuvl/core/dev/middleware.py` | `/dev/*` dev-key + IP-allowlist gate |
 | `tuvl/cli/session.py`, `tuvl/cli/commands/dev.py` | Dev security key generation and session file |
