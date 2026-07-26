@@ -5,7 +5,7 @@ description = "YAML-driven workflow orchestration engine — compose pipelines o
 readme = "README.md"
 requires-python = ">=3.13,<3.14"
 license = { text = "MIT" }
-authors = [{ name = "tuvl.io", email = "sooraj@tuvl.io" }]
+authors = [{ name = "tuvl.io", email = "developer@tuvl.io" }]
 keywords = ["workflow", "orchestration", "ai", "llm", "agents", "fastapi", "yaml", "backend"]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
