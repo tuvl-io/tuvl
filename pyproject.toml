@@ -1,6 +1,6 @@
 [project]
 name = "tuvl"
-version = "1.0.0"
+version = "1.0.1"
 description = "YAML-driven workflow orchestration engine — compose pipelines of functional nodes, LLM calls, API integrations, and MCP tools, served as a REST API with Postgres persistence and Redis-backed state"
 readme = "README.md"
 requires-python = ">=3.13,<3.14"

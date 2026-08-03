@@ -8,6 +8,44 @@ See `release-please-config.json` for the automation contract.
 
 ---
 
+## [1.0.1] — 2026-08-03
+
+Patch release: correctness fixes only. No API or schema changes.
+
+### Added
+
+- Model fields accept generated-default literals `default: now`
+  (`timestamp` / `timestamptz`) and `default: today` (`date`), mirroring the
+  existing `default: uuid4`. Use them to opt a field into a server-generated
+  value on create.
+
+### Fixed
+
+- **Nullable `uuid` / `date` / `timestamp` / `timestamptz` fields no longer
+  receive a silent generated value on create.** The model loader treated *any*
+  default-less field of these types as "auto-generate a value", so a nullable
+  `uuid` foreign key persisted a dangling random UUID, and a default-less
+  `date` / `timestamp` persisted `today` / `now()` instead of `NULL` — on every
+  row created through ModelOp CRUD (raw-SQL nodes were unaffected, which is why
+  the corruption stayed hidden). Generation is now limited to the cases where it
+  is safe and intended: a `uuid` **primary key**, and the `created_at` /
+  `updated_at` audit-column convention. Every other default-less field of these
+  types now persists as `NULL` (or is required when declared `required: true`).
+
+  **Migration.** Any field that (perhaps unintentionally) relied on the old
+  implicit `today` / `now` / `uuid` now stores `NULL` — which is almost always
+  what the YAML author already believed was happening, given these fields carry
+  no default. To keep a generated value, opt in explicitly: `default: uuid4`,
+  `default: now`, or `default: today` — or, for timestamps, rename the column to
+  `created_at` / `updated_at`. `uuid` primary keys and `created_at` /
+  `updated_at` are unchanged.
+
+- CLI commands no longer emit the `Settings loaded` startup log. Constructing
+  `Settings` on import logged at info level, so quick commands (e.g.
+  `tuvl --version`) printed a log line alongside their output. The log moved to
+  server boot — `tuvl run` / `tuvl dev` still log it — and the routine
+  `Project config loaded` line dropped to debug.
+
 ## [1.0.0] — 2026-07-26
 
 First official stable release. Establishes the SemVer baseline and folds in
