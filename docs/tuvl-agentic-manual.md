@@ -135,7 +135,7 @@ version: tuvl/v2
 metadata:
   name: refund_flow                      # unique; snake_case
   description: Handle a refund request end to end.   # required for MCP export
-  required_scope: refunds:write          # optional Biscuit scope gate
+  required_scope: refunds:write          # optional token scope gate
   required_group: support                # optional IAM group gate
 spec:
   models: [Order, Refund]                # allow-list for tool:db and ctx.db

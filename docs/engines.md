@@ -154,7 +154,12 @@ calls get a stable `Idempotency-Key`; MCP calls are at-least-once, so give write
             parse_error: END.failed, timeout: END.failed, budget_exceeded: END.failed }
 ```
 
-- Every input is serialised into the prompt as a typed input block.
+- Every input is serialised into the prompt inside a `<data name="…" type="…">` fence, and the
+  system prompt tells the model that fenced text is data, never instructions. A value can't close
+  its fence early (`</data>` inside it is escaped), so retrieved documents, user text or web
+  content can't pass themselves off as part of the prompt. `loop` agents fence every tool result the
+  same way (`<data tool="…">`). Text you interpolate into `llm.prompt` with `{{ … }}` is not fenced:
+  pass untrusted values as inputs.
 - The model answers with **structured output** whose schema is the agent's `outputs`.
 - With more than one normal route, an `outcome: enum[<those signals>]` field is added and its value
   becomes the signal; a free-form model string can never become a signal.

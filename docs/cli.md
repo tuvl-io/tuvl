@@ -52,7 +52,7 @@ These talk to a running server: `-u/--url` (`TUVL_URL`, default `http://localhos
 | Command | Options | |
 |---|---|---|
 | `tuvl ship` | `-t/--tag`, `--no-build`, `--push`, `--force`, `--strict`, `--with-laya/--without-laya` | Gate (validate, no `pending` agents — V010 is an error at ship time, current lock), then `.dockerignore` as an **allowlist** (only models, workflows, agents, artifacts, datasources, llms, federation, config, lock and `.tuvl/system.yaml` / `telemetry.yaml` enter the image; specs, task lists, tests, agent rules and skills, compose files and anything else stay out — V027 refuses development files), `deploy/Dockerfile` (pins the locked tuvl version) and a Helm chart (`split: true` for api + worker Deployments; a Laya Deployment + Service, with `LAYA_API_BASE` set for the engine, when a model uses `provider: laya` or with `--with-laya` — `laya.enabled` in values.yaml) and `docker build` |
-| `tuvl keys generate` | `-w/--write`, `-f/--force` | A persistent Ed25519 key for Biscuit tokens (`TUVL_BISCUIT_PRIVATE_KEY`) |
+| `tuvl keys generate` | `-w/--write`, `-f/--force` | A persistent Ed25519 key for signing access tokens (`TUVL_SIGNING_KEY`) |
 | `tuvl db generate-rls` | `-o/--out` | Idempotent row-level-security SQL for tenant-scoped tables |
 | `tuvl db check-rls` | | Exit 1 if a tenant-scoped table lacks its RLS policy |
 

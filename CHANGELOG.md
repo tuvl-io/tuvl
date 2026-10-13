@@ -38,8 +38,8 @@ load with an error pointing at the 2.0 format.
   to the Helm chart (`--with-laya/--without-laya`); `loop` tools are
   agents, child workflows or allow-listed MCP tools, with per-tool approval,
   budgets and a supervisor. **Judges** are calibrated, cached artifacts.
-- **Spec-driven tooling.** `tuvl spec new | analyse | status | diff`, a derived
-  TaskPlan, deterministic `tuvl codegen`, offline `tuvl test` with mocks and
+- **Spec-driven tooling.** `tuvl spec new | check | verify | status | diff`, a
+  task list written by the coding agent with derived statuses, deterministic `tuvl codegen`, offline `tuvl test` with mocks and
   replayed fixtures, `tuvl lock`, the `tuvl mcp` dev server and 13 skills for
   coding agents.
 - **Insight 2.0.** Specs as a row of tiles with the task board below and
@@ -48,6 +48,18 @@ load with an error pointing at the 2.0 format.
   pinned fixtures, judge calibration and a rules editor.
 - **Surfaces.** REST + SSE (gRPC removed), OpenAPI generated from contracts,
   MCP export of workflows, `@tuvl/client` 2.0 with typed client generation.
+- **Access tokens are Ed25519-signed JWTs** (`alg: EdDSA`, pinned), replacing
+  Biscuit. Same claims (`sub`, `groups`, `scopes`, `tenant`, `iat`, `exp`), the
+  same 32-byte signing key — now `TUVL_SIGNING_KEY`; `TUVL_BISCUIT_PRIVATE_KEY`
+  is still read — and the public key at `GET /auth/jwks.json` for gateways.
+  Tokens issued before the upgrade stop working: everyone signs in once.
+  `tuvl.core.auth.biscuit_auth` is now `tuvl.core.auth.access`;
+  `mint_biscuit_token` is `mint_token`.
+- **Python 3.13 and 3.14.** Dropping the native `biscuit-python` dependency
+  (no 3.14 wheels on any platform) lets tuvl run on 3.14; CI tests both.
+- **Prompt-injection fencing.** `llm`/`loop` inputs and loop tool results are
+  fenced as untrusted `<data>`; IAM changes (deactivation, role removal) end
+  existing sessions at once.
 
 - **`tuvl spec check`** (CLI, MCP `spec_check`, `GET /dev/specs/check`): a spec's `# Data`, `# Flows`
   and examples are now a small Markdown grammar, checked with zero tokens against rules S001–S016 —

@@ -15,7 +15,7 @@ project) and `docs/tuvl-agentic-manual.md`.
 | `src/tuvl/api/` | REST: triggers, runs/events/approvals (`runs.py`), auth helpers, MCP export (`mcp_export.py`), the dev API for Insight (`dev.py`) |
 | `src/tuvl/spec/`, `codegen/`, `lock/`, `testing/`, `devmcp/` | Spec analysis and status, codegen, `tuvl.lock`, the offline test runner, `tuvl mcp` |
 | `src/tuvl/cli/` | Typer commands; `--json` shapes in `cli/json_output.py` |
-| `src/tuvl/core/` | Carried-forward platform: config, models/loader, datasources, auth/IAM (Biscuit), artifacts, telemetry, tenancy |
+| `src/tuvl/core/` | Carried-forward platform: config, models/loader, datasources, auth/IAM (Ed25519 JWT), artifacts, telemetry, tenancy |
 | `src/tuvl/skills/` | Package-data skills + `AGENTS.md` scaffolded into projects |
 | `ui/` | Insight (React + Vite); `pnpm build:cli` writes `src/tuvl_insight/static/` |
 | `docs/` | Subsystem docs, mirrored to the docs site by `make sync-internals` there |
@@ -36,7 +36,7 @@ project) and `docs/tuvl-agentic-manual.md`.
   guardrail judges fail closed.
 - **Dev surfaces are dev-only:** `/dev/*`, Insight, `tuvl mcp`, breakpoints and step mode never run
   with `TUVL_ENV=production`.
-- **Security:** Biscuit tokens; workflow triggers default-deny (`public: true` opt-in); scopes per
+- **Security:** Ed25519-signed JWTs; workflow triggers default-deny (`public: true` opt-in); scopes per
   `docs/auth.md`; `secure: true` fields never reach models, logs or exports.
 
 ## 3. Working on the code

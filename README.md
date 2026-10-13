@@ -145,7 +145,7 @@ tuvl lock && tuvl ship --tag registry/app:1.0    # gates, Dockerfile (pinned tuv
 tuvl run --role api        # or: worker — scale HTTP and execution separately
 ```
 
-Biscuit-token auth, default-deny triggers, scoped CRUD, approvals with no self-approval, secure
+Ed25519-signed JWT auth, default-deny triggers, scoped CRUD, approvals with no self-approval, secure
 fields kept away from models, optional Postgres row-level multi-tenancy.
 
 ## Documentation

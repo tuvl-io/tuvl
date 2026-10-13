@@ -64,7 +64,7 @@ spec:
   Tool name = workflow name, description = `metadata.description`, input schema = `trigger.input`.
 - Annotations are derived: `readOnlyHint` when every effect is read, `destructiveHint` when any is
   destructive.
-- Auth is the REST auth: a Biscuit bearer token with **`mcp:connect`**, and each tool keeps its
+- Auth is the REST auth: a bearer token (JWT) with **`mcp:connect`**, and each tool keeps its
   workflow's scope/group gates. `tools/list` shows only what the caller may run.
 - A call runs the workflow and sends a progress notification per started agent. The result's
   `structuredContent` is an envelope MCP clients can validate:
