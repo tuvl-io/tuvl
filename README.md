@@ -18,6 +18,10 @@
 > **tuvl 2.0** is a redesign with no 1.x compatibility layer — see the
 > [CHANGELOG](CHANGELOG.md). Versions follow [SemVer](https://semver.org).
 
+> [!NOTE]
+> **2.0.0 is released on 20 October 2026.** Until then, try the public beta **2.0.0b1** —
+> a plain `uv tool install tuvl` still installs 1.x. See [Install](#install).
+
 A tuvl workflow is a graph of **agents**. Each agent has a typed contract — `inputs`, `outputs`, the
 signals it emits — and an **engine** that implements it:
 
@@ -73,6 +77,19 @@ spec:
 ---
 
 ## Install
+
+**During the 2.0 public beta** (until 20 October 2026):
+
+```bash
+uv tool install --prerelease allow "tuvl[standard]==2.0.0b1"   # CLI + Insight (dev UI)
+uv tool install "tuvl==2.0.0b1"                                  # CLI only
+npm install @tuvl/client@beta                                    # TypeScript client 2.0.0-beta.1
+```
+
+uv needs `--prerelease allow` because `[standard]` pulls in `tuvl-insight 2.0.0b1` indirectly.
+Report beta issues on [GitHub](https://github.com/tuvl-io/tuvl/issues).
+
+**From 2.0.0:**
 
 ```bash
 uv tool install "tuvl[standard]"     # CLI + Insight (dev UI)
