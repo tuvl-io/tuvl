@@ -4,9 +4,9 @@
 </p>
 
 <p align="center">
-  YAML-driven workflow orchestration engine — compose pipelines of functional nodes,<br/>
-  LLM calls, API integrations, and MCP tools, served as a REST API<br/>
-  with Postgres persistence and Redis-backed state.
+  Typed workflows of agents — code, database/HTTP/MCP tools, rules, models,<br/>
+  bounded tool loops and people — on a durable, journaled runtime,<br/>
+  built spec-first and served as REST, SSE and MCP.
 </p>
 
 <p align="center">
@@ -15,353 +15,129 @@
   <a href="https://github.com/tuvl-io/tuvl">GitHub</a>
 </p>
 
-> **Stable release.** tuvl 1.0.0 is production-ready — the API and YAML schemas
-> are stable and versioned under [SemVer](https://semver.org): breaking changes
-> bump the major version.
+> **tuvl 2.0** is a redesign with no 1.x compatibility layer — see the
+> [CHANGELOG](CHANGELOG.md). Versions follow [SemVer](https://semver.org).
 
-`tuvl` lets you define, run, and manage multi-step AI workflows using plain YAML files. No boilerplate. No complex overhead. No lock-in.
+A tuvl workflow is a graph of **agents**. Each agent has a typed contract — `inputs`, `outputs`, the
+signals it emits — and an **engine** that implements it:
 
-Install `tuvl[standard]` during development to get **Tuvl Insight** — a full browser-based developer portal for designing models, configuring datasources, managing LLM providers, building workflows visually, controlling access, and testing execution — all without leaving your local environment.
+| Engine | | Determinism |
+|---|---|---|
+| `code` | a Python function | deterministic |
+| `tool` | a database, HTTP or MCP operation | deterministic |
+| `decide` | ordered rules, then an optional decision model | deterministic → bounded |
+| `llm` | one structured model call | bounded |
+| `loop` | a model using tools within hard budgets | bounded |
+| `human` | a form for a person | external |
+| `pending` | a contract waiting for an implementation | — |
 
-- **Website:** [tuvl.io](https://tuvl.io)
-- **GitHub:** [tuvl-io/tuvl](https://github.com/tuvl-io/tuvl)
+Signals route to the next agent or a named end. `tuvl validate` checks contracts, data flow, types
+and policy statically and prints each workflow's determinism profile and worst-case token cost. Every
+run is **durable and journaled**: it survives restarts, waits for people, can be paused, stepped and
+steered, and can be pinned and replayed as a zero-token test fixture.
 
----
-
-## 🏛️ Architecture & Data Flow
-
-```mermaid
-flowchart TD
-    subgraph Configuration
-        YAML[YAML Definitions] -->|load_all_configs| Reg[In-Memory Registries]
-    end
-
-    subgraph Transport Layer
-        Reg -->|Mount Endpoints| REST[FastAPI REST Server]
-        Reg -->|Mount Services| GRPC[gRPC Server]
-    end
-
-    Client([Clients]) -->|HTTP/JSON| REST
-    Client -->|HTTP/2 Protobuf| GRPC
-
-    subgraph Security: Authentication & Authorization
-        REST --> Auth[Biscuit Token Auth<br>Verify Crypto Signature]
-        GRPC --> Auth
-        Auth -->|Extract Identity| AuthZ[IAM Scope Guard<br>Enforce Model/Route Scopes]
-    end
-
-    AuthZ -->|Workflow Route| Engine{WorkflowEngine.run}
-    AuthZ -->|Auto-Generated CRUD| UoW[Workflow Unit of Work<br>Pydantic-Validated CRUD]
-
-    subgraph Execution & Integrations
-        Engine -->|ModelOp| UoW
-        UoW -->|SQLModel Object Mapper| PG[(PostgreSQL)]
-        Engine -->|Agent| LLM[LiteLLM Any Provider]
-        Engine -->|DataSearch| RAG[(pgvector RAG)]
-        Engine -->|Functional| Nodes[Custom Python Nodes]
-        Engine -->|MCP| MCP[MCP Tools]
-        Engine -->|APICall| ExtAPI[External APIs]
-    end
+```yaml
+kind: Workflow
+version: tuvl/v2
+metadata: { name: refund_flow, description: Handle a refund request }
+spec:
+  models: [Order, Refund]
+  trigger:
+    http: { path: /api/refunds, method: POST }
+    input: { order_id: uuid, reason: str }
+  agents:
+    - id: load_order
+      description: Load the order
+      engine: tool
+      inputs: { order_id: uuid }
+      outputs: { order: Order }
+      tool: { use: db, model: Order, op: read, where: { id: "{{ order_id }}" } }
+      routes: { default: triage, not_found: END.missing, error: END.failed }
+    - id: triage
+      description: Decide how the refund is handled
+      engine: decide
+      inputs: { order: Order, reason: str }
+      outputs: { lane: "enum[auto, review]" }
+      decide:
+        rules:
+          - { when: "order.total > 500", then: review }
+          - { when: "true", then: auto }
+      routes: { auto: issue_refund, review: approval, error: END.failed }
+    # … issue_refund (code), approval (human)
+  outputs:
+    default: { status: 200, body: { refund_id: "{{ refund.id }}" } }
+    missing: { status: 404, body: { error: unknown order } }
+    failed:  { status: 500, rollback: true, body: { error: refund failed } }
 ```
 
 ---
 
-## 📦 Installation
-
-### Core (production server)
+## Install
 
 ```bash
-pip install tuvl
-# or
-uv add tuvl
-```
-
-Installs the full workflow engine and REST API server. Sufficient for all production deployments.
-
-### With Tuvl Insight (developer portal)
-
-```bash
-pip install "tuvl[standard]"
-# or
+uv tool install "tuvl[standard]"     # CLI + Insight (dev UI)
+# or, in a project
 uv add "tuvl[standard]"
 ```
 
-Adds **Tuvl Insight** — a full browser-based developer portal, active only when `TUVL_DEV_MODE=true`. See the [Tuvl Insight](#-tuvl-insight-developer-portal) section for the full feature list.
+`tuvl` alone is the production server; `[standard]` adds **Insight**, served only in dev mode.
 
-### CLI (global tool)
-
-```bash
-uv tool install tuvl
-```
-
-### SDKs
-
-> **Coming soon** — SDKs are being prepared for release alongside the source code.
-
-| SDK | Package | Status |
-|-----|---------|--------|
-| Python | `pip install tuvl-sdk` / `uv add tuvl-sdk` | Coming soon |
-| JavaScript / TypeScript | `npm install @tuvl/client` | Stable — [`@tuvl/client`](https://www.npmjs.com/package/@tuvl/client) |
-
-The SDKs provide typed clients for triggering workflows, subscribing to execution events via SSE, and managing workflow instances from your own applications.
-
----
-
-## 🚀 Quick Start
-
-**1. Scaffold a new project:**
+## Quick start
 
 ```bash
-# Create a new folder named 'my-project' in the current directory
-tuvl init my-project
-
-# Create it inside a specific parent directory
-tuvl init my-project --project-dir /path/to/workspace
-
-# Initialise an already-named path (project name inferred from last component)
-tuvl init --project-dir /path/to/workspace/my-project
+tuvl init demo --sample --preset gemini -y     # a ticket-triage project with a spec, tests and a lock
+cd demo
+tuvl validate --strict                         # contracts, data flow, cost
+tuvl test                                      # offline tests
+tuvl dev --auto-login                          # Insight at http://localhost:8885/insight
 ```
 
-`tuvl init` always creates the target directory (it will not overwrite an existing one). Prompts for Postgres and LLM provider credentials and writes a `pyproject.toml` + `.env`.
-
-**2. Install dependencies:**
+## Spec-driven
 
 ```bash
-uv sync
+tuvl spec new refund-automation      # write the intent (Markdown, with checked Data and Flows)
+tuvl spec check                      # is the spec complete and consistent? (zero tokens)
+tuvl spec verify                     # does the implementation match it, step by step?
+tuvl spec status                     # task statuses, derived — never typed in
+tuvl codegen                         # schemas, code stubs, tests (no model)
 ```
 
-Installs `tuvl` and any project-level packages into a local `.venv`. Add extra packages with `uv add <package>` — useful when your nodes use libraries like `pandas` or `httpx`.
+The coding agent builds; tuvl referees. Every step above is deterministic and spends no tokens.
+Coding agents get the same operations over MCP (`tuvl mcp`) and a skill set in `.agents/skills/`.
 
-**3. Start the development server:**
+The CI gate:
 
 ```bash
-uv run tuvl dev
+tuvl validate --strict && tuvl codegen --check && tuvl lock --check && tuvl test && tuvl spec status --strict
 ```
 
-Starts the engine with hot reload on `http://localhost:8885`. If `tuvl[standard]` is installed, the Insight dashboard is available at `http://localhost:8885/insight`.
+## Surfaces
 
-**4. Run in production:**
+- **REST + SSE:** each workflow's route, `POST /api/workflows/{name}/runs`, runs, journal events,
+  approvals, operator control; OpenAPI generated from the contracts.
+- **MCP export:** `trigger.mcp.enabled` lists a workflow as a tool on `/mcp`.
+- **TypeScript:** [`@tuvl/client`](https://www.npmjs.com/package/@tuvl/client) with
+  `npx tuvl-client generate` for typed inputs and outputs.
+- **Insight:** specs and task board, workflow canvas, runs with breakpoints, step mode and approvals,
+  change-engine checks against pinned fixtures, judge calibration.
+
+## Production
 
 ```bash
-tuvl run --project-dir /path/to/project --workers 4
+tuvl lock && tuvl ship --tag registry/app:1.0    # gates, Dockerfile (pinned tuvl), Helm chart
+tuvl run --role api        # or: worker — scale HTTP and execution separately
 ```
 
-Starts the production uvicorn server without hot reload.
+Biscuit-token auth, default-deny triggers, scoped CRUD, approvals with no self-approval, secure
+fields kept away from models, optional Postgres row-level multi-tenancy.
 
-**5. Ship it:**
+## Documentation
 
-```bash
-tuvl ship
-```
-
-Validates the project, builds a production container image, and generates a Helm chart under `deploy/chart/<name>/` ready for `helm install`.
-
----
-
-## 🗂️ Project Structure
-
-A tuvl project directory contains:
-
-```
-my-project/
-├── pyproject.toml        # Project deps — add extras with: uv add <pkg>
-├── .env                  # LLM API keys and database config (git-ignored)
-├── .env.example          # Safe-to-commit template
-├── config.yaml           # Directory layout (customisable)
-├── models/               # Data model definitions (YAML)
-├── datasources/          # Datasource definitions (YAML)
-├── llms/                 # LLM / AgentModel configs (YAML)
-├── nodes/                # Custom Python node implementations
-├── artifacts/            # Versioned prompts/steering/skills (.md) + guardrail/hook/MCP configs (kind: Artifact)
-└── workflows/            # Workflow definitions (YAML)
-```
-
-Share a project by committing everything except `.env` — collaborators run `uv sync` to reproduce the exact environment.
-
----
-
-## ⚙️ CLI Reference
-
-| Command | Description |
-|---|---|
-| `tuvl init <name>` | Create `<name>/` in the current directory and scaffold inside it |
-| `tuvl init <name> --project-dir <parent>` | Create `<parent>/<name>/` and scaffold inside it |
-| `tuvl init --project-dir <path>` | Scaffold into `<path>/` (project name inferred from last component) |
-| `tuvl init <name> --sample` | Same as above, plus sample recruitment pipeline covering every step kind |
-| `tuvl init <name> --multi-tenant` | Scaffold in **multi-tenant** mode — locks `deployment_mode: multi_tenant` in `.tuvl/system.yaml`, injects `tenant_id` columns into every model, and enables Postgres Row-Level Security tooling |
-| `tuvl dev` | Start the engine in dev mode with hot reload. The dev key is written to `.tuvl/.dev-session` (mode 0600); pass `--show-key` to print it, and `--auto-login` to automatically bypass the Insight security screen |
-| `tuvl run` | Start the production server. Requires a persistent `TUVL_BISCUIT_PRIVATE_KEY` in `.env` (generate one with `tuvl keys generate`) — unlike `tuvl dev`, it will **not** fall back to an ephemeral signing key |
-| `tuvl test` | Run LLM-as-a-Judge tests against workflow definitions. In multi-tenant projects, automatically injects a synthetic tenant so the data-layer guard doesn't reject test runs |
-| `tuvl validate` | Validate every YAML/`.yml` file anywhere in the project tree, dispatched by `kind:` — the same recursive discovery the runtime uses. Checks models, workflows, datasources, LLM presets, embeddings, collections, and federation providers; an unrecognized `kind:` is an error. `--strict` treats warnings as errors |
-| `tuvl ship` | Package the project for production: validates it, generates a production `Dockerfile` + `.dockerignore` and a Helm chart under `deploy/chart/<name>/`, then builds the container image. `--tag` sets the image reference, `--no-build` writes artifacts only, `--push` pushes after building, `--force` regenerates existing files |
-| `tuvl keys generate` | Print a fresh Ed25519 Biscuit signing key (64-hex) plus the `.env` line; add `--write` to write it into the project `.env` (owner-only perms, `--force` to overwrite) |
-| `tuvl db generate-rls` | Emit `ALTER TABLE … ENABLE ROW LEVEL SECURITY` + tenant-scoped policy SQL for every tenant-aware model (multi-tenant only) |
-| `tuvl db check-rls` | Verify that RLS is enabled and policies are present on every tenant-aware table |
-| `tuvl stream-watch` | Tail workflow execution events from the engine's SSE stream. `--timeout` sets a read-timeout in seconds for the stream body (default: none, so a slow agent iteration or HITL wait won't abort the connection) |
-| `tuvl help` | Show all commands |
-
-### Common options
-
-```bash
-tuvl dev --port 9000 --project-dir ./my-project
-tuvl dev --show-key                  # print the dev API key (off by default)
-tuvl dev --auto-login                # automatically bypass the Tuvl Insight security screen
-tuvl run --host 0.0.0.0 --port 8885 --workers 2
-tuvl run --allow-host 10.0.0.0/8     # IP allowlist
-tuvl keys generate                   # print a production Biscuit key + the .env line
-tuvl keys generate --write           # write TUVL_BISCUIT_PRIVATE_KEY into .env (needed by `tuvl run`)
-tuvl validate --project-dir ./my-project
-tuvl ship --tag ghcr.io/acme/my-project:1.0.0 --push   # container + Helm chart
-tuvl stream-watch screen-candidate --timeout 30        # bound the SSE read-timeout (default: none)
-```
-
----
-
-## 🔩 Workflow Step Kinds
-
-Workflows are YAML files defining a sequence of steps. Each step has a `kind`:
-
-| Kind | Description |
-|---|---|
-| `Functional` | Execute a registered Python node function |
-| `Agent` | The one LLM step — `mode: completion` (a single retried litellm call) or `mode: autonomous` (a bounded tool-calling loop: the model calls declared tools — other steps — until it emits an `outcome.enum`, capped by `max_iterations` / `token_budget`). Guided by inline text or versioned `artifact://` prompts/steering/skills; gated by guardrail artifacts; optionally watched by a `spec.supervisor` |
-| `APICall` | Make an outbound HTTP request and map the response into context |
-| `MCP` | Call a tool via the Model Context Protocol — the server connection (stdio or SSE) is declared once as a `type: mcp` artifact and referenced via `mcp.server: artifact://<name>` |
-| `Router` | Evaluate a condition and branch to a named route |
-| `ModelOp` | Perform CRUD operations on a registered data model |
-| `Response` | Shape and return the final HTTP response from context keys |
-| `HumanInTheLoop` | Pause for a human approve/reject decision, then resume where it left off |
-
-Workflows are triggered over HTTP (`trigger.path` + `method`), on a cron schedule (`trigger.schedule: "*/5 * * * *"` — UTC, single-fire across workers via a Postgres advisory lock, skip-on-miss), or both. Schedule-only workflows mount no HTTP route at all.
-
----
-
-## 🧰 Makefile Targets
-
-For development within the monorepo:
-
-```bash
-make setup        # Install core dependencies
-make setup-all    # Install core + Tuvl Insight + dev tools
-make dev-ui       # Run server + Insight dashboard (TUVL_DEV_MODE=true)
-make dev-core     # Run server in dev mode without UI
-make build-ui     # Compile React SPA into tuvl-insight wheel
-make build        # Build both tuvl and tuvl-insight wheels → dist/
-make publish      # build → publish both wheels to PyPI (set UV_PUBLISH_TOKEN)
-make lint         # Run ruff check
-make fmt          # Run ruff check --fix + ruff format
-make check        # CI gate: ruff check + ruff format --check
-make typecheck    # Run mypy (advisory)
-make clean        # Remove build artifacts
-```
-
----
-
-## 🔬 Tuvl Insight (Developer Portal)
-
-Installed via `pip install "tuvl[standard]"`. Active only when `TUVL_DEV_MODE=true`.
-
-Tuvl Insight is not just an observability tool — it is a complete **local developer portal** that covers the full development lifecycle of a tuvl project.
-
-### Design & Configuration
-
-| Section | Description |
-|---|---|
-| **Workflows** | Visual YAML editor with a live graph view of step connections, routes, and node types. Create, edit, and save workflow definitions without touching files directly. |
-| **Models** | Form-driven model designer — define fields, types (PostgreSQL-native and extended), primary keys, relationships, and constraints. Generates YAML automatically. |
-| **Datasources** | Configure Postgres datasource connections (host, port, database, credentials) with a structured form. |
-| **LLM Models** | Manage `AgentModel` definitions — select from preset providers (OpenAI, Anthropic, Ollama, Groq, Gemini, LiteLLM proxy) or configure custom endpoints and API keys. |
-
-### Access Control
-
-| Section | Description |
-|---|---|
-| **IAM** | Create and manage users and roles. Assign and revoke role scopes. The role editor shows a live scope-suggestion palette — click any scope pill to add it to the role without typing. Scope strings are served by `GET /admin/scopes` and cover every CRUD model, workflow, and system scope registered in the engine. Full CRUD for the built-in identity and access management layer. |
-| **Federation** | Configure OAuth2/OIDC federation providers (Google, GitHub, Microsoft, and custom). Manage client credentials and scopes. |
-
-### Infrastructure & Reference
-
-| Section | Description |
-|---|---|
-| **Settings** | Configure infrastructure components — Redis connection, the CRUD API kill switch (API Access section), and other runtime settings. |
-| **API Docs** | Embedded Swagger UI and ReDoc viewer for the live tuvl REST API, including all dynamically-generated workflow and model endpoints. |
-
-### Execution Testing
-
-| Feature | Where | Description |
-|---|---|---|
-| **Tuvl Lens** | Spectrum page (`/insight`) | Execute a single workflow node in isolation with mock state — unit-test individual steps without running a full workflow |
-| **Tuvl Spectrum** | Spectrum page (`/insight`) | Run a complete workflow and capture a deep-copy state snapshot after every step — full execution trace with per-step timing |
-| **Workflow Canvas Test Mode** | Workflow editor toolbar | Run any workflow directly from the canvas with a custom JSON input. Results stream live: nodes light up with status badges, the right-hand **Test Out** panel shows a step-by-step context diff, and a bottom status bar tracks overall progress |
-| **Agents dashboard** | Agents page (`/insight`) | Live view of in-flight autonomous `Agent` runs — iteration/token progress, an expandable per-run trace timeline, and **pause / resume / abort / steer** controls (operator API: `/api/agents/runs`) |
-| **Agent Supervisor** | `spec.supervisor` (workflow YAML) — or the off-spine **Supervisor** node in the Insight canvas | A per-workflow watcher that observes each autonomous `Agent` run and pauses/aborts/steers it via deterministic `rules` and/or an LLM judge (`criteria` — inline policy text or an `artifact://` steering artifact) — breaking a runaway loop mid-flight. Author it visually: drop the Supervisor node, pick a model + policy, and it serializes to `spec.supervisor`. Emits OTel agent metrics (`agent.iterations`/`tool_calls`/`aborts`/…) |
-| **Portal UI** | `GET /insight` | Browser interface to the full developer portal |
-
-#### Workflow Canvas Test Mode — at a glance
-
-1. Open a workflow in the editor and click **▶ Test** in the toolbar.
-2. Fill the input JSON — required fields are auto-scaffolded from the workflow's `input_schema`.
-3. Click **▶ Run**. The canvas switches automatically to test mode:
-   - Each node shows a live status badge (⏳ running, ✓ success, ✗ error).
-   - The **Test Out** panel opens on the right, streaming step results as they arrive.
-   - Click any step to inspect the before/after context diff with Logs and Error sub-tabs.
-   - The **Final State** entry shows every key in the terminal context.
-4. A status bar at the bottom of the canvas shows overall result and a one-click **View Output** shortcut.
-
----
-
-## 🔒 Security & Multi-Tenancy
-
-tuvl ships **single-tenant by default** and **multi-tenant by opt-in**. Both modes share the same auth, observability, and hardening primitives.
-
-### Authentication & Identity
-
-- **Biscuit tokens** — cryptographically attenuable bearer tokens with offline verification. The engine fails closed in production if no signing key is configured.
-- **Dev sentinel** — a fixed sentinel keypair is used only when `TUVL_DEV_MODE=true`; production startup refuses to boot with the sentinel active.
-- **User identity propagation** — `current_user_id` is bound from the verified Biscuit `principal()` fact and attached to every log line and OpenTelemetry span.
-- **Token revocation** — a Redis-backed blacklist supports immediate revocation; the UI revokes any prior session token before storing a new one on login.
-
-### Multi-Tenant Mode (`tuvl init --multi-tenant`)
-
-| Layer | Guarantee |
-|---|---|
-| **Tenant binding** | `tenant()` fact extracted from the Biscuit at verification time → pushed into `current_tenant_id` contextvar (sync + async + gRPC) |
-| **Fail-closed boundary** | `MissingTenantContextError` raised at the data-access layer when the contextvar is unset — never silently leaks across tenants |
-| **Postgres RLS** | `tuvl db generate-rls` emits per-model policies keyed on `app.current_tenant_id`; a SQLAlchemy `after_begin` hook issues `SET LOCAL app.current_tenant_id` for every session |
-| **Defence in depth** | Raw-SQL paths (RAG, search) guard the tenant filter at the query builder; `tuvl db check-rls` is a CI-friendly verifier |
-| **Cross-version safety** | Versioned model tables use a composite key including `tenant_id` to prevent cross-tenant collisions on shared sequences |
-
-Embed the engine in your own host application via the public `tuvl.tenancy` module:
-
-```python
-from tuvl.tenancy import tenant_scope
-
-# Set the tenant before invoking any tuvl handler. Every DB session opened
-# inside the scope binds `SET LOCAL app.current_tenant_id`, so RLS isolates
-# the tenant automatically. Use `async_tenant_scope` from async code.
-with tenant_scope("acme-corp"):
-    ...  # call your mounted tuvl workflow endpoints / handlers here
-```
-
-### Hardening Defaults
-
-- **CRUD endpoint scope enforcement** — every auto-generated model route (`/models/{model}/…`) enforces a Biscuit `scope()` fact. Default names are `{modelname.lower()}:read`, `{modelname.lower()}:write`, `{modelname.lower()}:delete`; override per model with `spec.access` in the `ModelDefinition` YAML, optionally pinning a tier to specific IAM groups via `spec.access.{read,write,delete}_groups` (scope AND group both required; an undeclared tier cascades down from the next-more-privileged one). Tokens carrying `iam:admin` satisfy every scope and group check.
-- **CRUD kill switch** — turn off the entire `/models/*` surface project-wide with `spec.api.expose_model_crud: false` in `.tuvl/system.yaml`, or the `TUVL_EXPOSE_MODEL_CRUD` env var (wins over the YAML); toggle it live from the Insight Settings page in dev mode. Restart required to take effect.
-- **Workflow trigger default-deny** — in production, every trigger route (REST mount, versioned run route, gRPC `RunWorkflow`) requires a valid bearer token even when the workflow declares no `required_scope`/`required_group`; anonymous access needs an explicit `spec.trigger.public: true`. Dev mode exempts unscoped workflows so quickstarts run tokenless.
-- **Secrets file modes** — `.tuvl/.dev-session` and `.env` are created with mode `0600` so other accounts on shared hosts can't read them.
-- **Dev key handling** — never echoed to the terminal by default (`tuvl dev --show-key` opts in); always persisted owner-only.
-- **UI session storage** — the dev portal stores the bearer key in `sessionStorage` (tab-scoped) with a 15-minute idle expiry watchdog.
-- **Markdown rendering** — `rehype-sanitize` is applied to every `ReactMarkdown` mount to neutralise XSS in user-controlled prompt output.
-- **Env-driven UI config** — REST and gRPC base URLs come from `VITE_API_BASE` / `VITE_GRPC_BASE`; the Vite dev proxy honours `VITE_API_TARGET` for remote engine connections.
-- **Verbose error logging** — gated behind `import.meta.env.DEV` so production bundles don't leak structured RPC errors to the console.
-- **Allowlists** — `tuvl run --allow-host` accepts IP and CIDR ranges; localhost is always permitted.
-- **Pooling & limits** — connection pool sizing is configurable; a shared HTTP client is reused across API-call steps.
-
-### Observability
-
-- Structured JSON logs via `structlog` with `tenant_id`, `user_id`, `workflow`, `step_id`, and `run_id` on every record.
-- OpenTelemetry spans cover HTTP requests, workflow executions, individual steps, LLM calls, and database transactions — see [docs/observability.md](docs/observability.md).
-- HITL (human-in-the-loop) state machine emits dedicated events for pause, resume, and timeout transitions.
+[tuvl.dev](https://tuvl.dev) · in this repository: [agentic manual](docs/tuvl-agentic-manual.md),
+[runtime](docs/runtime.md), [engines](docs/engines.md), [decide](docs/decide.md),
+[loop and tools](docs/loop-and-tools.md), [judges](docs/judges.md),
+[spec-driven](docs/spec-driven.md), [Insight](docs/insight.md), [API](docs/api.md),
+[CLI](docs/cli.md), [security](docs/auth.md), [observability](docs/observability.md).
 
 ---
 

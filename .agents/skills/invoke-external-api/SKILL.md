@@ -5,11 +5,11 @@ options:
 
 ### Body
 
-1. Add a step of `kind: api_call` to the workflow.
+1. Add a step of `kind: APICall` to the workflow.
 2. Define the `http:` configuration, interpolating variables with `{{ }}`:
    ```yaml
    - id: fetch_data
-     kind: api_call
+     kind: APICall
      http:
        url: "https://api.example.com/v1/data/{{ user_id }}"
        method: GET

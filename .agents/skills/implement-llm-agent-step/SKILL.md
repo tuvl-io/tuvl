@@ -5,11 +5,11 @@ options:
 
 ### Body
 
-1. Add a step of `kind: agent` to the workflow.
+1. Add a step of `kind: Agent` to the workflow.
 2. Define the `agent:` block:
    ```yaml
    - id: classify_text
-     kind: agent
+     kind: Agent
      agent:
        model: default # References llms/default.yaml or an inline LiteLLM string
        system: "You are a classifier."

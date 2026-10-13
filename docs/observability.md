@@ -11,7 +11,7 @@ tuvl ships enterprise-grade observability out of the box: structured JSON loggin
 3. [Distributed Tracing](#3-distributed-tracing)
 4. [Span Hierarchy](#4-span-hierarchy)
 5. [LiteLLM GenAI Telemetry](#5-litellm-genai-telemetry)
-6. [Agent Metrics](#6-agent-metrics)
+6. [Metrics](#6-metrics)
 7. [Configuration Reference](#7-configuration-reference)
 8. [Collector Setup](#8-collector-setup)
 9. [Dev Mode Behaviour](#9-dev-mode-behaviour)
@@ -22,33 +22,29 @@ tuvl ships enterprise-grade observability out of the box: structured JSON loggin
 ## 1. Architecture Overview
 
 ```
-HTTP request
-    │
+trigger (HTTP / API / MCP / schedule / child run)
+    │  FastAPI HTTP span (W3C traceparent propagated)
     ▼
-┌─────────────────────────────────────────────┐
-│  FastAPI (automatic HTTP spans)             │  ← opentelemetry-instrumentation-fastapi
-│  W3C traceparent header propagation         │  ← TraceContextTextMapPropagator
-└───────────────────┬─────────────────────────┘
-                    │
-                    ▼
-         workflow.execute span
-                    │
-         ┌──────────┴──────────┐
-         ▼                     ▼
-   node.Functional        node.Agent span
-   span                        │
-                               ▼
-                     LiteLLM gen_ai.* spans    ← litellm OTel callback
-                     (model, tokens, latency)
+tuvl.run                      one span per execution of a run (each claim: start, resume)
+├── tuvl.agent <id>           one per agent invocation
+│   └── litellm.completion    gen_ai.* spans for model calls (llm, loop turns, decide models, judges)
+└── tuvl.agent <id> …
 ```
 
-All log events emitted during a request are automatically annotated with `trace_id` and `span_id` so they can be correlated with spans in any OTel-compatible backend (Jaeger, Grafana Tempo, Honeycomb, Datadog, etc.).
+Two complementary records:
+
+- **The journal** (`tuvl_system_run_events`) is the authoritative, durable record of what a run did —
+  every agent start/finish, signal, model turn, tool call, decision, judge verdict, approval and
+  pause. It drives the Insight Runs page, `GET /api/runs/{id}/events` (SSE), `tuvl runs tail`,
+  replay and test fixtures. See [runtime](runtime.md#journal-events).
+- **OpenTelemetry spans and structured logs** feed your tracing and log backends, correlated by
+  `trace_id`/`span_id` and `run_id`.
 
 ---
 
 ## 2. Structured Logging
 
-tuvl uses **structlog** for all log output. In production, every line is a single-line JSON object. In development mode a human-readable coloured renderer is used instead.
+tuvl logs with structlog: JSON lines in production, a readable console format in development.
 
 ### Log format — production
 
@@ -72,157 +68,86 @@ tuvl uses **structlog** for all log output. In production, every line is a singl
 
 ### Key log events
 
-| Event | Level | Extra fields |
+| Event | Level | Fields |
 |---|---|---|
-| `Workflow execution started` | info | `workflow` |
-| `Executing workflow node` | info | `workflow`, `node_id`, `node_kind` |
-| `Workflow execution complete` | info | `workflow`, `signal` |
-| `Agent LLM call` | info | `step_id`, `model`, `attempt`, `max_attempts` |
-| `Agent LLM response` | info | `step_id`, `model`, `input_tokens`, `output_tokens` |
-| `Agent LLM retry` | info | `step_id`, `attempt`, `max_attempts`, `wait_s`, `last_signal` |
-| `Agent LLM timeout` | warning | `step_id`, `timeout_s` |
-| `Agent LLM error` | warning | `step_id`, `exc_type`, `error` |
-| `Agent run complete` | info | `step_id`, `signal` |
-| `agent.turn` | info | `step_id`, `iteration`, `max_iterations`, `tool_calls`, `tokens_used` |
-| `agent.tool_call` | info | `step_id`, `iteration`, `tool`, `signal` |
-| `agent.llm_error` | warning | `step_id`, `iteration`, `exc_type`, `error` |
-| `agent.budget_exceeded` | warning | `step_id`, `tokens_used`, `token_budget` |
-| `agent.max_iterations` | warning | `step_id`, `max_iterations` |
-| `agent.guardrail_violation` | warning | `step_id`, `artifact`, `check`, `detail` |
-| `workflow.hook` | info | `hook`, `event`, `workflow`, `step_id` (an `action: log` hook firing) |
-| `OTel TracerProvider initialised` | info | `service`, `endpoint` |
-| `FastAPI OpenTelemetry instrumentation active` | info | — |
-| `LiteLLM OpenTelemetry callback registered` | info | — |
+| `runtime.started` | info | `role`, `agents`, `triggers`, `mcp_tools`, `workflows` |
+| `runtime.worker.started` | info | worker id, concurrency |
+| `runtime.trigger.mounted` | info | `workflow`, `method`, `path` |
+| `runtime.mcp.mounted` | info | `tools` |
+| `runtime.lease.lost` | warning | the run moved to another worker |
+| `runtime.pause_ignored` | warning | pause requested on a `per_run` transaction |
+| `decide.shadow_model_failed` | warning | `agent`, `error` (shadow failures never fail the run) |
+| `decision.provider.load_failed` | warning | a decision provider entry point failed to load |
+| `judge.cache_write_failed` | warning | read-only checkout; verdicts still computed |
+| `mcp.schema_drift` | warning | a live MCP tool schema differs from `tuvl.lock` (once per tool) |
 
-During an autonomous-mode `Agent` step, `run_streaming` also emits live **progress frames** over SSE/gRPC: `StepEvent`s with `signal="running"` and an `agent_progress` snapshot payload (`{type: iteration|tool_call|outcome, ...}`) — loop metadata only (no context values), so they add no PII surface beyond the masked final frame. The terminating frame carries the real outcome signal and the masked context snapshot as usual.
+Per-run detail (what each agent did) is in the journal, not the logs.
 
-### Using the logger in custom nodes
+### Logging from code agents
 
 ```python
-import structlog
+from tuvl import agent, Ctx
 
-logger = structlog.get_logger(__name__)
 
-async def my_node(context):
-    logger.info("Processing candidate", candidate_id=context["id"], step="enrich")
-    # ...
-    return context, "default"
+@agent("enrich")
+async def enrich(inp, ctx: Ctx):
+    ctx.log.info("enrich.lookup", candidate_id=str(inp.candidate.id))  # bound to run_id and agent
+    ...
 ```
 
-Always pass extra data as keyword arguments — never use f-strings. This ensures the values appear as structured fields in JSON output and are automatically correlated with the active trace span.
+Pass data as keyword arguments, never f-strings, so values are structured fields.
 
 ---
 
 ## 3. Distributed Tracing
 
-tuvl uses the **OpenTelemetry SDK** with a gRPC OTLP exporter. The global `TracerProvider` is installed at startup via `init_telemetry()` (called from the FastAPI lifespan).
-
-### Propagation
-
-Inbound HTTP requests are checked for a W3C `traceparent` header. When present, the new spans are created as children of the upstream trace, enabling end-to-end distributed traces across services.
-
-```
-# Example traceparent header
-traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
-```
+tuvl uses the OpenTelemetry SDK with an OTLP exporter; `init_telemetry()` installs the
+`TracerProvider` at startup. Inbound W3C `traceparent` headers make run spans children of the caller's
+trace.
 
 ### Span attributes set by tuvl
 
 | Attribute | Span | Description |
 |---|---|---|
-| `tuvl.workflow.name` | `workflow.execute` | Workflow YAML name |
-| `tuvl.node.id` | `node.*` | Step ID from YAML |
-| `tuvl.node.kind` | `node.*` | Step kind: `Agent`, `Functional`, `APICall`, etc. |
-| `tuvl.step.signal` | `node.*` | Route signal returned by the step |
-| `tuvl.step.duration_ms` | `node.*` | Wall-clock execution time in milliseconds |
-| `tuvl.context.snapshot` | `node.*` | JSON snapshot of public context fields (PII masked) |
-| `tuvl.agent.iteration` | `agent.iteration` | Loop iteration index (1-based) for an autonomous-mode `Agent` step |
-| `tuvl.agent.tokens_used` | `agent.iteration` | Cumulative tokens consumed by the agent loop so far |
-| `tuvl.agent.tool_calls` | `agent.iteration` | Number of tool calls the model requested this turn |
-| `tuvl.agent.tool` | `agent.tool_call` | Name of the tool (component ref) invoked |
-| `tuvl.agent.tool_signal` | `agent.tool_call` | Signal returned by the dispatched tool component |
+| `tuvl.run_id` | `tuvl.run` | The run |
+| `tuvl.workflow` | `tuvl.run`, `tuvl.agent` | Workflow name |
+| `tuvl.agent` | `tuvl.agent` | Agent id |
+| `tuvl.engine` | `tuvl.agent` | `code`, `tool`, `decide`, `llm`, `loop`, `human`, `pending` |
+| `tuvl.determinism` | `tuvl.agent` | `deterministic`, `bounded`, `external`, `pending` |
+| `tuvl.signal` | `tuvl.agent` | The emitted signal |
+| `tuvl.tokens` | `tuvl.agent` | Tokens used by the invocation |
+| `tuvl.attempt` | `tuvl.agent` | Retry attempt |
+| `tuvl.error_type` | `tuvl.agent` | On `error` (span status ERROR) |
+
+Context values are never span attributes, so secure fields can't leak into traces.
 
 ---
 
 ## 4. Span Hierarchy
 
-Every workflow execution produces a consistent span tree:
-
-```
-workflow.execute                               (1 span per workflow run)
-├── node.Functional                            (1 per functional step)
-├── node.Agent                                 (1 per Agent step — either mode)
-│   │                                          mode: completion
-│   ├── litellm.completion  [gen_ai.*]         (1+ per LLM call / retry)
-│   │                                          mode: autonomous
-│   ├── agent.iteration                        (1 per loop turn)
-│   │   ├── litellm.completion  [gen_ai.*]     (the turn's LLM call)
-│   │   └── agent.tool_call                    (1 per tool the model invoked this turn)
-│   └── ...                                    (further iterations)
-├── node.APICall
-├── node.MCP
-└── ...
-```
-
-The `node.{kind}` span is opened **before** the step executes and closed **after**, so that all LiteLLM calls made during an `Agent` step are automatically nested as children. This gives accurate per-step attribution of token usage and latency. The step span name is `node.<Kind>`, so autonomous agents appear as `node.Agent` — the mode is visible from the child spans.
-
-For an autonomous-mode `Agent` step, each loop turn opens an `agent.iteration` span (carrying the iteration index and cumulative `tuvl.agent.tokens_used`), under which the turn's `litellm.completion` and any `agent.tool_call` spans nest — giving per-iteration cost and per-tool attribution across the whole agent loop. (These spans were named `autonomous_agent.*` before the agent unification.)
-
-Every execution surface — engine run and streaming, Spectrum, and the test runner — funnels through one per-kind dispatch (`WorkflowEngine._run_kind`), so the span tree (and cross-cutting concerns like hooks) is identical regardless of how a workflow is executed; there are no per-surface dispatch forks to drift.
+A run that pauses (a human form, a tool approval, a breakpoint) and resumes on another worker produces
+one `tuvl.run` span per execution segment, all carrying the same `tuvl.run_id`; group by it to see the
+whole run. Engine work — model calls, HTTP calls, DB queries — nests under the agent's span.
 
 ---
 
 ## 5. LiteLLM GenAI Telemetry
 
-When telemetry is enabled, tuvl registers LiteLLM's built-in OpenTelemetry callback:
-
-```python
-litellm.callbacks = ["opentelemetry"]
-```
-
-LiteLLM (≥ 1.50) automatically picks up the globally registered `TracerProvider` and emits spans with [OpenTelemetry GenAI semantic conventions](https://opentelemetry.io/docs/specs/semconv/gen-ai/):
-
-| Attribute | Description |
-|---|---|
-| `gen_ai.system` | Provider: `openai`, `anthropic`, etc. |
-| `gen_ai.request.model` | Model name passed to the API |
-| `gen_ai.usage.input_tokens` | Prompt token count |
-| `gen_ai.usage.output_tokens` | Completion token count |
-| `gen_ai.response.finish_reason` | Stop reason |
-
-These spans appear as children of the `node.Agent` span (nested under `agent.iteration` in autonomous mode) in your tracing backend, giving you per-call token usage, latency, and cost attribution without any additional instrumentation code.
+When telemetry is enabled, tuvl registers LiteLLM's OpenTelemetry callback
+(`litellm.callbacks = ["opentelemetry"]`). Model calls appear as spans with the
+[GenAI semantic conventions](https://opentelemetry.io/docs/specs/semconv/gen-ai/) — `gen_ai.system`,
+`gen_ai.request.model`, `gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens`,
+`gen_ai.response.finish_reason` — nested under the `tuvl.agent` span that made them.
 
 ---
 
-## 6. Agent Metrics
+## 6. Metrics
 
-Alongside spans, the agent runtime emits **OTel counters** (meter `tuvl.agent`) so
-agent health is dashboardable and alertable. They are created on a proxy meter at
-import time and stay inert no-ops until `init_telemetry()` installs a
-`MeterProvider` (production `run` mode); metrics export over the same gRPC OTLP
-endpoint as traces via a `PeriodicExportingMetricReader`.
-
-| Counter | Incremented when | Attributes |
-|---|---|---|
-| `tuvl.agent.iterations` | An autonomous agent loop completes a turn | `tuvl.agent.step_id` |
-| `tuvl.agent.tool_calls` | The model invokes a declared tool | `tuvl.agent.step_id`, `tuvl.agent.tool` |
-| `tuvl.agent.aborts` | A run is aborted by a supervisor or operator | `tuvl.agent.step_id` |
-| `tuvl.agent.budget_exceeded` | A run hits its `token_budget` | `tuvl.agent.step_id` |
-| `tuvl.agent.supervisor_actions` | A supervisor intervenes (abort / pause / steer) | `action`, `source` (rule kind or `judge`) |
-| `tuvl.agent.judge_failures` | A supervisor LLM-judge call errors or times out | `workflow` |
-
-The `tuvl.agent.*` counter names are unchanged by the agent unification (only
-the span names moved from `autonomous_agent.*` to `agent.*`).
-
-One additional counter lives on the `tuvl.hooks` meter:
-
-| Counter | Incremented when | Attributes |
-|---|---|---|
-| `tuvl.hook.events` | A `type: hook` artifact with `action: metric` fires | `tuvl.hook.name`, `tuvl.hook.event`, `tuvl.workflow.name` |
-
-A sustained rise in `tuvl.agent.aborts` or `tuvl.agent.judge_failures` is the
-signal to inspect the run traces (`agent.iteration` spans) or the
-Insight Agents dashboard.
+Run-level numbers (runs by status and end, tokens per agent, decision sources, approvals) come from
+the journal and the runs table: `GET /api/runs`, `tuvl runs list --json`, or SQL over
+`tuvl_system_runs` / `tuvl_system_run_events`. The one OTel counter is `tuvl.hook.events`
+(meter `tuvl.hooks`), incremented when a `type: hook` artifact with `action: metric` fires
+(`tuvl.hook.name`, `tuvl.hook.event`, `tuvl.workflow.name`).
 
 ---
 
@@ -346,29 +271,25 @@ When `TUVL_DEV_MODE=true` (set automatically by `tuvl dev`):
 - Logs use the **coloured ConsoleRenderer** instead of JSON
 - `trace_id` / `span_id` are **not** injected into log events (no valid span context)
 
-You can enable production-style JSON logging in dev by setting `TUVL_ENV=production` without changing `TUVL_DEV_MODE`.
+Dev mode never runs with `TUVL_ENV=production` — that combination aborts at boot.
 
 ---
 
 ## 10. Data Masking & PII
 
-Context snapshots attached to spans (`tuvl.context.snapshot`) are scrubbed before export:
-
-1. **Private keys stripped** — any context key starting with `_` (e.g. `_session`, `_db_handle`) is removed entirely
-2. **Secure fields masked** — fields declared `secure: true` in any `ModelDefinition` are replaced with `"*****"`
+Fields declared `secure: true` in a `ModelDefinition`:
 
 ```yaml
 # models/employee.yaml
 spec:
   fields:
-    - name: national_id
-      type: string
-      secure: true        # → always "****" in spans and test snapshots
-    - name: salary
-      type: numeric
-      secure: true
+    - { name: national_id, type: string, secure: true }
 ```
 
-The same masking is applied to the Tuvl Spectrum execution trace, so PII never appears in developer tooling either.
+- are **redacted** (`"*****"`) in journal events, SSE streams, run exports, pinned fixtures and the
+  Insight views; checkpoints keep real values because they are the resume state;
+- are never span attributes (tuvl puts no context values on spans);
+- are **not sent to models** (`llm`, `loop`, judges, decision models) unless
+  `policy.allow_secure_to_llm: true` — a secure field in a model agent's inputs is a V020 error.
 
-The masking registry (`SECURE_FIELDS`) is populated at startup from all loaded `ModelDefinition` files and is additive — fields from all models contribute to a single global set.
+The secure-field registry is built at startup from every loaded `ModelDefinition`.

@@ -1,63 +1,60 @@
-# TUVL Framework — AI Agent Onboarding Guide
+# tuvl — rules for agents working on this repository
 
-Welcome to the **tuvl** repository. You are an AI agent operating within the codebase of `tuvl`, a declarative, YAML-driven workflow orchestration engine built on FastAPI, PostgreSQL, and Redis.
+This repository is the **tuvl 2.0 engine**: typed YAML workflows of agents, run by a durable,
+journaled runtime, with spec-driven tooling and the Insight UI. It is not a tuvl *project* — for the
+rules that apply to projects built with tuvl, see `src/tuvl/skills/AGENTS.md` (scaffolded into every
+project) and `docs/tuvl-agentic-manual.md`.
 
-This document serves as your primary reference for understanding the architecture, design philosophy, and strict coding conventions of this project. Read these rules carefully before suggesting or making changes.
+## 1. Where things live
 
-## 1. Project Overview & Philosophy
-- **Declarative First:** `tuvl` relies heavily on YAML configuration to generate FastAPI routes, PostgreSQL models, and AI workflows dynamically at startup. Always prefer YAML over writing Python boilerplate.
-- **No Black Boxes:** The engine executes exactly what is defined in the YAML pipelines.
-- **Data-Driven:** Business logic is modeled as a state-machine of operations passing context variables.
-- **Strict Scope Guarding:** All data operations enforce role-based access control (RBAC) scopes extracted from cryptographically verified Biscuit tokens.
+| Path | What |
+|---|---|
+| `src/tuvl/contract/` | The 2.0 document model: `schema.py` (Pydantic for Workflow, Test, TaskPlan, artifacts), `types.py` (type language), `tel.py` (expression language), `registry.py`, `surface.py` (input/end schemas for OpenAPI and MCP) |
+| `src/tuvl/validate/` | `tuvl validate`: per-engine signals, data flow, types, policy, profiles; rule codes in `codes.py` (V001–V026) |
+| `src/tuvl/runtime/` | The durable runner (`runner.py`), queue and leases (`queue.py`), journal (`journal.py`), host (`host.py`), engines (`code.py`, `tool.py`, `llm.py`, `decide.py`, `decision.py`, `loop.py`, `human.py`), judges, dev controls (`devtools.py`) |
+| `src/tuvl/api/` | REST: triggers, runs/events/approvals (`runs.py`), auth helpers, MCP export (`mcp_export.py`), the dev API for Insight (`dev.py`) |
+| `src/tuvl/spec/`, `codegen/`, `lock/`, `testing/`, `devmcp/` | Spec analysis and status, codegen, `tuvl.lock`, the offline test runner, `tuvl mcp` |
+| `src/tuvl/cli/` | Typer commands; `--json` shapes in `cli/json_output.py` |
+| `src/tuvl/core/` | Carried-forward platform: config, models/loader, datasources, auth/IAM (Biscuit), artifacts, telemetry, tenancy |
+| `src/tuvl/skills/` | Package-data skills + `AGENTS.md` scaffolded into projects |
+| `ui/` | Insight (React + Vite); `pnpm build:cli` writes `src/tuvl_insight/static/` |
+| `docs/` | Subsystem docs, mirrored to the docs site by `make sync-internals` there |
+| `proposals/` (workspace) | The 2.0 specification and implementation plan |
 
-## 2. Directory Structure & Conventions
-The project strictly separates components by their YAML `kind`. When generating files for a `tuvl` project, place them in the correct directories:
-- `models/` ➔ `ModelDefinition`, `EmbeddingRegistry`, `CollectionRegistry`
-- `workflows/` ➔ `Workflow`
-- `datasources/` ➔ `DataSource`
-- `llms/` ➔ `AgentModel`
-- `federation/` ➔ `FederationProvider`
-- `nodes/` ➔ Custom Python implementation (`@node()` decorators)
-- `artifacts/` ➔ Named, versioned assets: prose `.md` with YAML front-matter (types `prompt` | `steering` | `skill`) and structured `kind: Artifact` YAML (types `guardrail` | `hook` | `mcp`). Referenced anywhere via `artifact://name[@version]`; pin `@version` for production.
+## 2. Invariants
 
-**Never invent fields, step kinds, or document kinds.** Rely only on the specified vocabulary. Every YAML document uses the spec-wrapped envelope (`kind:` + `metadata:` + `spec:`) — the flat root-level form is rejected.
+- **Closed sets.** Engines: `pending code tool decide llm loop human`. Document kinds and artifact
+  types are listed in the manual. Never add one without changing the spec, the schema, validate,
+  codegen, Insight and the docs together.
+- **The YAML is the single source of truth.** Insight and coding agents edit the same files; Insight
+  edits keep comments (`yaml` Documents).
+- **Contracts are enforced twice:** statically by `tuvl validate` and at runtime by the runner
+  (outputs validated against the contract → `contract_violation`).
+- **Durability:** run state lives in Postgres (`tuvl_system_*` tables); nothing is kept only in
+  worker memory. Per-agent writes commit with the checkpoint.
+- **No silent fallbacks** (e.g. an unavailable decision model is `error`, never rules or a default);
+  guardrail judges fail closed.
+- **Dev surfaces are dev-only:** `/dev/*`, Insight, `tuvl mcp`, breakpoints and step mode never run
+  with `TUVL_ENV=production`.
+- **Security:** Biscuit tokens; workflow triggers default-deny (`public: true` opt-in); scopes per
+  `docs/auth.md`; `secure: true` fields never reach models, logs or exports.
 
-## 3. Workflow Implementation Rules
-Workflows are sequences of steps defined in YAML. Triggers receive HTTP request data into a shared `context: dict[str, Any]`.
+## 3. Working on the code
 
-- **Database Allowlist:** Any model accessed inside a workflow (whether natively via `ModelOp` or in custom Python nodes) **must** be explicitly listed in the workflow's `spec.context.models`. Missing this triggers a `PermissionError`.
-- **Reserved Keys:** You are forbidden from mutating core engine context keys including: `_session`, `_db`, `_step`, `_response`, `_last_error`, `_last_error_type`, `_api_status_code`, `_context_model_versions`, `_schema_version`, `_instance_id`, `_user_id`.
-- **Routing Strictness:** Every step must return a signal (e.g., `default`, `true`, `false`, `error`). You must define an explicit mapping for every non-default signal in the step's `routes:` map. Unmapped non-default signals will raise a `RuntimeError`.
-- **Step Kinds (closed set, 8):** `Functional`, `Agent`, `Router`, `APICall`, `MCP`, `ModelOp`, `Response`, `HumanInTheLoop`. Never invent others; `AutonomousAgent` no longer exists.
-  - `Agent` is the one LLM step and **REQUIRES `mode: completion | autonomous` at the step level** (no default — the validator errors and the runtime raises). `mode: completion` is a single retried LLM call (fields `system` / `prompt`); `mode: autonomous` is a bounded tool-calling loop (fields `steering` / `tools` (REQUIRED) / `max_iterations` / `token_budget`) where the model picks tools (each `agent.tools[].ref` names another step in the workflow), observes results, and re-decides until it emits one of a declared `outcome.enum`. Each tool's description (REQUIRED) is sourced from the referenced step's top-level `description:`, overridable by `agent.tools[].description`.
-    - **Outcome contract (both modes):** `agent.outcome: {write, format: json|text, enum, map}`. `write` is the context key receiving the result (default `<step_id>_result`). With `enum` declared the model must return an `"outcome"` field holding exactly one declared value — that is the route signal; map every enum value plus the applicable reserved exits (`error`, `parse_error` / `timeout` in completion, `max_iterations` / `budget_exceeded` / `aborted` in autonomous, `guardrail_violation` when guardrails attach) in `routes:`. The old `output.{format,map,signal_from}` and `outcome.output_key` are gone.
-    - **Steering & skills:** `agent.steering` is the persistent instruction, ALWAYS injected; `agent.skills` are injected when relevant. Both (and `system` / `prompt`) take inline text or `artifact://` references — `steering_files` and the `agents/<workflow>__<stepId>/` directory scheme are gone.
-    - **Guardrails & hooks:** `agent.guardrails: {input|output|tools: [artifact://…]}` attach `type: guardrail` artifacts (closed checks: `json_schema`, `regex_deny`, `max_chars`, `pii_mask`, `llm_judge`); a failing check routes the reserved `guardrail_violation` signal. Observe-only `type: hook` artifacts attach per step (`hooks:`) or workflow-wide (`spec.hooks:`) and never affect flow.
-    - **Supervisor:** an optional per-workflow `spec.supervisor` block (a sibling of `steps:`, NOT a step) watches autonomous `Agent` runs live and can pause / abort / steer them via deterministic `rules` and/or an LLM judge. `criteria` is inline text or an `artifact://` ref to a `steering` artifact (`criteria_file` was removed; `steer_message` sets the rules-path steer text). `abort` exits through the reserved `"aborted"` signal. Operators observe/control at `/api/agents/runs` (scopes `agent:observe` / `agent:control`) or the Insight Agents dashboard.
-  - `MCP` steps declare `mcp.server: artifact://<name>` pointing at a `type: mcp` artifact that owns the connection config (transport / url / headers / command / args / env) — inline transport blocks on the step are rejected.
-  - `Router` supports a multi-way `match:` switch (`match: { field: user.country }`) for data-driven branching — keep deterministic routing here, never inside an agent.
+- Python 3.13, `uv`. Run tests with Postgres: `TUVL_TEST_PG_URL=postgresql+asyncpg://… uv run pytest`.
+  Tests that need Postgres skip without it.
+- Before pushing: `make check` (ruff format + lint on `src/`) and `make typecheck-gate` (mypy on the
+  gated packages, which must stay clean). Format and fix only files you touched.
+- UI: `cd ui && pnpm exec tsc -b && pnpm test`; browser tests with `scripts/insight-smoke.sh`.
+- Keep comments minimal: only the non-obvious *why*. No narration or patch history.
+- Update `CHANGELOG.md` (the `[2.0.0]` section) and the relevant `docs/` page with any user-visible
+  change.
 
-## 4. Custom Python Nodes (`Functional` steps)
-When YAML is insufficient, you can create a custom `Functional` Python node.
-- **One Node Per File:** You **MUST** put only one `@node()` decorator per Python file.
-- **Filename Matching:** The Python filename must strictly match the node runner name. For example, a node decorated with `@node("score_resume")` **must** be placed in `nodes/score_resume.py`.
+## 4. Useful commands
 
-## 5. PostgreSQL, Models, and Tenancy
-- Every `ModelDefinition` generates a Postgres table and auto-generates a full suite of CRUD REST endpoints.
-- **Multi-Tenancy:** The engine ships single-tenant by default, but can operate in multi-tenant mode via Postgres RLS (Row-Level Security). Do not emit `tenant_id` fields manually unless explicitly instructed.
-- **Security:** Fields containing PII or sensitive data must be marked with `secure: true` in their YAML definition.
-
-## 6. Security & Identity
-- **Biscuit Tokens:** The engine relies on offline-verifiable Biscuit tokens for authentication.
-- **Dev Sentinel:** During local development (`tuvl dev`), a dev sentinel keypair is used. Production refuses to boot if this sentinel is active.
-- **CRUD Scopes:** Auto-generated CRUD routes enforce Biscuit scopes (e.g., `{modelname.lower()}:read`).
-
-## 7. Developer Tooling
-If asked to test or run the project locally, use the CLI commands:
-- `tuvl dev` (or `uv run tuvl dev`): Starts the engine with hot-reloading and mounts the Tuvl Insight Developer Portal at `http://localhost:8000/insight`.
-- `tuvl dev --auto-login`: Bypasses the local security screen for rapid API testing.
-- `tuvl run`: Starts the highly-optimized production Uvicorn server without hot-reload.
-- `tuvl validate`: Validates every YAML config, node, and cross-reference without starting the server.
-- `tuvl ship`: Packages the project for production — validates it, generates a production `Dockerfile` and a Helm chart under `deploy/chart/<name>/`, then builds the container image (`--no-build` to skip the build, `--push` to publish).
-
-> **Agentic Note:** For complete syntax schemas and deep reference, consult `docs/tuvl-agentic-manual.md`. Always write minimal, functional code that conforms to these architectural invariants.
+```bash
+uv run tuvl init demo --sample -y        # a project that passes the CI gate
+uv run tuvl dev -d demo --auto-login     # Insight at http://localhost:8885/insight
+uv run tuvl validate -d demo --strict --json
+uv run pytest tests/runtime -q
+```

@@ -5,11 +5,11 @@ options:
 
 ### Body
 
-1. Add a step of `kind: mcp` to the workflow.
+1. Add a step of `kind: MCP` to the workflow.
 2. For an **SSE transport**, configure the `url` and `tool`:
    ```yaml
    - id: search_mcp
-     kind: mcp
+     kind: MCP
      mcp:
        transport: sse
        url: http://localhost:3001/sse

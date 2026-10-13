@@ -1,12 +1,12 @@
 [project]
 name = "tuvl"
-version = "1.0.1"
-description = "YAML-driven workflow orchestration engine — compose pipelines of functional nodes, LLM calls, API integrations, and MCP tools, served as a REST API with Postgres persistence and Redis-backed state"
+version = "2.0.0"
+description = "Typed workflows of agents — code, database/HTTP/MCP tools, rules, models, bounded tool loops and people — on a durable, journaled runtime, built spec-first and served as REST, SSE and MCP"
 readme = "README.md"
 requires-python = ">=3.13,<3.14"
 license = { text = "MIT" }
 authors = [{ name = "tuvl.io", email = "developer@tuvl.io" }]
-keywords = ["workflow", "orchestration", "ai", "llm", "agents", "fastapi", "yaml", "backend"]
+keywords = ["workflow", "orchestration", "ai", "llm", "agents", "mcp", "spec-driven", "fastapi", "yaml", "backend"]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",
@@ -56,9 +56,9 @@ dependencies = [
     "opentelemetry-sdk>=1.42.0",
     "opentelemetry-exporter-otlp-proto-grpc>=1.42.0",
     "opentelemetry-instrumentation-fastapi>=0.63b0",
-    # --- gRPC-Web ---
-    "grpcio>=1.81.0", # gRPC core runtime
-    "sonora>=0.2.3", # ASGI gRPC-Web wrapper (no Envoy required)
+    "cronsim>=2.7",
+    "libcst>=1.4",
+    "aiosqlite>=0.20.0", # tuvl test runs workflows against an in-memory SQLite database
 ]
 
 [project.optional-dependencies]
@@ -67,7 +67,7 @@ dependencies = [
 # and testing execution with Tuvl Lens and Tuvl Spectrum.
 # Install with: pip install tuvl[standard]
 standard = [
-    "tuvl-insight>=1.0.0",
+    "tuvl-insight>=2.0.0",
 ]
 
 # Dev tooling is a PEP 735 dependency group (uv-native), not a published extra.
@@ -75,10 +75,8 @@ standard = [
 dev = [
     "ruff>=0.15.0",
     "mypy>=2.0.0",
-    "grpcio-tools>=1.81.0",      # protoc code generation (run: make proto)
     "pytest>=9.0.0",
     "pytest-asyncio>=1.0.0",
-    "aiosqlite>=0.20.0",
 ]
 
 [project.scripts]
@@ -156,18 +154,10 @@ line-ending = "auto"
 # Class-named variables are intentional (dynamic model/schema class creation)
 "src/tuvl/core/api/crud_router.py" = ["N806"]
 "src/tuvl/core/api/manager.py" = ["N806"]
-# Auto-generated protobuf files — do not lint
-"src/tuvl/core/grpc/*_pb2.py" = ["UP009", "E501", "F401", "I001", "ANN"]
-"src/tuvl/core/grpc/*_pb2_grpc.py" = ["N802", "UP004", "I001", "F401", "E501", "ANN"]
-# gRPC servicer method names must match proto-defined PascalCase names.
-# ANN exempt until the dedicated servicer annotation pass (separate branch).
-"src/tuvl/core/grpc/dev_servicer.py" = ["N802", "ANN"]
-"src/tuvl/core/grpc/iam_servicer.py" = ["N802", "ANN"]
-"src/tuvl/core/grpc/servicer.py" = ["N802", "ANN"]
 # Dev-mode-only surface — annotate when its endpoints get pydantic models.
 "src/tuvl/core/dev/router.py" = ["ANN"]
 # The annotation ratchet is for src/ — test signatures stay lightweight.
-"tests/**" = ["ANN"]
+"tests/**" = ["ANN", "N806"]  # N806: generated model classes bound to capitalised locals
 
 # ── Mypy ──────────────────────────────────────────────────────────────────────
 [tool.mypy]

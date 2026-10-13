@@ -16,4 +16,4 @@ options:
        amount = float(ctx.get("amount", 0))
        return {**ctx, "tax": amount * 0.2}
    ```
-4. Invoke it in a workflow using `kind: functional` and `runner: calculate_tax`.
+4. Invoke it in a workflow using `kind: Functional` and `runner: calculate_tax`.

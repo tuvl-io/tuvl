@@ -17,16 +17,12 @@ Thank you for your interest in contributing to tuvl!
 git clone https://github.com/tuvl-io/tuvl.git
 cd tuvl
 
-# Install Python dependencies and apply vendored patches
+# Install Python dependencies
 make setup
 
 # Install UI node_modules (run once, only if touching ui/)
 make ui-install
 ```
-
-`make setup` runs `uv sync` followed by `make apply-patches`, which re-applies the
-vendored fixes in `patches/` to sonora after every sync. If you add a new dependency
-with `uv add`, re-run `make apply-patches` (or just `make setup`).
 
 ### Run Development Servers
 
@@ -41,27 +37,8 @@ make dev-ui DIR=/path/to/your/project
 make dev DIR=/path/to/your/project
 ```
 
-The server starts on `http://localhost:8000`; the Insight console is at
-`http://localhost:8000/insight` in dev mode.
-
-### Proto codegen
-
-If you modify any `.proto` file, regenerate the Python stubs:
-
-```bash
-make proto
-```
-
-### Vendored patches
-
-`patches/sonora-asgi-fixes.patch` contains two bug fixes for sonora 0.2.3:
-
-1. **Trailer bytes format** — gRPC-Web trailer keys/values must be plain strings, not
-   bytes tuples, for `pack_trailers()` to produce a valid ASCII frame.
-2. **Content-Type echo** — restricts sonora's response `Content-Type` to known gRPC-Web
-   MIME types so clients never receive `Content-Type: */*`.
-
-Applied automatically by `make setup`. To apply manually: `make apply-patches`.
+The server starts on `http://localhost:8885`; the Insight console is at
+`http://localhost:8885/insight` in dev mode.
 
 ## Code Style
 

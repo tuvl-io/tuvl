@@ -1,4 +1,4 @@
-.PHONY: help setup setup-all setup-min apply-patches dev-core dev-ui install install-dev lint fmt check typecheck test test-verbose build-ui build smoke publish publish-dry clean ui-install proto
+.PHONY: help setup setup-all setup-min dev-core dev-ui install install-dev lint fmt check typecheck typecheck-gate test test-verbose build-ui build smoke publish publish-dry clean ui-install
 
 PYTHON := uv run python
 RUFF   := uv run ruff
@@ -18,12 +18,12 @@ help:
 	@echo "  lint         Run ruff check"
 	@echo "  fmt          Run ruff formatter"
 	@echo "  check        Run ruff check + ruff format check (CI gate)"
-	@echo "  typecheck    Run mypy (advisory — not a CI gate yet)"
+	@echo "  typecheck      Run mypy over the whole repo (advisory — not a CI gate yet)"
+	@echo "  typecheck-gate Run mypy over the known-clean subset (fails on regression)"
 	@echo "  test         Run the pytest suite (quiet)"
 	@echo "  test-verbose Run the pytest suite (verbose)"
 	@echo "  build-ui     Compile React SPA and copy assets into tuvl-insight wheel"
 	@echo "  build        build-ui → build tuvl wheel → build tuvl-insight wheel"
-	@echo "  proto        Generate gRPC Python stubs from src/tuvl/core/grpc/execution.proto"
 	@echo "  smoke        build → install both wheels in /tmp venv → verify tuvl --version + insight static assets"
 	@echo "  publish-dry  smoke → list what would be uploaded (no actual push)"
 	@echo "  publish      smoke → upload both wheels + sdists to PyPI (set UV_PUBLISH_TOKEN)"
@@ -35,7 +35,6 @@ help:
 setup:
 	@echo "→ Syncing core + Tuvl Insight + dev tools..."
 	$(UV) sync --extra standard --group dev
-	$(MAKE) apply-patches
 
 # Alias kept for legacy docs/scripts — equivalent to `make setup`.
 setup-all: setup
@@ -44,23 +43,9 @@ setup-all: setup
 # Use this when baking a container image from source.
 setup-min:
 	$(UV) sync --no-dev
-	$(MAKE) apply-patches
 
 install: setup
 install-dev: setup
-
-# ── Patches ───────────────────────────────────────────────────────────────────
-# Vendored patches for third-party packages with upstream bugs.
-# Re-applied after every uv sync to ensure the fixes persist.
-apply-patches:
-	@echo "→ Applying vendored patches to site-packages..."
-	@SITE_PKGS=$$($(PYTHON) -c "import sonora, os; print(os.path.dirname(os.path.dirname(os.path.abspath(sonora.__file__))))") && \
-	  if patch -p1 --forward --dry-run --reject-file=/dev/null -d "$$SITE_PKGS" < patches/sonora-asgi-fixes.patch >/dev/null 2>&1; then \
-	    patch -p1 --forward --reject-file=/dev/null -d "$$SITE_PKGS" < patches/sonora-asgi-fixes.patch >/dev/null 2>&1 && \
-	    echo "✓ sonora patches applied"; \
-	  else \
-	    echo "✓ sonora patches already applied (skipped)"; \
-	  fi
 
 ui-install:
 	cd ui && pnpm install
@@ -68,13 +53,13 @@ ui-install:
 # ── Dev ───────────────────────────────────────────────────────────────────────
 DIR ?= .
 
-dev-core: ## Run the server in dev mode without Tuvl Insight UI
-	@echo "→ Starting tuvl engine in dev mode (headless) — project: $(DIR)"
-	TUVL_UI_DIR="" $(UV) run tuvl dev --project-dir "$(DIR)" --no-browser --port 8000
+dev-core: ## Run the dev server without opening a browser (Insight still mounts in dev mode)
+	@echo "→ Starting tuvl engine in dev mode — project: $(DIR)"
+	$(UV) run tuvl dev --project-dir "$(DIR)" --no-browser --port 8885
 
 dev-ui: ## Run the server with Tuvl Insight dashboard active
 	@echo "→ Starting tuvl engine + Tuvl Insight dashboard — project: $(DIR)"
-	$(UV) run tuvl dev --project-dir "$(DIR)" --no-browser --port 8000
+	$(UV) run tuvl dev --project-dir "$(DIR)" --no-browser --port 8885
 
 dev: ## Run engine + Vite hot-reload dev server in parallel (legacy)
 	@echo "→ Starting tuvl engine (project: $(DIR)) + Vite dev server"
@@ -95,16 +80,40 @@ fmt:
 
 # `check` is the CI lint gate — ruff + format only.  mypy has a large backlog
 # of pre-existing errors flagged by the code-quality audit (chiefly in the
-# protobuf-generated and SQLModel dynamic-class code paths) and is *not*
+# SQLModel dynamic-class code paths) and is *not*
 # treated as a release blocker.  Run ``make typecheck`` separately to see
 # the current type debt; clean it down between releases.
 check:
-	$(RUFF) check src/ --output-format=concise
-	$(RUFF) format --check src/
+	$(RUFF) check src/ tests/ --output-format=concise
+	$(RUFF) format --check src/ tests/
 
 typecheck:
-	@echo "→ mypy (advisory — not currently a CI gate)"
+	@echo "→ mypy (advisory, full repo — not currently a CI gate)"
 	$(MYPY) src/ || true
+
+# Modules that are currently mypy-clean.  This is a ratchet, not a wall: it
+# must stay green.  When you clean up a new module, add it here so it can't
+# silently regress; never remove an entry to make room for new errors.
+MYPY_GATED_PATHS := \
+  src/tuvl/api \
+  src/tuvl/testing \
+  src/tuvl/spec \
+  src/tuvl/codegen \
+  src/tuvl/lock \
+  src/tuvl/devmcp \
+  src/tuvl/contract \
+  src/tuvl/validate \
+  src/tuvl/runtime \
+  src/tuvl/tenancy \
+  src/tuvl/cli/main.py \
+  src/tuvl/core/system_config.py \
+  src/tuvl/core/context.py \
+  src/tuvl/core/config_loader.py \
+  src/tuvl/core/errors.py
+
+typecheck-gate:
+	@echo "→ mypy (gated subset — must pass, no || true)"
+	$(MYPY) $(MYPY_GATED_PATHS)
 
 # ── Test ──────────────────────────────────────────────────────────────────────
 test:
@@ -112,24 +121,6 @@ test:
 
 test-verbose:
 	$(UV) run pytest -v tests/
-
-# ── Proto codegen ─────────────────────────────────────────────────────────────
-PROTO_OUT  := src/tuvl/core/grpc
-
-proto:
-	@echo "→ Generating gRPC Python stubs from all .proto files in $(PROTO_OUT)/..."
-	$(UV) run python -m grpc_tools.protoc \
-	  -I $(PROTO_OUT) \
-	  --python_out=$(PROTO_OUT) \
-	  --grpc_python_out=$(PROTO_OUT) \
-	  $(PROTO_OUT)/execution.proto \
-	  $(PROTO_OUT)/dev.proto \
-	  $(PROTO_OUT)/iam.proto
-	@# Fix bare module imports → relative imports in generated grpc files
-	sed -i '' 's/^import execution_pb2 as execution__pb2/from . import execution_pb2 as execution__pb2/' $(PROTO_OUT)/execution_pb2_grpc.py
-	sed -i '' 's/^import dev_pb2 as dev__pb2/from . import dev_pb2 as dev__pb2/' $(PROTO_OUT)/dev_pb2_grpc.py
-	sed -i '' 's/^import iam_pb2 as iam__pb2/from . import iam_pb2 as iam__pb2/' $(PROTO_OUT)/iam_pb2_grpc.py
-	@echo "✓ Stubs written to $(PROTO_OUT)/"
 
 # ── UI Build ──────────────────────────────────────────────────────────────────
 build-ui:
