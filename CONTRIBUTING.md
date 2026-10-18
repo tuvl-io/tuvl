@@ -139,4 +139,5 @@ Key invariants to respect (the agentic manual's golden rules are the contract):
 
 ## License
 
-By contributing, you agree that your contributions will be licensed under the MIT License.
+By contributing, you agree that your contributions will be licensed under the Apache License, Version 2.0
+(Apache-2.0 §5: a contribution you submit is under these terms unless you state otherwise).
