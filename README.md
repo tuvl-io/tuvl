@@ -160,8 +160,11 @@ fields kept away from models, optional Postgres row-level multi-tenancy.
 
 ## License & contributing
 
-tuvl is licensed under the **MIT License** — see [LICENSE](LICENSE) — and will
-remain MIT-licensed. It is, and will stay, free to use, modify, and distribute.
+tuvl is licensed under the **Apache License, Version 2.0** — see [LICENSE](LICENSE) and
+[NOTICE](NOTICE). It is free to use, modify and distribute, with an express patent grant.
+The name "tuvl" and the logos are not licensed for use as a brand (Apache-2.0 §6).
+
+Releases up to and including `2.0.0b4` were published under the MIT License and remain available under it. Starting with `2.0.0` tuvl is Apache-2.0.
 
 Development currently happens in a private repository, so the full source is not
 yet publicly browsable. This is temporary: the complete codebase will be

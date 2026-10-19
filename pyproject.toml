@@ -4,13 +4,13 @@ version = "2.0.0"
 description = "Typed workflows of agents — code, database/HTTP/MCP tools, rules, models, bounded tool loops and people — on a durable, journaled runtime, built spec-first and served as REST, SSE and MCP"
 readme = "README.md"
 requires-python = ">=3.13,<3.15"
-license = { text = "MIT" }
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
 authors = [{ name = "tuvl.io", email = "developer@tuvl.io" }]
 keywords = ["workflow", "orchestration", "ai", "llm", "agents", "mcp", "spec-driven", "fastapi", "yaml", "backend"]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.13",
