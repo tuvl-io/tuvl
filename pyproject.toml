@@ -76,7 +76,7 @@ codegen = ["libcst>=1.4"]  # tuvl generate code, init --sample
 test = ["aiosqlite>=0.20.0"]  # tuvl run tests runs workflows against in-memory SQLite
 tui = ["textual>=1.0"]  # the terminal UI that `tuvl dev` starts on a terminal
 review = ["ruff>=0.8"]  # tuvl review code lints the Python of code agents
-pdf = ["pypdf>=5.0"]  # tuvl import idea reads the text of PDF ideas (Word files need nothing extra)
+pdf = ["pypdf>=6.21.4"]  # tuvl import idea reads the text of PDF ideas (Word files need nothing extra)
 
 # Dev tooling is a PEP 735 dependency group (uv-native), not a published extra.
 [dependency-groups]
