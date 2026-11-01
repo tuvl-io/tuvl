@@ -67,7 +67,7 @@ standard = [
 
 # Features a production image installs only when the project uses them: `tuvl ship` reads the
 # project and pins exactly these (see tuvl.extras). A bare `pip install tuvl` has none of them.
-mcp = ["mcp>=1.27.0,<2"]  # `use: mcp` tools, MCP export, `tuvl serve mcp` (2.x renamed FastMCP)
+mcp = ["mcp>=1.30.0,<2"]  # `use: mcp` tools, MCP export, `tuvl serve mcp` (2.x renamed FastMCP)
 redis = ["redis>=5.0.0"]  # a `redis` datasource
 vector = ["pgvector>=0.3.0"]  # vector search (pulls in numpy)
 otel-grpc = ["opentelemetry-exporter-otlp-proto-grpc>=1.42.0"]  # TUVL_OTLP_PROTOCOL=grpc
