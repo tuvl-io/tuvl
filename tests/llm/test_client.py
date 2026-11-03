@@ -157,6 +157,52 @@ async def test_tool_calls_and_logprobs_are_parsed(http: Http) -> None:
     assert sent["tool_choice"] == "auto" and sent["logprobs"] is True
 
 
+async def test_gemini_tool_call_extra_content_is_preserved(http: Http) -> None:
+    payload = chat_json(None)
+    payload["choices"][0]["message"] = {
+        "content": None,
+        "tool_calls": [
+            {
+                "id": "c1",
+                "type": "function",
+                "function": {"name": "lookup", "arguments": '{"id":"o-1"}'},
+                "extra_content": {"google": {"thought_signature": "sig-123"}},
+            }
+        ],
+    }
+    serve(http, lambda r: httpx.Response(200, json=payload))
+
+    out = await llm.acompletion(model="gemini/gemini-3.1-flash-lite", messages=[], api_key="k")
+
+    call = out.choices[0].message.tool_calls[0]  # type: ignore[index]
+    assert call.extra_content == {"google": {"thought_signature": "sig-123"}}
+
+
+async def test_gemini_tool_call_extra_content_is_sent_on_followup(http: Http) -> None:
+    serve(http, lambda r: httpx.Response(200, json=chat_json("ok")))
+    assistant = {
+        "role": "assistant",
+        "content": "",
+        "tool_calls": [
+            {
+                "id": "c1",
+                "type": "function",
+                "function": {"name": "lookup", "arguments": "{}"},
+                "extra_content": {"google": {"thought_signature": "sig-123"}},
+            }
+        ],
+    }
+
+    await llm.acompletion(
+        model="gemini/gemini-3.1-flash-lite",
+        messages=[{"role": "user", "content": "lookup"}, assistant],
+        api_key="k",
+    )
+
+    sent_call = body(http[0])["messages"][1]["tool_calls"][0]
+    assert sent_call["extra_content"] == {"google": {"thought_signature": "sig-123"}}
+
+
 async def test_anthropic_structured_output_goes_through_a_forced_tool(
     http: Http,
 ) -> None:

@@ -56,6 +56,7 @@ The first stable 2.0 release. Everything since `2.0.0-beta.10` is below; the bet
 
 ### Fixed
 
+- **Gemini loop tool calls preserve thought signatures.** OpenAI-compatible parsing and streaming now keep Gemini's opaque `extra_content` on tool calls, and loop agents re-emit it on the next request instead of failing with a missing `thought_signature`.
 - **Settings → Project shows the project record again.** `GET /dev/project` was answered by the project summary, so the project
   id, author and email never reached the Settings page. The summary now lives at `GET /dev/project/summary`; `/dev/project` is
   the record (GET and PUT). A test fails if two routes share a method and path.

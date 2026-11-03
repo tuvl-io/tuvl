@@ -125,6 +125,31 @@ async def test_tool_call_arguments_are_assembled(http: Http) -> None:  # noqa: F
     assert done.choices[0].finish_reason == "tool_calls"
 
 
+async def test_gemini_tool_call_extra_content_is_preserved_in_stream(http: Http) -> None:  # noqa: F811
+    calls = [
+        chunk(
+            {
+                "tool_calls": [
+                    {
+                        "index": 0,
+                        "id": "c1",
+                        "function": {"name": "lookup", "arguments": "{}"},
+                        "extra_content": {"google": {"thought_signature": "sig-123"}},
+                    }
+                ]
+            }
+        ),
+        chunk({}, "tool_calls"),
+        "[DONE]",
+    ]
+    serve(http, lambda r: sse(*calls))
+
+    _, done = await collect(model="gemini/gemini-3.1-flash-lite")
+
+    call = done.choices[0].message.tool_calls[0]  # type: ignore[index]
+    assert call.extra_content == {"google": {"thought_signature": "sig-123"}}
+
+
 async def test_comments_and_multiline_data_are_handled(http: Http) -> None:  # noqa: F811
     text = (
         ": keep-alive\n\n"

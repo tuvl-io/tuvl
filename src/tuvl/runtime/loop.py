@@ -426,13 +426,14 @@ async def _request_approval(
 def _assistant_message(message: Any) -> dict[str, Any]:
     calls = []
     for c in getattr(message, "tool_calls", None) or []:
-        calls.append(
-            {
-                "id": c.id,
-                "type": "function",
-                "function": {"name": c.function.name, "arguments": c.function.arguments or "{}"},
-            }
-        )
+        call = {
+            "id": c.id,
+            "type": getattr(c, "type", "function"),
+            "function": {"name": c.function.name, "arguments": c.function.arguments or "{}"},
+        }
+        if getattr(c, "extra_content", None) is not None:
+            call["extra_content"] = c.extra_content
+        calls.append(call)
     out: dict[str, Any] = {"role": "assistant", "content": getattr(message, "content", None) or ""}
     if calls:
         out["tool_calls"] = calls
