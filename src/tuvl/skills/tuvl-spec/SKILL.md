@@ -59,7 +59,8 @@ Ends: default 201 · unknown_order 404 · rejected 200 · failed 500
   A `T` step that is an alternate path routes `default` explicitly.
 - Every engine-implied signal is routed or waived: `- not_found: waived — <why>`. An end without an
   example: `   - <end>: no example — <why>` (indented) under `Ends:`. A step no offline test can run:
-  `- tests: waived — <why>`. A `code` step can't emit reserved signals — use your own (`missing →
+  `- tests: waived — <why>`. A `- note: <text>` sub-line is free text no check reads; use it to say why a
+  step is built the way it is. A `code` step can't emit reserved signals — use your own (`missing →
   END.not_found`).
 - A write followed by steps that can fail names its undo: `` · compensate `discard_x` `` plus a
   `T` step `discard_x`; the compensator runs on a rollback end.

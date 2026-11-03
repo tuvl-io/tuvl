@@ -79,6 +79,7 @@ expect: { end: default }
 | Route | `` - signal[, signal] → `step` `` or `→ END` / `→ END.<end>`; `(out `f` (type))` names outputs a reserved signal carries |
 | Rule | `` - `TEL condition` → value ``, last `- otherwise → value` |
 | Waiver | `- <signal>: waived — <reason>` under a step; `- tests: waived — <reason>` for a step no offline test can run (e.g. it needs pgvector) — reported by `verify spec`, counted by task status; `   - <end>: no example — <reason>` (indented) under `Ends:` |
+| Note | `- note: <text>` under a step — free text for the reader (why the step is built the way it is); no check reads it |
 | Off-spine | `T1.` steps — a loop's tools (`tool of `loop``), compensators (a step's `` · compensate `undo_x` `` part: runs on a rollback end to undo it) and alternate paths, which route `default` explicitly |
 
 Implicit: `default` goes to the next numbered step (or `END`), and `error` to `END.failed`.
