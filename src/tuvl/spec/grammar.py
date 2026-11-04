@@ -37,6 +37,7 @@ _SUB = re.compile(r"^\s+- (.+)$")
 _CONT = re.compile(r"^\s{2,}· (.+)$")
 _RULE = re.compile(r"^`([^`]+)` → (\w+)$")
 _OTHERWISE = re.compile(r"^otherwise → (\w+)$")
+_NOTE = re.compile(r"^note: (.+)$")
 _WAIVER = re.compile(r"^(\w+): waived — (.+)$")
 _NO_EXAMPLE = re.compile(r"^(\w+): no example — (.+)$")
 _ROUTE = re.compile(r"^([\w, ]+?)(?: \(out (.+)\))? → (END(?:\.\w+)?|`\w+`)$")
@@ -110,6 +111,7 @@ class Step:
         default_factory=list
     )  # (TEL | "otherwise", value, line)
     waivers: dict[str, tuple[str, int]] = field(default_factory=dict)
+    notes: list[str] = field(default_factory=list)  # free text; no check reads it
 
     @property
     def off_spine(self) -> bool:
@@ -429,8 +431,16 @@ def _step_parts(
             out.problems.append(Problem(n, f"`{step.id}`: unknown part '{part}'"))
 
 
+_STEP_LINES = (
+    "signal → `step` or END; `rule` → value; otherwise → value; "
+    "signal: waived — why; tests: waived — why; note: text"
+)
+
+
 def _step_item(out: Structure, step: Step, n: int, item: str) -> None:
-    if r := _RULE.match(item):
+    if r := _NOTE.match(item):
+        step.notes.append(r.group(1).strip())
+    elif r := _RULE.match(item):
         step.rules.append((r.group(1), r.group(2), n))
     elif r := _OTHERWISE.match(item):
         step.rules.append(("otherwise", r.group(1), n))
@@ -446,4 +456,8 @@ def _step_item(out: Structure, step: Step, n: int, item: str) -> None:
             )
         )
     else:
-        out.problems.append(Problem(n, f"`{step.id}`: line doesn't parse: {item[:70]}"))
+        out.problems.append(
+            Problem(
+                n, f"`{step.id}`: line doesn't parse: {item[:70]} — a step line is {_STEP_LINES}"
+            )
+        )

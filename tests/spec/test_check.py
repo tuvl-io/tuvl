@@ -53,6 +53,24 @@ def test_an_unparseable_line_is_never_skipped() -> None:
     assert any(f.code == "S001" and "whatever" in f.message for f in result.errors)
 
 
+def test_an_unparseable_step_line_says_which_lines_a_step_takes() -> None:
+    text = "# Flows\n## Flow: x\nTrigger: POST /x · public\nEnds: default 200 · failed 500\n1. `a` — code\n   - whatever this is\n"
+    message = next(f.message for f in check_spec(parse_text(text), text).errors if f.code == "S001")
+    assert "note: text" in message and "waived" in message and "otherwise" in message
+
+
+def test_a_note_under_a_step_is_kept_and_not_checked() -> None:
+    text = (
+        "# Flows\n## Flow: x\nTrigger: POST /x · public\nInput: `name` (str)\n"
+        "Ends: default 200 · failed 500\n\n1. `a` — code · in `name` · out `ok` (bool)\n"
+        "   - default → END\n   - note: runs before the save because the id is needed\n"
+    )
+    structure = parse_structure(text)
+    assert not structure.problems
+    assert structure.flows["x"].steps[0].notes == ["runs before the save because the id is needed"]
+    assert not [f for f in check_spec(parse_text(text), text).errors if f.code == "S001"]
+
+
 FLOW_INPUT = """# Flows
 ## Flow: x
 Trigger: POST /x · public
