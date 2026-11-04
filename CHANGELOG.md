@@ -10,6 +10,27 @@ release below is the current one.
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- **A `note:` line under a spec step.** `- note: <text>` is free text no check reads; use it to say why a step is built
+  the way it is. When a step line does not parse, the S001 message now lists the lines a step takes.
+
+### Fixed
+
+- **Gemini loop tool calls preserve thought signatures.** OpenAI-compatible parsing and streaming now keep Gemini's opaque `extra_content` on tool calls, and loop agents re-emit it on the next request instead of failing with a missing `thought_signature`.
+- **The spec checker knows the signals of storage and http tool steps.** `tool storage get` could not route
+  `not_found` and `tool http` could not route `http_404` (S004, S012), so a spec-first project had to build such a step
+  as a `code` agent; they now follow `tuvl lint project`. `tuvl verify spec` no longer reports R002 for a storage step.
+- **An optional trigger input in a spec's `Input:` line is kept.** ``Input: `x`? (str)`` was dropped without a finding,
+  so the scaffold left the field out of the trigger and `verify spec` reported R001. It is read as `str?`, and an
+  `Input:` field that does not parse is an S001 finding.
+- **A project that sets `llm.memory.retention` passes `tuvl run tests`.** The retention sweep used a PostgreSQL-only
+  query and crashed on the offline SQLite database; it now does nothing off PostgreSQL.
+- **The `agent-code` skill lists the effects the schema accepts.** It listed `effect: none`, which the schema rejects;
+  the effects are `read`, `write` and `destructive`, and the default is `write`.
+
 ## [2.0.1] — 2026-11-02
 
 A patch release of `tuvl` and `tuvl-insight`: two small fixes found when CI first ran on freshly booted GitHub-hosted machines, the PyPI project descriptions, and the release workflow.
@@ -56,7 +77,6 @@ The first stable 2.0 release. Everything since `2.0.0-beta.10` is below; the bet
 
 ### Fixed
 
-- **Gemini loop tool calls preserve thought signatures.** OpenAI-compatible parsing and streaming now keep Gemini's opaque `extra_content` on tool calls, and loop agents re-emit it on the next request instead of failing with a missing `thought_signature`.
 - **Settings → Project shows the project record again.** `GET /dev/project` was answered by the project summary, so the project
   id, author and email never reached the Settings page. The summary now lives at `GET /dev/project/summary`; `/dev/project` is
   the record (GET and PUT). A test fails if two routes share a method and path.

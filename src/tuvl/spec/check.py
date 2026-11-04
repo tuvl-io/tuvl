@@ -16,7 +16,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, create_model
 
-from tuvl.contract.signals import is_reserved
+from tuvl.contract.signals import HTTP_STATUS, is_reserved
 from tuvl.contract.tel import TELError, compile_expr
 from tuvl.contract.types import TypeParseError, parse_type, registry_resolver
 from tuvl.spec.grammar import (
@@ -186,20 +186,46 @@ def _enum(t: str) -> list[str]:
     return list(ref.values) if ref.kind == "enum" and ref.values else []
 
 
+def _tool_signals(step: Step) -> tuple[set[str], set[str]]:
+    """(required, optional) reserved signals of a tool step, as ``tuvl lint project`` derives them.
+
+    A spec cannot say ``if_exists``, so ``put`` and ``copy`` take the default (``fail``): they
+    emit ``conflict``, which is routed or waived.
+    """
+    d = step.detail
+    kind, op = (d[1] if len(d) > 1 else ""), (d[2] if len(d) > 2 else "")
+    if kind == "db":
+        if op in ("read", "delete"):
+            return {"not_found"}, set()
+        if op in ("create", "update", "upsert"):
+            return {"conflict"}, set()
+    elif kind == "http":
+        return set(), {"http_*"}
+    elif kind == "storage":
+        required = {"not_found"} if op in ("get", "head", "copy") else set()
+        if op in ("put", "copy"):
+            required.add("conflict")
+        return required, {"too_large"} if op in ("put", "get", "copy") else set()
+    return set(), set()
+
+
+def can_emit(step: Step, signal: str) -> bool:
+    normal, required = signals(step)
+    optional = _tool_signals(step)[1] if step.engine == "tool" else set()
+    return (
+        signal == "error"
+        or signal in normal | required | optional
+        or (HTTP_STATUS.fullmatch(signal) is not None and "http_*" in optional)
+    )
+
+
 def signals(step: Step) -> tuple[set[str], set[str]]:
     """(normal, required) signals of *step*."""
     declared = {
         sig for r in step.routes for sig in r.signals if not is_reserved(sig) and sig != "default"
     }
-    d = step.detail
     if step.engine == "tool":
-        required: set[str] = set()
-        if len(d) > 2 and d[1] == "db":
-            if d[2] in ("read", "delete"):
-                required = {"not_found"}
-            elif d[2] in ("create", "update", "upsert"):
-                required = {"conflict"}
-        return {"default"}, required
+        return {"default"}, _tool_signals(step)[0]
     guarded = {"guardrail_violation"} if step.guardrails else set()
     if step.engine == "llm":
         return (declared or {"default"}), {"parse_error", "timeout", "budget_exceeded"} | guarded
@@ -319,7 +345,7 @@ def _check_routes(out: CheckResult, flow: Flow, step: Step, by_id: Mapping[str, 
     if step.engine == "loop" and not normal:
         out.add("S004", step.line, f"`{step.id}` (loop) needs at least one outcome route")
     for sig, target in routes.items():
-        if sig != "error" and sig not in normal | required:
+        if not can_emit(step, sig):
             out.add(
                 "S004", step.line, f"`{step.id}` ({' '.join(step.detail[:3])}) never emits '{sig}'"
             )
@@ -628,8 +654,8 @@ def _check_examples(
                 )
             mock = mock or {}
             sig = str(mock.get("signal", "default"))
-            normal, required = signals(step)
-            if sig not in normal | required | {"error"}:
+            normal, _ = signals(step)
+            if not can_emit(step, sig):
                 out.add("S012", line, f"example '{name}': `{sid}` cannot emit '{sig}'")
             declared = (
                 set(step.outputs)

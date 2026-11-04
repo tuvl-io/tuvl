@@ -71,6 +71,30 @@ def test_a_note_under_a_step_is_kept_and_not_checked() -> None:
     assert not [f for f in check_spec(parse_text(text), text).errors if f.code == "S001"]
 
 
+FLOW_INPUT = """# Flows
+## Flow: x
+Trigger: POST /x · public
+{input}
+Ends: default 200 · failed 500
+
+1. `a` — code · in `name` · out `ok` (bool)
+   - default → END
+"""
+
+
+def test_an_optional_trigger_input_is_kept_as_optional() -> None:
+    text = FLOW_INPUT.format(input="Input: `name` (str), `terms`? (str), `due`? (date?)")
+    flow = parse_structure(text).flows["x"]
+    assert flow.inputs == {"name": "str", "terms": "str?", "due": "date?"}
+    assert not parse_structure(text).problems
+
+
+def test_a_trigger_input_that_does_not_parse_is_reported_not_dropped() -> None:
+    text = FLOW_INPUT.format(input="Input: `name` (str), `terms`: str")
+    result = check_spec(parse_text(text), text)
+    assert any(f.code == "S001" and "`terms`" in f.message for f in result.errors)
+
+
 LOOP = """---
 name: triage
 ---

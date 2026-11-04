@@ -48,7 +48,7 @@ project) and `docs/tuvl-agentic-manual.md`.
 - Performance: `uv run python scripts/bench_steps.py` (a disposable Postgres database in `TUVL_TEST_PG_URL`: it drops and recreates the runtime tables; local stub model server) prints runs/s, steps/s, step latency and SQL statements per step; run it before and after a change to the runner, journal or engines.
 - UI: `cd ui && pnpm exec tsc -b && pnpm test`; browser tests with `scripts/insight-smoke.sh`.
 - Keep comments minimal: only the non-obvious *why*. No narration or patch history.
-- Update `CHANGELOG.md` (the `[2.0.0]` section) and the relevant `docs/` page with any user-visible
+- Update `CHANGELOG.md` (the `[Unreleased]` section) and the relevant `docs/` page with any user-visible
   change.
 
 ## 4. Useful commands

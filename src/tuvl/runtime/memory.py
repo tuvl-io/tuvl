@@ -172,6 +172,8 @@ def retained_collections() -> dict[str, timedelta]:
 async def retention_sweep(session: AsyncSession) -> int:
     """Delete memories past their collection's ``retention``. Runs at most every five minutes."""
     global _last_retention
+    if session.bind.dialect.name != "postgresql":
+        return 0  # the memory store is a pgvector table; the offline test database has none
     now = time.monotonic()
     if now - _last_retention < _RETENTION_EVERY:
         return 0
