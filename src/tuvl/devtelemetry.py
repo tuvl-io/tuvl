@@ -28,6 +28,7 @@ import hashlib
 import json
 import os
 import socket
+import sys
 import threading
 import time
 from collections.abc import Iterator
@@ -49,7 +50,7 @@ MAX_QUEUE = 5000
 _LOCAL = {"localhost", "127.0.0.1", "::1"}
 
 
-if os.name == "nt":
+if sys.platform == "win32":
     import msvcrt
 
     def _lock(fh: Any, *, wait: bool) -> None:
