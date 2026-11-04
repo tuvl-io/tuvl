@@ -7,7 +7,7 @@ description: "Implement a code agent: a Python function inside the stub tuvl gen
 ```yaml
 - id: score
   engine: code
-  effect: read                 # none | read | write | destructive (ctx.db refuses writes under read)
+  effect: read                 # read | write | destructive; default write (ctx.db refuses writes under read)
   code: { run: score_order, with: { threshold: 500 } }   # with → ctx.params (templates allowed)
   inputs: { order: Order }
   outputs: { score: int }

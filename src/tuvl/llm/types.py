@@ -17,6 +17,7 @@ class ToolCall:
     id: str
     function: Function
     type: str = "function"
+    extra_content: dict[str, Any] | None = None
 
 
 @dataclass

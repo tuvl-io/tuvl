@@ -75,6 +75,9 @@ def parse_chat(data: dict[str, Any], model: str) -> Completion:
                     name=str((c.get("function") or {}).get("name") or ""),
                     arguments=str((c.get("function") or {}).get("arguments") or ""),
                 ),
+                extra_content=c.get("extra_content")
+                if isinstance(c.get("extra_content"), dict)
+                else None,
             )
             for c in msg.get("tool_calls") or []
         ]
@@ -113,7 +116,7 @@ class StreamBuilder:
     def __init__(self, model: str) -> None:
         self.model = model
         self.text: list[str] = []
-        self.calls: dict[Any, dict[str, str]] = {}
+        self.calls: dict[Any, dict[str, Any]] = {}
         self.finish: str | None = None
         self.usage: dict[str, Any] | None = None
         self.logprobs: list[Any] = []
@@ -154,6 +157,8 @@ class StreamBuilder:
             entry["id"] = str(call.get("id") or entry["id"])
             entry["name"] = str(fn.get("name") or entry["name"])
             entry["arguments"] += str(fn.get("arguments") or "")
+            if isinstance(call.get("extra_content"), dict):
+                entry["extra_content"] = call["extra_content"]
         logprobs = choice.get("logprobs")
         if isinstance(logprobs, dict) and logprobs.get("content"):
             self.logprobs.extend(logprobs["content"])
@@ -168,7 +173,15 @@ class StreamBuilder:
         message: dict[str, Any] = {"content": "".join(self.text) or None}
         if self.calls:
             message["tool_calls"] = [
-                {"id": c["id"], "function": {"name": c["name"], "arguments": c["arguments"]}}
+                {
+                    "id": c["id"],
+                    "function": {"name": c["name"], "arguments": c["arguments"]},
+                    **(
+                        {"extra_content": c["extra_content"]}
+                        if c.get("extra_content") is not None
+                        else {}
+                    ),
+                }
                 for c in self.calls.values()
             ]
         choice: dict[str, Any] = {"message": message, "finish_reason": self.finish}

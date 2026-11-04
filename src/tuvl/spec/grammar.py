@@ -27,6 +27,7 @@ FIELD_FLAGS = frozenset({"required", "unique", "secure"})
 ENGINES = frozenset({"code", "tool", "decide", "llm", "loop", "human", "map", "parallel"})
 
 _FIELD = re.compile(r"`(\w+)` \(([^()]*)\)")
+_FIELD_OPT = re.compile(r"`(\w+)`(\?)? \(([^()]*)\)")
 _NAME = re.compile(r"`(\w+)`")
 _INPUT = re.compile(r"`(\w+)`(\?)?")
 _TOOL = re.compile(r"^(?:(workflow|mcp) )?`([\w.-]+)`(?: \((.+)\))?$")
@@ -36,6 +37,7 @@ _SUB = re.compile(r"^\s+- (.+)$")
 _CONT = re.compile(r"^\s{2,}· (.+)$")
 _RULE = re.compile(r"^`([^`]+)` → (\w+)$")
 _OTHERWISE = re.compile(r"^otherwise → (\w+)$")
+_NOTE = re.compile(r"^note: (.+)$")
 _WAIVER = re.compile(r"^(\w+): waived — (.+)$")
 _NO_EXAMPLE = re.compile(r"^(\w+): no example — (.+)$")
 _ROUTE = re.compile(r"^([\w, ]+?)(?: \(out (.+)\))? → (END(?:\.\w+)?|`\w+`)$")
@@ -109,6 +111,7 @@ class Step:
         default_factory=list
     )  # (TEL | "otherwise", value, line)
     waivers: dict[str, tuple[str, int]] = field(default_factory=dict)
+    notes: list[str] = field(default_factory=list)  # free text; no check reads it
 
     @property
     def off_spine(self) -> bool:
@@ -251,7 +254,10 @@ def _data_line(out: Structure, n: int, line: str) -> None:
 
 
 def _fields(text: str) -> dict[str, str]:
-    return dict(_FIELD.findall(text))
+    return {
+        name: t if not optional or t.endswith("?") else f"{t}?"
+        for name, optional, t in _FIELD_OPT.findall(text)
+    }
 
 
 def _budget(text: str) -> dict[str, float]:
@@ -307,6 +313,15 @@ def _flow_line(out: Structure, flow: Flow, n: int, line: str) -> None:
         return
     if line.startswith("Input:"):
         flow.inputs = _fields(line)
+        for name in _NAME.findall(line):
+            if name not in flow.inputs:
+                out.problems.append(
+                    Problem(
+                        n,
+                        f"flow {flow.name}: input `{name}` doesn't parse: write `{name}` (type), "
+                        f"or `{name}`? (type) when it is optional",
+                    )
+                )
         return
     if line.startswith("Ends:"):
         for part in line[5:].split("·"):
@@ -416,8 +431,16 @@ def _step_parts(
             out.problems.append(Problem(n, f"`{step.id}`: unknown part '{part}'"))
 
 
+_STEP_LINES = (
+    "signal → `step` or END; `rule` → value; otherwise → value; "
+    "signal: waived — why; tests: waived — why; note: text"
+)
+
+
 def _step_item(out: Structure, step: Step, n: int, item: str) -> None:
-    if r := _RULE.match(item):
+    if r := _NOTE.match(item):
+        step.notes.append(r.group(1).strip())
+    elif r := _RULE.match(item):
         step.rules.append((r.group(1), r.group(2), n))
     elif r := _OTHERWISE.match(item):
         step.rules.append(("otherwise", r.group(1), n))
@@ -433,4 +456,8 @@ def _step_item(out: Structure, step: Step, n: int, item: str) -> None:
             )
         )
     else:
-        out.problems.append(Problem(n, f"`{step.id}`: line doesn't parse: {item[:70]}"))
+        out.problems.append(
+            Problem(
+                n, f"`{step.id}`: line doesn't parse: {item[:70]} — a step line is {_STEP_LINES}"
+            )
+        )

@@ -161,7 +161,7 @@ def _family(step: Step) -> tuple[str, ...]:
     """The spec engine as a comparable tuple: ("tool", "db", "read", "Order"), ("decide", "rules", "model")."""
     d = step.detail
     if step.engine == "tool":
-        return tuple(d[:4]) if len(d) > 1 and d[1] == "db" else tuple(d[:3])
+        return tuple(d[:4]) if len(d) > 1 and d[1] in ("db", "storage") else tuple(d[:3])
     if step.engine == "decide":
         return (
             "decide",
