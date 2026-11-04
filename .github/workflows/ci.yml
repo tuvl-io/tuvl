@@ -160,6 +160,8 @@ jobs:
           "$RUNNER_TEMP/win/Scripts/python.exe" scripts/import_sweep.py
           "$RUNNER_TEMP/win/Scripts/tuvl.exe" --version
           "$RUNNER_TEMP/win/Scripts/tuvl.exe" dev --help > /dev/null
+      - name: Insight's command jobs run without a POSIX shell
+        run: uv run --frozen pytest -q tests/api/test_dev_jobs_process.py
 
   ui:
     name: UI (typecheck, lint, test)
