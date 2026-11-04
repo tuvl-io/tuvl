@@ -27,6 +27,7 @@ FIELD_FLAGS = frozenset({"required", "unique", "secure"})
 ENGINES = frozenset({"code", "tool", "decide", "llm", "loop", "human", "map", "parallel"})
 
 _FIELD = re.compile(r"`(\w+)` \(([^()]*)\)")
+_FIELD_OPT = re.compile(r"`(\w+)`(\?)? \(([^()]*)\)")
 _NAME = re.compile(r"`(\w+)`")
 _INPUT = re.compile(r"`(\w+)`(\?)?")
 _TOOL = re.compile(r"^(?:(workflow|mcp) )?`([\w.-]+)`(?: \((.+)\))?$")
@@ -251,7 +252,10 @@ def _data_line(out: Structure, n: int, line: str) -> None:
 
 
 def _fields(text: str) -> dict[str, str]:
-    return dict(_FIELD.findall(text))
+    return {
+        name: t if not optional or t.endswith("?") else f"{t}?"
+        for name, optional, t in _FIELD_OPT.findall(text)
+    }
 
 
 def _budget(text: str) -> dict[str, float]:
@@ -307,6 +311,15 @@ def _flow_line(out: Structure, flow: Flow, n: int, line: str) -> None:
         return
     if line.startswith("Input:"):
         flow.inputs = _fields(line)
+        for name in _NAME.findall(line):
+            if name not in flow.inputs:
+                out.problems.append(
+                    Problem(
+                        n,
+                        f"flow {flow.name}: input `{name}` doesn't parse: write `{name}` (type), "
+                        f"or `{name}`? (type) when it is optional",
+                    )
+                )
         return
     if line.startswith("Ends:"):
         for part in line[5:].split("·"):

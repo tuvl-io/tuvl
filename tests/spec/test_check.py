@@ -9,6 +9,7 @@ import pytest
 
 from tuvl.spec import parse_text
 from tuvl.spec.check import check_spec
+from tuvl.spec.grammar import parse_structure
 
 HERE = Path(__file__).parent / "grammar"
 EXISTING = {
@@ -50,6 +51,30 @@ def test_an_unparseable_line_is_never_skipped() -> None:
     text = "# Flows\n## Flow: x\nTrigger: POST /x · public\nEnds: default 200 · failed 500\n1. `a` — code\n   - whatever this is\n"
     result = check_spec(parse_text(text), text)
     assert any(f.code == "S001" and "whatever" in f.message for f in result.errors)
+
+
+FLOW_INPUT = """# Flows
+## Flow: x
+Trigger: POST /x · public
+{input}
+Ends: default 200 · failed 500
+
+1. `a` — code · in `name` · out `ok` (bool)
+   - default → END
+"""
+
+
+def test_an_optional_trigger_input_is_kept_as_optional() -> None:
+    text = FLOW_INPUT.format(input="Input: `name` (str), `terms`? (str), `due`? (date?)")
+    flow = parse_structure(text).flows["x"]
+    assert flow.inputs == {"name": "str", "terms": "str?", "due": "date?"}
+    assert not parse_structure(text).problems
+
+
+def test_a_trigger_input_that_does_not_parse_is_reported_not_dropped() -> None:
+    text = FLOW_INPUT.format(input="Input: `name` (str), `terms`: str")
+    result = check_spec(parse_text(text), text)
+    assert any(f.code == "S001" and "`terms`" in f.message for f in result.errors)
 
 
 LOOP = """---
