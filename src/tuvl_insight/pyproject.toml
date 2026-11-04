@@ -1,6 +1,6 @@
 [project]
 name = "tuvl-insight"
-version = "2.0.1"
+version = "2.0.2"
 description = "The browser UI for tuvl 2.0: write specs, design workflows on a canvas, run them step by step with approvals, and see what every run did."
 readme = "README.md"
 requires-python = ">=3.13,<3.15"
@@ -9,7 +9,7 @@ license-files = ["LICENSE", "NOTICE", "THIRD_PARTY_LICENSES.txt"]
 authors = [{ name = "tuvl.io", email = "developer@tuvl.io" }]
 
 dependencies = [
-    "tuvl>=2.0.1",
+    "tuvl>=2.0.2",
 ]
 
 [build-system]
