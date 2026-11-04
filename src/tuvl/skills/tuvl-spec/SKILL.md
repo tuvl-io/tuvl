@@ -58,7 +58,9 @@ Ends: default 201 · unknown_order 404 · rejected 200 · failed 500
 - Loop tools are `T1.` steps marked `` tool of `loop` ``; the loop lists them:
   `` tools: `lookup`, workflow `issue_credit` (approval team_leads when `args.amount > 50`; max 1 call) ``.
   A `T` step that is an alternate path routes `default` explicitly.
-- Every engine-implied signal is routed or waived: `- not_found: waived — <why>`. An end without an
+- Every engine-implied signal is routed or waived: `- not_found: waived — <why>`. Tool steps imply `not_found`
+  (db `read`/`delete`; storage `get`/`head`/`copy`) or `conflict` (db `create`/`update`/`upsert`; storage `put`/`copy`);
+  `too_large` (storage `put`/`get`/`copy`) and `http_404`-style signals (http) may be routed but need not be. An end without an
   example: `   - <end>: no example — <why>` (indented) under `Ends:`. A step no offline test can run:
   `- tests: waived — <why>`. A `code` step can't emit reserved signals — use your own (`missing →
   END.not_found`).
