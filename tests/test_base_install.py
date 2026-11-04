@@ -51,3 +51,24 @@ def test_a_feature_without_its_extra_names_the_extra(extra: str, monkeypatch) ->
     monkeypatch.setattr("tuvl.extras.available", lambda name: False)
     with pytest.raises(MissingExtraError, match=rf"tuvl\[{extra}\]"):
         require(extra)
+
+
+POSIX_ONLY = {"fcntl", "termios", "pwd", "grp", "resource", "pty"}
+
+
+def test_no_module_imports_a_posix_only_module_at_the_top_level() -> None:
+    import ast
+
+    offenders = []
+    for path in (ROOT / "src" / "tuvl").rglob("*.py"):
+        for node in ast.parse(path.read_text(encoding="utf-8")).body:
+            names = (
+                [a.name for a in node.names]
+                if isinstance(node, ast.Import)
+                else [node.module or ""]
+                if isinstance(node, ast.ImportFrom)
+                else []
+            )
+            if any(n.split(".")[0] in POSIX_ONLY for n in names):
+                offenders.append(f"{path.relative_to(ROOT)}: {names}")
+    assert not offenders, offenders

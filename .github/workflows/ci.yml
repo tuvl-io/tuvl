@@ -142,6 +142,25 @@ jobs:
           cd "$RUNNER_TEMP" && rm -rf demo && $RUNNER_TEMP/fresh/bin/tuvl init demo --sample -y
           cd demo && $RUNNER_TEMP/fresh/bin/tuvl lint project --strict
 
+  windows:
+    # The CLI has to start on Windows: a POSIX-only import (fcntl) crashed `tuvl dev` there.
+    name: Windows (install and start)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+      - name: Build the wheel
+        run: uv build --package tuvl --no-sources
+      - name: Install it and import every module
+        shell: bash
+        run: |
+          uv venv --clear --python 3.13 "$RUNNER_TEMP/win"
+          uv pip install --python "$RUNNER_TEMP/win/Scripts/python.exe" dist/tuvl-*.whl
+          "$RUNNER_TEMP/win/Scripts/python.exe" scripts/import_sweep.py
+          "$RUNNER_TEMP/win/Scripts/tuvl.exe" --version
+          "$RUNNER_TEMP/win/Scripts/tuvl.exe" dev --help > /dev/null
+
   ui:
     name: UI (typecheck, lint, test)
     runs-on: ${{ github.event.repository.private && fromJSON(vars.CI_RUNS_ON || '"ubuntu-latest"') || 'ubuntu-latest' }}
