@@ -8,6 +8,7 @@ import json
 import os
 import re
 import signal
+import subprocess
 import sys
 import time
 import uuid
@@ -23,6 +24,21 @@ router = APIRouter()
 
 def _cli_argv(args: list[str]) -> list[str]:
     return [sys.executable, "-c", "from tuvl.cli import main; main()", *args, "-d", str(_project())]
+
+
+# Runs the command with its output in a file and its exit code beside it. Python, not `sh`, so it works on Windows.
+_RUNNER = (
+    "import subprocess, sys; out = sys.argv[1]; "
+    "code = subprocess.call(sys.argv[2:], stdin=subprocess.DEVNULL, stdout=open(out, 'wb'), "
+    "stderr=subprocess.STDOUT); open(out + '.exit', 'w').write(str(code))"
+)
+
+
+def _detach() -> dict[str, Any]:
+    """Start the command in a session of its own, so it outlives a reload of the dev server."""
+    if sys.platform == "win32":
+        return {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
+    return {"start_new_session": True}
 
 
 def _cli_env() -> dict[str, str]:
@@ -71,6 +87,8 @@ def _jobs_dir() -> Path:
 def _alive(pid: int | None) -> bool:
     if not pid:
         return False
+    if sys.platform == "win32":
+        return _alive_windows(pid)
     try:
         os.kill(pid, 0)
     except ProcessLookupError:
@@ -78,6 +96,29 @@ def _alive(pid: int | None) -> bool:
     except PermissionError:
         return True
     return True
+
+
+def _alive_windows(pid: int) -> bool:
+    """``os.kill(pid, 0)`` would end the process on Windows, so ask the process table."""
+    import ctypes
+
+    kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined,unused-ignore]
+    handle = kernel32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+    if not handle:
+        return False
+    try:
+        code = ctypes.c_ulong()
+        return bool(kernel32.GetExitCodeProcess(handle, ctypes.byref(code))) and code.value == 259
+    finally:
+        kernel32.CloseHandle(handle)
+
+
+def _terminate(pid: int) -> None:
+    if sys.platform == "win32":
+        subprocess.run(["taskkill", "/F", "/T", "/PID", str(pid)], capture_output=True, check=False)
+        return
+    with contextlib.suppress(ProcessLookupError):
+        os.killpg(pid, signal.SIGTERM)
 
 
 def _log_text(raw: str) -> str:
@@ -207,14 +248,14 @@ async def _start_job(label: str, args: list[str]) -> _Job:
     command = f"$ tuvl {' '.join(args)}"
     job.lines.append(command)
     job.proc = await asyncio.create_subprocess_exec(
-        "sh",
+        sys.executable,
         "-c",
-        '"$@" > "$TUVL_JOB_OUT" 2>&1; echo $? > "$TUVL_JOB_OUT.exit"',
-        "sh",
+        _RUNNER,
+        str(job.out),
         *_cli_argv(args),
         stdin=asyncio.subprocess.DEVNULL,
-        env={**_cli_env(), "TUVL_JOB_OUT": str(job.out)},
-        start_new_session=True,
+        env=_cli_env(),
+        **_detach(),
     )
     job.pid = job.proc.pid
     _meta(job.id).write_text(
@@ -246,7 +287,6 @@ async def stop_job(job_id: str) -> dict[str, str]:
         raise HTTPException(status_code=404, detail="no such command")
     if job.status == "running" and job.pid:
         job.stopped = True
-        with contextlib.suppress(ProcessLookupError):
-            os.killpg(job.pid, signal.SIGTERM)
+        _terminate(job.pid)
         job.lines.append("stopped")
     return {"status": job.status}
