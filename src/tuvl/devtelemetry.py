@@ -24,11 +24,11 @@ event claims about its actor is not trusted.
 from __future__ import annotations
 
 import contextlib
-import fcntl
 import hashlib
 import json
 import os
 import socket
+import sys
 import threading
 import time
 from collections.abc import Iterator
@@ -48,6 +48,34 @@ IDENTITIES = ("full", "initials")
 BATCH = 100
 MAX_QUEUE = 5000
 _LOCAL = {"localhost", "127.0.0.1", "::1"}
+
+
+if sys.platform == "win32":
+    import msvcrt
+
+    def _lock(fh: Any, *, wait: bool) -> None:
+        fh.seek(0)
+        while True:
+            try:
+                msvcrt.locking(fh.fileno(), msvcrt.LK_NBLCK, 1)
+                return
+            except OSError:
+                if not wait:
+                    raise
+                time.sleep(0.05)
+
+    def _unlock(fh: Any) -> None:
+        fh.seek(0)
+        msvcrt.locking(fh.fileno(), msvcrt.LK_UNLCK, 1)
+
+else:
+    import fcntl
+
+    def _lock(fh: Any, *, wait: bool) -> None:
+        fcntl.flock(fh, fcntl.LOCK_EX | (0 if wait else fcntl.LOCK_NB))
+
+    def _unlock(fh: Any) -> None:
+        fcntl.flock(fh, fcntl.LOCK_UN)
 
 
 class TelemetryError(ValueError):
@@ -296,11 +324,11 @@ def _locked(project: Path) -> Iterator[None]:
     lock = project / ".tuvl" / "audit" / "outbox.lock"
     lock.parent.mkdir(parents=True, exist_ok=True)
     with lock.open("w") as fh:
-        fcntl.flock(fh, fcntl.LOCK_EX)
+        _lock(fh, wait=True)
         try:
             yield
         finally:
-            fcntl.flock(fh, fcntl.LOCK_UN)
+            _unlock(fh)
 
 
 def queued(project: Path) -> int:
@@ -467,14 +495,14 @@ def flush(project: Path, *, timeout: float = 3.0) -> dict[str, Any]:
         return {"sent": 0, "queued": queued(project), "error": ""}
     guard = (project / ".tuvl" / "audit" / "outbox.send").open("w")
     try:
-        fcntl.flock(guard, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        _lock(guard, wait=False)
     except OSError:
         guard.close()
         return {"sent": 0, "queued": queued(project), "error": "", "busy": True}
     try:
         return _flush_locked(project, config, timeout)
     finally:
-        fcntl.flock(guard, fcntl.LOCK_UN)
+        _unlock(guard)
         guard.close()
 
 
