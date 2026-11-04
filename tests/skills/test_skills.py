@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from typing import get_args
 
 import yaml
 from typer.testing import CliRunner
 
 from tuvl import skills
 from tuvl.cli import app
+from tuvl.contract.schema import Effect
 
 EXPECTED = {
     "tuvl-spec",
@@ -52,6 +54,17 @@ def test_skills_only_mention_real_commands() -> None:
     for path, text in skills.bundled().items():
         for used in re.findall(r"`tuvl ([a-z][a-z-]*)", text):
             assert used in commands, f"{path} mentions `tuvl {used}`"
+
+
+def test_the_agent_code_skill_lists_exactly_the_effects_the_schema_accepts() -> None:
+    text = next(
+        t
+        for p, t in skills.bundled().items()
+        if p.name == "SKILL.md" and p.parent.name == "agent-code"
+    )
+    listed = re.search(r"effect: \w+\s+# ([a-z |]+?);", text)
+    assert listed, "the effect list comment moved"
+    assert {v.strip() for v in listed.group(1).split("|")} == set(get_args(Effect))
 
 
 def test_install_update_and_legacy_removal(tmp_path: Path) -> None:
