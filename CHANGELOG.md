@@ -12,6 +12,12 @@ release below is the current one.
 
 ## [Unreleased]
 
+---
+
+## [2.0.2] — 2026-11-04
+
+A patch release of `tuvl` and `tuvl-insight`: the CLI starts on Windows, the spec checker accepts more of what the engine builds, and Gemini loop agents keep their tool-call signatures.
+
 ### Added
 
 - **A `note:` line under a spec step.** `- note: <text>` is free text no check reads; use it to say why a step is built
@@ -19,6 +25,9 @@ release below is the current one.
 
 ### Fixed
 
+- **`tuvl` starts on Windows.** `devtelemetry` imported `fcntl`, which does not exist on Windows, so every command
+  failed at import with `No module named 'fcntl'`. The outbox locks use `msvcrt.locking` there. CI now installs the
+  wheel and starts the CLI on Windows. Running a command from Insight still needs a POSIX shell (#32).
 - **Gemini loop tool calls preserve thought signatures.** OpenAI-compatible parsing and streaming now keep Gemini's opaque `extra_content` on tool calls, and loop agents re-emit it on the next request instead of failing with a missing `thought_signature`.
 - **The spec checker knows the signals of storage and http tool steps.** `tool storage get` could not route
   `not_found` and `tool http` could not route `http_404` (S004, S012), so a spec-first project had to build such a step
