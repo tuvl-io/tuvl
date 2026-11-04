@@ -73,7 +73,7 @@ expect: { end: default }
 | Field | `` `name` (type; flags) `` — types `string text integer numeric boolean uuid date timestamptz jsonb`, `enum: a \| b`, `uuid → Model`; flags `required unique secure`, `default <v>` |
 | Flow | `## Flow: <workflow_name>` under `# Flows` |
 | Trigger | `Trigger: POST /path · signed-in` — or `group <g>` / `public`; `schedule <cron>`; `tool` (only called as a loop's workflow tool) |
-| Input / Ends | `` Input: `f` (type), … `` · `Ends: default 201 · <name> <status> · failed 500` (`default` and `failed` are required) |
+| Input / Ends | `` Input: `f` (type), `g`? (type), … `` (`` `g`? `` is optional, read as `type?`) · `Ends: default 201 · <name> <status> · failed 500` (`default` and `failed` are required) |
 | Step | ``N. `id` — <engine …> · in `a`, `b`? · out `x` (type) · budget 800 tok, 20s, retry 2 · effect write · expires 24h · guardrails `g@1` `` — a trailing `` `b`? `` marks an optional input; long steps continue on an indented `· …` line |
 | Engines | `code` · `tool db read\|list\|create\|update\|upsert\|delete <Model>` · `tool http <METHOD> <name>` · `tool mcp <server>` · `llm <model>` · `loop <model>` (with `` tools: `t1`, workflow `w` (approval <group> when `expr`; max 1 call) ``) · `decide rules` · `decide model <ref> ≥ 0.8` · `decide rules + model <ref> ≥ 0.7` · `human group <g>` |
 | Route | `` - signal[, signal] → `step` `` or `→ END` / `→ END.<end>`; `(out `f` (type))` names outputs a reserved signal carries |

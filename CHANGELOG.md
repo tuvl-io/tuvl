@@ -26,8 +26,11 @@ A patch release of `tuvl` and `tuvl-insight`: the CLI starts on Windows, the spe
 ### Fixed
 
 - **`tuvl` starts on Windows.** `devtelemetry` imported `fcntl`, which does not exist on Windows, so every command
-  failed at import with `No module named 'fcntl'`. The outbox locks use `msvcrt.locking` there. CI now installs the
-  wheel and starts the CLI on Windows. Running a command from Insight still needs a POSIX shell (#32).
+  failed at import with `No module named 'fcntl'`. The outbox locks use `msvcrt.locking` there (#32).
+- **Commands started from Insight work on Windows.** They ran through `sh -c` and were stopped with `os.killpg`, and
+  the check that a command was still running used `os.kill(pid, 0)`, which ends the process on Windows. They now run
+  through Python, are stopped with `taskkill /T`, and are checked through the process table.
+- CI installs the wheel on Windows, starts the CLI, and runs the command-job tests there.
 - **Gemini loop tool calls preserve thought signatures.** OpenAI-compatible parsing and streaming now keep Gemini's opaque `extra_content` on tool calls, and loop agents re-emit it on the next request instead of failing with a missing `thought_signature`.
 - **The spec checker knows the signals of storage and http tool steps.** `tool storage get` could not route
   `not_found` and `tool http` could not route `http_404` (S004, S012), so a spec-first project had to build such a step
