@@ -31,11 +31,11 @@ dependencies = [
     "python-dotenv>=1.2.2,<2",
     # --- REST API Server ---
     "fastapi>=0.136.0",
-    "starlette>=0.49.0", # imported directly (request plumbing)
+    "starlette>=1.3.1", # imported directly (request plumbing)
     "uvicorn[standard]>=0.44.0",
-    "python-multipart>=0.0.12", # OAuth2PasswordRequestForm (login) needs it at import
+    "python-multipart>=0.0.31", # OAuth2PasswordRequestForm (login) needs it at import
     # --- Data, Persistence & Protocols ---
-    "pydantic-settings>=2.14.1,<3",
+    "pydantic-settings>=2.14.2,<3",
     "sqlmodel>=0.0.38",
     "sqlalchemy[asyncio]>=2.0,<2.1", # imported directly, not only via sqlmodel
     "asyncpg>=0.31.0",
@@ -43,12 +43,12 @@ dependencies = [
     "pyyaml>=6.0.3",
     "httpx>=0.27.0",
     # --- Security ---
-    "PyJWT[crypto]>=2.10.0", # Ed25519-signed access tokens (EdDSA)
+    "PyJWT[crypto]>=2.15.0", # Ed25519-signed access tokens (EdDSA)
     "cryptography>=43.0.0", # imported directly (Ed25519 key handling)
     "bcrypt>=5.0.0",
     # --- Observability ---
     "structlog>=24.0.0",
-    "opentelemetry-api>=1.42.0",
+    "opentelemetry-api>=1.45.1",
     "opentelemetry-sdk>=1.42.0",
     "opentelemetry-exporter-otlp-proto-http>=1.42.0",
     "opentelemetry-instrumentation-fastapi>=0.63b0",
@@ -67,7 +67,7 @@ standard = [
 
 # Features a production image installs only when the project uses them: `tuvl ship` reads the
 # project and pins exactly these (see tuvl.extras). A bare `pip install tuvl` has none of them.
-mcp = ["mcp>=1.27.0,<2"]  # `use: mcp` tools, MCP export, `tuvl serve mcp` (2.x renamed FastMCP)
+mcp = ["mcp>=1.30.0,<2"]  # `use: mcp` tools, MCP export, `tuvl serve mcp` (2.x renamed FastMCP)
 redis = ["redis>=5.0.0"]  # a `redis` datasource
 vector = ["pgvector>=0.3.0"]  # vector search (pulls in numpy)
 otel-grpc = ["opentelemetry-exporter-otlp-proto-grpc>=1.42.0"]  # TUVL_OTLP_PROTOCOL=grpc
@@ -76,7 +76,7 @@ codegen = ["libcst>=1.4"]  # tuvl generate code, init --sample
 test = ["aiosqlite>=0.20.0"]  # tuvl run tests runs workflows against in-memory SQLite
 tui = ["textual>=1.0"]  # the terminal UI that `tuvl dev` starts on a terminal
 review = ["ruff>=0.8"]  # tuvl review code lints the Python of code agents
-pdf = ["pypdf>=5.0"]  # tuvl import idea reads the text of PDF ideas (Word files need nothing extra)
+pdf = ["pypdf>=6.21.4"]  # tuvl import idea reads the text of PDF ideas (Word files need nothing extra)
 
 # Dev tooling is a PEP 735 dependency group (uv-native), not a published extra.
 [dependency-groups]
