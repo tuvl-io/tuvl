@@ -12,6 +12,12 @@ release below is the current one.
 
 ## [Unreleased]
 
+---
+
+## [2.0.3] — 2026-11-05
+
+A security patch release of `tuvl` and `tuvl-insight`: patched dependencies for every open Dependabot advisory. Dependency updates only, no changes to tuvl's own code.
+
 ### Security
 
 - **Python dependencies move to patched releases.** The lockfile was behind advisories published for `PyJWT`, `starlette`,

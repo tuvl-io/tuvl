@@ -1012,7 +1012,7 @@ def _write_pyproject(path: Path, *, name: str) -> None:
         prerelease = re.search(r"(a|b|rc|\.dev)\d", tuvl_version) is not None
     except importlib.metadata.PackageNotFoundError:
         tuvl_dep = '"tuvl"'
-        tuvl_dev_dep = '"tuvl[standard]>=2.0.2"'
+        tuvl_dev_dep = '"tuvl[standard]>=2.0.3"'
         prerelease = True
     content = (
         "# ── tuvl project ─────────────────────────────────────────────────────────────\n"
