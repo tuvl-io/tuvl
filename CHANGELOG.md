@@ -26,8 +26,10 @@ release below is the current one.
   `pypdf>=6.21.4` (extra `pdf`), so an install that resolves to the floor no longer picks a vulnerable release.
 - **The Insight UI lockfile is refreshed.** `vite` 8.3.6, `react-router-dom` 7.18.5, `js-yaml` 4.3.2 and `vitest` 4.1.12 (their
   ranges in `ui/package.json` are raised), and the lockfile entries for `postcss`, `nanoid`, `browserslist`, `source-map-js`, `brace-expansion`,
-  `zod`, `@babel/core` and others. 27 of the alerts were in development tooling only. One moderate alert remains:
-  `minimatch` 10.2.x under `typescript-eslint`, which is a lint-time dependency pinned to a major version below the patched 11.0.1.
+  `zod`, `@babel/core` and others. 27 of the alerts were in development tooling only.
+- **`minimatch` is forced to 11.x in the UI lockfile.** `typescript-eslint` still depends on `minimatch` 10, which has a denial-of-service
+  advisory fixed in 11.0.1; `ui/package.json` carries a `pnpm.overrides` entry (`minimatch@10` to `^11.0.1`) until `typescript-eslint` moves to 11.
+  It is a lint-time dependency; typecheck, lint, tests and the UI build pass with it, and no Dependabot alert is left open.
 
 ---
 
