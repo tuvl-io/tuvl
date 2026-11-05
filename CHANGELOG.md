@@ -12,6 +12,23 @@ release below is the current one.
 
 ## [Unreleased]
 
+### Security
+
+- **Python dependencies move to patched releases.** The lockfile was behind advisories published for `PyJWT`, `starlette`,
+  `python-multipart`, `mcp`, `cryptography`, `pypdf`, `anyio`, `certifi`, `idna`, `opentelemetry-api` and `pydantic-settings`.
+  `uv.lock` now resolves `PyJWT` 2.15.1, `starlette` 1.10.0, `python-multipart` 0.0.33, `mcp` 1.30.0, `cryptography` 50.0.2,
+  `pypdf` 6.21.4, `anyio` 4.14.2, `certifi` 2026.10.23, `idna` 3.20, `opentelemetry-api` 1.45.2 (with the matching
+  OpenTelemetry packages) and `pydantic-settings` 2.16.2. tuvl signs and verifies its tokens with `PyJWT` using local EdDSA keys only;
+  it does not use `PyJWKClient`, so most `PyJWT` advisories did not reach it, but the denial-of-service ones could. The multipart
+  and form-parsing advisories (`starlette`, `python-multipart`) reach the upload endpoints, and the `mcp` ones reach `/mcp` when the export is on.
+- **The minimum versions of the packages tuvl uses on a request path are raised.** `PyJWT[crypto]>=2.15.0`, `starlette>=1.3.1`,
+  `python-multipart>=0.0.31`, `opentelemetry-api>=1.45.1`, `pydantic-settings>=2.14.2`, `mcp>=1.30.0` (extra `mcp`) and
+  `pypdf>=6.21.4` (extra `pdf`), so an install that resolves to the floor no longer picks a vulnerable release.
+- **The Insight UI lockfile is refreshed.** `vite` 8.3.6, `react-router-dom` 7.18.5, `js-yaml` 4.3.2 and `vitest` 4.1.12 (their
+  ranges in `ui/package.json` are raised), and the lockfile entries for `postcss`, `nanoid`, `browserslist`, `source-map-js`, `brace-expansion`,
+  `zod`, `@babel/core` and others. 27 of the alerts were in development tooling only. One moderate alert remains:
+  `minimatch` 10.2.x under `typescript-eslint`, which is a lint-time dependency pinned to a major version below the patched 11.0.1.
+
 ---
 
 ## [2.0.2] — 2026-11-04
