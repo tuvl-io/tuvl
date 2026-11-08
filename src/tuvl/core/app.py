@@ -142,6 +142,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     check_at_boot(production=settings.tuvl_env == "production")
 
+    # ... and on the variables the project's EnvConfig declares required.
+    from tuvl.core import envconfig
+
+    envconfig.check_at_boot(production=settings.tuvl_env == "production")
+
     logger.info("Running deployment mode pre-flight check")
     await run_pre_flight()
 

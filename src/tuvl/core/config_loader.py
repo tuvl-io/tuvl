@@ -19,6 +19,7 @@ Supported kinds
 - ``RedisConfig``          → :mod:`tuvl.core.datasources.loader`
 - ``FederationProvider``   → :mod:`tuvl.core.auth.federation_loader`
 - ``RoleSeed``             → :mod:`tuvl.core.auth.seed` (first-boot roles, applied once)
+- ``EnvConfig``            → :mod:`tuvl.core.envconfig` (the project's environment variables)
 - ``AgentModel``           → :mod:`tuvl.core.models.agent_models`
 - ``Workflow``             → :mod:`tuvl.contract.registry` when it declares
   ``version: tuvl/v2``, else the 1.x :mod:`tuvl.core.api.manager`
@@ -86,6 +87,7 @@ _PROCESS_ORDER: list[str] = [
     "RedisConfig",
     "FederationProvider",
     "RoleSeed",
+    "EnvConfig",
     "Storage",
     "Workflow",
     "Test",
@@ -152,6 +154,7 @@ def load_all_configs(
         DATASOURCE_REGISTRY,
         _reset_primary_state,
     )
+    from tuvl.core.envconfig import MANIFEST as ENV_MANIFEST
     from tuvl.core.models.agent_models import AGENT_MODEL_REGISTRY
     from tuvl.core.models.collections_loader import COLLECTION_REGISTRY
     from tuvl.core.models.embeddings_loader import EMBEDDING_REGISTRY
@@ -181,6 +184,7 @@ def load_all_configs(
     _reset_primary_state()
     FEDERATION_REGISTRY.clear()
     ROLE_SEED_REGISTRY.clear()
+    ENV_MANIFEST.clear()
 
     from tuvl.contract import registry as contract_registry
 
@@ -242,6 +246,7 @@ def load_all_configs(
         _finalize_primary_ds,
         _register_datasource_from_dict,
     )
+    from tuvl.core.envconfig import register_env_config_from_dict
     from tuvl.core.models.agent_models import _register_agent_model_from_dict
     from tuvl.core.models.collections_loader import _register_collection_from_dict
     from tuvl.core.models.embeddings_loader import _register_embedding_from_dict
@@ -260,6 +265,7 @@ def load_all_configs(
         "RedisConfig": _register_datasource_from_dict,
         "FederationProvider": _register_federation_from_dict,
         "RoleSeed": register_role_seed_from_dict,
+        "EnvConfig": register_env_config_from_dict,
         "Storage": register_store_from_dict,
         "Workflow": _register_workflow,
         "Test": contract_registry.register_document,
@@ -295,6 +301,7 @@ def load_all_configs(
         datasources=len(DATASOURCE_REGISTRY),
         federation=len(FEDERATION_REGISTRY),
         role_seeds=len(ROLE_SEED_REGISTRY),
+        env_variables=len(ENV_MANIFEST),
         storage=len(STORE_REGISTRY),
         workflows=len(contract_registry.WORKFLOWS),
         v2_tests=len(contract_registry.TESTS),

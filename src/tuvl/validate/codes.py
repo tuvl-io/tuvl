@@ -142,6 +142,15 @@ RULES: dict[str, tuple[str, str]] = {
         "E",
         "`parallel` under `transaction: per_run` (its branches use sessions of their own)",
     ),
+    "V045": (
+        "E",
+        "`EnvConfig`: malformed document, a variable declared twice, an invalid name, or a secret / required variable that also has a default",
+    ),
+    "V046": (
+        "E",
+        "A `${VAR}` reference (or `os.environ` read) names a variable no `EnvConfig` declares. Applies once the project has an `EnvConfig`",
+    ),
+    "V047": ("W", "An `EnvConfig` variable that nothing in the project refers to"),
     "V044": (
         "E",
         "`RoleSeed`: malformed document, a role listed twice (in one file or across files), or an invalid role name or scope",
