@@ -45,6 +45,11 @@ from tuvl.core.logger import logger
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
+#: IAM administration: first-admin bootstrap, user/role CRUD and federation-provider admin.
+#: Mounted as its own API group (``iam``) that a production server leaves out by default;
+#: production IAM is run in the cluster with ``tuvl iam``. Login, refresh and logout stay on ``router``.
+iam_router = APIRouter(prefix="/auth", tags=["iam"])
+
 
 class TokenResponse(BaseModel):
     access_token: str
@@ -131,7 +136,7 @@ IamSession = Annotated[AsyncSession, Depends(_get_iam_session)]
 AdminUser = Annotated[TokenUser, Depends(require_scope("iam:admin"))]
 
 
-@router.post(
+@iam_router.post(
     "/bootstrap",
     response_model=TokenResponse,
     summary="Create first superadmin user (one-time setup)",
@@ -276,7 +281,7 @@ async def logout(
     logger.info("Token revoked via logout.")
 
 
-@router.post(
+@iam_router.post(
     "/admin/users",
     response_model=UserResponse,
     status_code=status.HTTP_201_CREATED,
@@ -313,7 +318,7 @@ async def create_user(
     )
 
 
-@router.get(
+@iam_router.get(
     "/admin/users",
     response_model=list[UserResponse],
     summary="List all IAM users",
@@ -334,7 +339,7 @@ async def list_users(session: IamSession, _admin: AdminUser) -> list[UserRespons
     ]
 
 
-@router.get(
+@iam_router.get(
     "/admin/users/{user_id}",
     response_model=UserResponse,
     summary="Get a single IAM user",
@@ -359,7 +364,7 @@ async def get_user(
     )
 
 
-@router.delete(
+@iam_router.delete(
     "/admin/users/{user_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete an IAM user",
@@ -375,7 +380,7 @@ async def delete_user(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
-@router.patch(
+@iam_router.patch(
     "/admin/users/{user_id}",
     response_model=UserResponse,
     summary="Update a user's password or active status",
@@ -414,7 +419,7 @@ async def update_user(
     )
 
 
-@router.post(
+@iam_router.post(
     "/admin/roles",
     response_model=RoleResponse,
     status_code=status.HTTP_201_CREATED,
@@ -440,7 +445,7 @@ async def create_role(
     )
 
 
-@router.get(
+@iam_router.get(
     "/admin/roles",
     response_model=list[RoleResponse],
     summary="List all roles with their scopes",
@@ -453,7 +458,7 @@ async def list_roles(session: IamSession, _admin: AdminUser) -> list[RoleRespons
     ]
 
 
-@router.delete(
+@iam_router.delete(
     "/admin/roles/{role_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete a role (and all its scope and user assignments)",
@@ -469,7 +474,7 @@ async def delete_role(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
-@router.patch(
+@iam_router.patch(
     "/admin/roles/{role_id}/scopes",
     response_model=RoleResponse,
     summary="Replace all scopes on a role",
@@ -497,7 +502,7 @@ async def update_role_scopes(
     )
 
 
-@router.post(
+@iam_router.post(
     "/admin/users/{user_id}/roles/{role_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Assign a role to a user",
@@ -514,7 +519,7 @@ async def assign_role(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
-@router.delete(
+@iam_router.delete(
     "/admin/users/{user_id}/roles/{role_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Revoke a role from a user",
@@ -981,7 +986,7 @@ async def oauth_device_poll(
 # see iam_service.safe_federation_path / list_federation_providers / etc.
 
 
-@router.get(
+@iam_router.get(
     "/admin/federation",
     response_model=list[str],
     summary="List configured federation providers",
@@ -991,7 +996,7 @@ async def list_federation_providers(_admin: AdminUser) -> list[str]:
     return await iam_service.list_federation_providers()
 
 
-@router.get(
+@iam_router.get(
     "/admin/federation/{name}",
     summary="Get a federation provider config",
 )
@@ -1006,7 +1011,7 @@ async def get_federation_provider(name: str, _admin: AdminUser) -> dict:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
-@router.put(
+@iam_router.put(
     "/admin/federation/{name}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Save (create or update) a federation provider config",
@@ -1018,7 +1023,7 @@ async def save_federation_provider(name: str, body: dict, _admin: AdminUser) -> 
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@router.delete(
+@iam_router.delete(
     "/admin/federation/{name}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete a federation provider config",

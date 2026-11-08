@@ -1051,6 +1051,7 @@ const DEFAULT_API_ACCESS: ApiAccessFormState = {
 
 const PRODUCTION_BASE = ['auth', 'runs']
 const OPTIONAL_GROUPS: { key: string; label: string; hint: string }[] = [
+  { key: 'iam', label: 'iam', hint: '/auth/bootstrap, /auth/admin/* — users, roles, federation; production uses `tuvl iam` instead' },
   { key: 'admin', label: 'admin', hint: '/admin/* — engine administration' },
   { key: 'artifacts', label: 'artifacts', hint: '/api/artifacts/* — artifact list and upload' },
   { key: 'system', label: 'system', hint: '/api/_system/* — introspection; only Insight uses it' },
