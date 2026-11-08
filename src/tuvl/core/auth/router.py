@@ -113,6 +113,7 @@ class RoleResponse(BaseModel):
     name: str
     description: str | None
     scopes: list[str]
+    is_active: bool = True
 
 
 class BootstrapRequest(BaseModel):
@@ -378,6 +379,8 @@ async def delete_user(
         await iam_service.delete_user(session, user_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @iam_router.patch(
@@ -408,6 +411,8 @@ async def update_user(
         )
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     return UserResponse(
         id=user.id,
         email=user.email,
@@ -442,6 +447,7 @@ async def create_role(
         name=role.name,
         description=role.description,
         scopes=scopes,
+        is_active=role.is_active,
     )
 
 
@@ -453,7 +459,13 @@ async def create_role(
 async def list_roles(session: IamSession, _admin: AdminUser) -> list[RoleResponse]:
     pairs = await iam_service.list_roles(session)
     return [
-        RoleResponse(id=role.id, name=role.name, description=role.description, scopes=scopes)
+        RoleResponse(
+            id=role.id,
+            name=role.name,
+            description=role.description,
+            scopes=scopes,
+            is_active=role.is_active,
+        )
         for role, scopes in pairs
     ]
 
@@ -472,6 +484,8 @@ async def delete_role(
         await iam_service.delete_role(session, role_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @iam_router.patch(
@@ -494,11 +508,14 @@ async def update_role_scopes(
         role, scopes = await iam_service.update_role_scopes(session, role_id, req.scopes)
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     return RoleResponse(
         id=role.id,
         name=role.name,
         description=role.description,
         scopes=scopes,
+        is_active=role.is_active,
     )
 
 
@@ -534,6 +551,8 @@ async def revoke_role(
         await iam_service.revoke_role(session, user_id, role_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 # Built-in URL/scope defaults for well-known providers.

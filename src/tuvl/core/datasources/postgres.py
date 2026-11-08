@@ -548,6 +548,13 @@ async def init_db() -> None:
                     sync_conn, tables=iam_tables, checkfirst=True
                 )
             )
+            # A database first booted before roles could be disabled has no such column.
+            await conn.execute(
+                text(
+                    f'ALTER TABLE "{table_of(IAMRole).name}" ADD COLUMN IF NOT EXISTS '
+                    "is_active BOOLEAN NOT NULL DEFAULT true"
+                )
+            )
         logger.info("IAM tables ready", datasource=_PRIMARY_DS, pid=pid)
 
     # Create tuvl_system_model_versions tracking table on the primary datasource.

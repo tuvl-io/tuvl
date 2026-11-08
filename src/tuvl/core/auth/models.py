@@ -76,6 +76,11 @@ class IAMRole(SQLModel, table=True):
         sa_column=sa.Column(sa.String, unique=True, index=True, nullable=False),
     )
     description: str | None = Field(default=None)
+    #: A disabled role keeps its members and scopes but grants nothing and adds no group.
+    is_active: bool = Field(
+        default=True,
+        sa_column=sa.Column(sa.Boolean, nullable=False, server_default=sa.true()),
+    )
 
 
 class IAMUserRole(SQLModel, table=True):

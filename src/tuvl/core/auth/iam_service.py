@@ -33,6 +33,7 @@ from typing import Any
 
 import yaml as _yaml
 from fastapi.concurrency import run_in_threadpool
+from sqlalchemy import distinct, func
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import col, or_, select
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -131,12 +132,22 @@ async def get_role_by_id(session: AsyncSession, role_id: uuid.UUID) -> IAMRole |
     return result.first()
 
 
-async def load_user_roles(session: AsyncSession, user: IAMUser) -> list[IAMRole]:
-    result = await session.exec(
+async def get_role_by_name(session: AsyncSession, name: str) -> IAMRole | None:
+    result = await session.exec(select(IAMRole).where(IAMRole.name == name))
+    return result.first()
+
+
+async def load_user_roles(
+    session: AsyncSession, user: IAMUser, *, active_only: bool = False
+) -> list[IAMRole]:
+    stmt = (
         select(IAMRole)
         .join(IAMUserRole, col(IAMUserRole.role_id) == IAMRole.id)
         .where(IAMUserRole.user_id == user.id)
     )
+    if active_only:
+        stmt = stmt.where(col(IAMRole.is_active).is_(True))
+    result = await session.exec(stmt)
     return list(result.all())
 
 
@@ -159,8 +170,8 @@ async def load_role_scopes(session: AsyncSession, role_id: uuid.UUID) -> list[st
 
 
 async def build_token_for_user(session: AsyncSession, user: IAMUser) -> str:
-    """Assemble roles + scopes then mint an access token for *user*."""
-    roles = await load_user_roles(session, user)
+    """Assemble roles + scopes then mint an access token for *user*; a disabled role adds neither."""
+    roles = await load_user_roles(session, user, active_only=True)
     role_names = [r.name for r in roles]
     scopes = await load_role_scopes_for_roles(session, [r.id for r in roles])
     ttl = settings.tuvl_token_ttl_seconds or None
@@ -176,7 +187,58 @@ async def revoke_token(raw_token: str) -> None:
     await token_blacklist.revoke(raw_token, ttl_seconds=ttl)
 
 
+# ── Keeping an administrator ───────────────────────────────────────────────────
+
+ADMIN_SCOPE = "iam:admin"
+SUPERADMIN_ROLE = "superadmin"
+
+
+async def active_admin_count(session: AsyncSession) -> int:
+    """Active users who hold an active role that grants ``iam:admin``."""
+    result = await session.exec(
+        select(func.count(distinct(IAMUser.id)))
+        .join(IAMUserRole, col(IAMUserRole.user_id) == IAMUser.id)
+        .join(IAMRole, col(IAMRole.id) == IAMUserRole.role_id)
+        .join(IAMRoleScope, col(IAMRoleScope.role_id) == IAMRole.id)
+        .where(
+            col(IAMUser.is_active).is_(True),
+            col(IAMRole.is_active).is_(True),
+            IAMRoleScope.scope_name == ADMIN_SCOPE,
+        )
+    )
+    return int(result.one())
+
+
+async def _keep_an_admin(session: AsyncSession, before: int) -> None:
+    """Undo the flushed change when it removed the last active administrator.
+
+    Only enforced when there was one: a database that never had an administrator is not locked.
+    """
+    if before and not await active_admin_count(session):
+        await session.rollback()
+        raise ConflictError(
+            f"That change would leave no active administrator "
+            f"(a user holding an active role with {ADMIN_SCOPE})."
+        )
+
+
 # ── Token lifecycle ────────────────────────────────────────────────────────────
+
+
+async def _ensure_superadmin_role(session: AsyncSession, scopes: list[str]) -> IAMRole:
+    """The ``superadmin`` role, active and holding *scopes* (created when absent, e.g. not seeded)."""
+    role = await get_role_by_name(session, SUPERADMIN_ROLE)
+    if role is None:
+        role = IAMRole(name=SUPERADMIN_ROLE, description="Full platform administrator")
+        session.add(role)
+        await session.flush()  # populate role.id
+    role.is_active = True
+    held = set(await load_role_scopes(session, role.id))
+    for scope_name in scopes:
+        if scope_name not in held:
+            session.add(IAMRoleScope(role_id=role.id, scope_name=scope_name))
+    await session.flush()
+    return role
 
 
 async def bootstrap(
@@ -195,13 +257,8 @@ async def bootstrap(
     if count_result.first() is not None:
         raise ConflictError("Bootstrap is only available when no users exist.")
 
-    initial_scopes = list({admin_scope, "iam:admin"})
-    role = IAMRole(name="superadmin", description="Full platform administrator")
-    session.add(role)
-    await session.flush()  # populate role.id
-
-    for scope_name in initial_scopes:
-        session.add(IAMRoleScope(role_id=role.id, scope_name=scope_name))
+    initial_scopes = list({admin_scope, ADMIN_SCOPE})
+    role = await _ensure_superadmin_role(session, initial_scopes)
 
     hashed_password = await aget_password_hash(password)
     user = IAMUser(
@@ -335,12 +392,15 @@ async def delete_user(session: AsyncSession, user_id: uuid.UUID) -> None:
     user = await get_user_by_id(session, user_id)
     if user is None:
         raise NotFoundError("User not found.")
+    before = await active_admin_count(session)
     # role links first: databases created before the link FKs cascaded refuse the delete
     links = await session.exec(select(IAMUserRole).where(IAMUserRole.user_id == user_id))
     for link in links.all():
         await session.delete(link)
     await session.flush()
     await session.delete(user)
+    await session.flush()
+    await _keep_an_admin(session, before)
     await session.commit()
     await end_sessions([user_id])
 
@@ -363,6 +423,7 @@ async def update_user(
     if user is None:
         raise NotFoundError("User not found.")
 
+    before = await active_admin_count(session) if is_active is False else 0
     ends_sessions = False
     if password is not UNSET and password is not None:
         user.hashed_password = await aget_password_hash(password)
@@ -377,6 +438,8 @@ async def update_user(
     if phone_number is not UNSET and phone_number is not None:
         user.phone_number = phone_number
 
+    await session.flush()
+    await _keep_an_admin(session, before)
     await session.commit()
     await session.refresh(user)
     if ends_sessions:
@@ -421,11 +484,22 @@ async def list_roles(session: AsyncSession) -> list[tuple[IAMRole, list[str]]]:
     return out
 
 
-async def delete_role(session: AsyncSession, role_id: uuid.UUID) -> None:
+async def delete_role(
+    session: AsyncSession, role_id: uuid.UUID, *, require_empty: bool = False
+) -> None:
+    """Delete a role with its scopes and memberships.
+
+    With *require_empty* a role that still has members is refused instead of cascaded.
+    """
     role = await get_role_by_id(session, role_id)
     if role is None:
         raise NotFoundError("Role not found.")
     members = await _role_members(session, role_id)
+    if require_empty and members:
+        raise ConflictError(
+            f"Role '{role.name}' still has {len(members)} member(s); remove them or force the delete."
+        )
+    before = await active_admin_count(session)
     links = await session.exec(select(IAMUserRole).where(IAMUserRole.role_id == role_id))
     for link in links.all():
         await session.delete(link)
@@ -434,6 +508,8 @@ async def delete_role(session: AsyncSession, role_id: uuid.UUID) -> None:
         await session.delete(scope_row)
     await session.flush()
     await session.delete(role)
+    await session.flush()
+    await _keep_an_admin(session, before)
     await session.commit()
     await end_sessions(members)
 
@@ -447,6 +523,7 @@ async def update_role_scopes(
     if role is None:
         raise NotFoundError("Role not found.")
 
+    before = await active_admin_count(session)
     existing = await session.exec(select(IAMRoleScope).where(IAMRoleScope.role_id == role_id))
     rows = existing.all()
     removed = {row.scope_name for row in rows} - set(scopes)
@@ -457,10 +534,72 @@ async def update_role_scopes(
         session.add(IAMRoleScope(role_id=role_id, scope_name=scope_name))
 
     members = await _role_members(session, role_id) if removed else []
+    await session.flush()
+    await _keep_an_admin(session, before)
     await session.commit()
     await session.refresh(role)
     await end_sessions(members)  # only a narrowed role ends sessions; added scopes wait for sign-in
     return role, scopes
+
+
+async def grant_scope(
+    session: AsyncSession, role_id: uuid.UUID, scope: str
+) -> tuple[IAMRole, list[str]]:
+    """Add one scope to a role (idempotent). Holders get it at their next sign-in."""
+    role = await get_role_by_id(session, role_id)
+    if role is None:
+        raise NotFoundError("Role not found.")
+    held = await load_role_scopes(session, role_id)
+    if scope not in held:
+        session.add(IAMRoleScope(role_id=role_id, scope_name=scope))
+        await session.commit()
+        held = [*held, scope]
+    return role, held
+
+
+async def revoke_scope(
+    session: AsyncSession, role_id: uuid.UUID, scope: str
+) -> tuple[IAMRole, list[str]]:
+    """Remove one scope from a role; its holders' sessions end so the narrowing applies."""
+    role = await get_role_by_id(session, role_id)
+    if role is None:
+        raise NotFoundError("Role not found.")
+    before = await active_admin_count(session)
+    rows = await session.exec(
+        select(IAMRoleScope).where(
+            IAMRoleScope.role_id == role_id, IAMRoleScope.scope_name == scope
+        )
+    )
+    found = rows.all()
+    if not found:
+        raise NotFoundError(f"Role '{role.name}' does not grant '{scope}'.")
+    for row in found:
+        await session.delete(row)
+    members = await _role_members(session, role_id)
+    await session.flush()
+    await _keep_an_admin(session, before)
+    await session.commit()
+    await end_sessions(members)
+    return role, await load_role_scopes(session, role_id)
+
+
+async def set_role_active(
+    session: AsyncSession, role_id: uuid.UUID, active: bool
+) -> tuple[IAMRole, list[str]]:
+    """Enable or disable a role. A disabled role keeps its members and scopes but grants nothing."""
+    role = await get_role_by_id(session, role_id)
+    if role is None:
+        raise NotFoundError("Role not found.")
+    before = await active_admin_count(session)
+    changed = role.is_active != active
+    role.is_active = active
+    members = await _role_members(session, role_id) if changed and not active else []
+    await session.flush()
+    await _keep_an_admin(session, before)
+    await session.commit()
+    await session.refresh(role)
+    await end_sessions(members)
+    return role, await load_role_scopes(session, role_id)
 
 
 async def assign_role(session: AsyncSession, user_id: uuid.UUID, role_id: uuid.UUID) -> None:
@@ -486,9 +625,45 @@ async def revoke_role(session: AsyncSession, user_id: uuid.UUID, role_id: uuid.U
     link = result.first()
     if link is None:
         raise NotFoundError("Assignment not found.")
+    before = await active_admin_count(session)
     await session.delete(link)
+    await session.flush()
+    await _keep_an_admin(session, before)
     await session.commit()
     await end_sessions([user_id])
+
+
+async def reset_admin(
+    session: AsyncSession, *, email: str, password: str
+) -> tuple[IAMUser, list[str]]:
+    """Break-glass recovery: make *email* an active administrator with *password*.
+
+    Creates the user when absent, re-enables a disabled account, and makes sure the
+    ``superadmin`` role exists, is active, grants ``iam:admin`` and is held by the user. Their
+    sessions end. There is no authentication here: only code that already reaches the database
+    (a shell in the cluster) can call it.
+    """
+    role = await _ensure_superadmin_role(session, [ADMIN_SCOPE])
+    user = await get_user_by_login(session, email)
+    hashed = await aget_password_hash(password)
+    if user is None:
+        user = IAMUser(email=email, hashed_password=hashed, is_active=True)
+        session.add(user)
+        await session.flush()
+    else:
+        user.hashed_password = hashed
+        user.is_active = True
+    held = await session.exec(
+        select(IAMUserRole).where(IAMUserRole.user_id == user.id, IAMUserRole.role_id == role.id)
+    )
+    if held.first() is None:
+        session.add(IAMUserRole(user_id=user.id, role_id=role.id))
+    await session.commit()
+    await session.refresh(user)
+    await end_sessions([user.id])
+    logger.warning("auth.iam.reset_admin", admin_email=email)
+    roles = await load_user_roles(session, user)
+    return user, [r.name for r in roles]
 
 
 # ── Federation provider administration ─────────────────────────────────────────
