@@ -279,10 +279,11 @@ async def bootstrap(
     return await build_token_for_user(session, user)
 
 
-async def login(session: AsyncSession, *, login_str: str, password: str) -> str:
-    """Verify credentials and mint a token. Raises :class:`AuthenticationError`
-    on any failure — the message never distinguishes "no such user" from
-    "wrong password" (user-enumeration guard)."""
+async def _verified_user(session: AsyncSession, *, login_str: str, password: str) -> IAMUser:
+    """The active user these credentials belong to, or :class:`AuthenticationError`.
+
+    The message never distinguishes "no such user" from "wrong password" (user-enumeration guard).
+    """
     user = await get_user_by_login(session, login_str)
 
     # Constant-time-ish: always run one bcrypt verification, even for a missing
@@ -293,7 +294,24 @@ async def login(session: AsyncSession, *, login_str: str, password: str) -> str:
 
     if user is None or not user.is_active or user.hashed_password is None or not password_ok:
         raise AuthenticationError("Incorrect email or password.")
+    return user
 
+
+async def authenticate_admin(session: AsyncSession, *, login_str: str, password: str) -> IAMUser:
+    """Verify credentials and require ``iam:admin`` through an active role (used by ``tuvl iam``)."""
+    user = await _verified_user(session, login_str=login_str, password=password)
+    roles = await load_user_roles(session, user, active_only=True)
+    scopes = await load_role_scopes_for_roles(session, [r.id for r in roles])
+    if ADMIN_SCOPE not in scopes:
+        raise AuthenticationError(f"{user.email} does not hold {ADMIN_SCOPE}.")
+    return user
+
+
+async def login(session: AsyncSession, *, login_str: str, password: str) -> str:
+    """Verify credentials and mint a token. Raises :class:`AuthenticationError`
+    on any failure — the message never distinguishes "no such user" from
+    "wrong password" (user-enumeration guard)."""
+    user = await _verified_user(session, login_str=login_str, password=password)
     token = await build_token_for_user(session, user)
     logger.info("auth.login.password", email=user.email)
     return token
