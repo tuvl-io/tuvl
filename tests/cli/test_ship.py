@@ -579,3 +579,37 @@ def test_ship_refuses_an_undeclared_reference_once_there_is_a_manifest(tmp_path:
     res = runner.invoke(app, ["ship", "-d", str(proj), "--no-build"])
     assert res.exit_code == 1
     assert "V046" in res.output and "UNDECLARED" in res.output
+
+
+def test_ship_puts_the_role_seed_and_the_env_config_in_the_image(tmp_path: Path) -> None:
+    proj = _project(tmp_path)
+    (proj / "iam").mkdir()
+    (proj / "iam" / "roles.yaml").write_text("kind: RoleSeed\nspec:\n  roles: [{name: ops}]\n")
+    (proj / "config").mkdir()
+    (proj / "config" / "env.yaml").write_text(
+        "kind: EnvConfig\nspec:\n  variables: [{name: UNUSED_BUT_FINE, default: '1'}]\n"
+    )
+    res = runner.invoke(app, ["ship", "-d", str(proj), "--no-build"])
+    assert res.exit_code == 0, res.output
+    dockerignore = (proj / ".dockerignore").read_text().splitlines()
+    assert "!iam/" in dockerignore and "!config/env.yaml" in dockerignore
+
+
+def test_ship_refuses_a_role_seed_an_older_allowlist_would_leave_out(tmp_path: Path) -> None:
+    proj = _project(tmp_path)
+    assert runner.invoke(app, ["ship", "-d", str(proj), "--no-build"]).exit_code == 0
+    # an allowlist written before RoleSeed existed
+    ignore = proj / ".dockerignore"
+    ignore.write_text(
+        "\n".join(
+            line
+            for line in ignore.read_text().splitlines()
+            if line not in ("!iam/", "!config/env.yaml")
+        )
+        + "\n"
+    )
+    (proj / "iam").mkdir()
+    (proj / "iam" / "roles.yaml").write_text("kind: RoleSeed\nspec:\n  roles: [{name: ops}]\n")
+    res = runner.invoke(app, ["ship", "-d", str(proj), "--no-build"])
+    assert res.exit_code == 1
+    assert "iam/roles.yaml (RoleSeed) would not be in the image" in res.output

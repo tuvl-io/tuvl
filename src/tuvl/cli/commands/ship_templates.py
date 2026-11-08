@@ -49,6 +49,8 @@ DOCKERIGNORE = """\
 !llms/
 !storage/
 !federation/
+!iam/
+!config/env.yaml
 !.tuvl/system.yaml
 !.tuvl/telemetry.yaml
 **/__pycache__

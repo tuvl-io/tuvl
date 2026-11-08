@@ -176,6 +176,37 @@ def _image_files(project_dir: Path, rules: list[tuple[bool, str]]) -> list[str]:
     return sorted(files)
 
 
+_RUNTIME_DOCUMENT = re.compile(r"^kind:\s*(RoleSeed|EnvConfig)\s*$", re.MULTILINE)
+
+
+def _missing_runtime_documents(project_dir: Path) -> list[str]:
+    """``RoleSeed`` and ``EnvConfig`` files the image would leave out.
+
+    Without them production seeds no roles and cannot tell which variables are required, and
+    nothing would say so: an older ``.dockerignore`` allowlist predates both kinds.
+    """
+    dockerignore = project_dir / ".dockerignore"
+    rules = _ignore_rules(dockerignore) if dockerignore.exists() else []
+    in_image = set(_image_files(project_dir, rules)) if rules else set()
+    missing = []
+    for root, dirs, names in os.walk(project_dir):
+        dirs[:] = sorted(
+            d for d in dirs if d not in _WALK_SKIP and (not d.startswith(".") or d == ".tuvl")
+        )
+        for name in sorted(names):
+            if not name.endswith((".yaml", ".yml")):
+                continue
+            path = Path(root, name)
+            try:
+                found = _RUNTIME_DOCUMENT.search(path.read_text(errors="ignore"))
+            except OSError:
+                continue
+            rel = path.relative_to(project_dir).as_posix()
+            if found and rel not in in_image:
+                missing.append(f"{rel} ({found.group(1)})")
+    return missing
+
+
 def _check_image_context(project_dir: Path) -> list[str]:
     """V027: what the image would contain, and any development material in it."""
     dockerignore = project_dir / ".dockerignore"
@@ -495,6 +526,16 @@ def ship_cmd(
             " (laya.enabled in values.yaml)"
         )
 
+    left_out = _missing_runtime_documents(project_dir)
+    if left_out:
+        for entry in left_out:
+            console.print(f"  [red]✗[/red] {escape(entry)} would not be in the image")
+        console.print(
+            "[red bold]Ship aborted — add `!<path>` for each to .dockerignore "
+            "(or run `tuvl ship --force` to regenerate it).[/red bold]"
+        )
+        raise typer.Exit(1)
+
     if problems:
         for problem in problems[:20]:
             console.print(f"  [red]✗ V027[/red] {problem}")
@@ -616,6 +657,9 @@ def ship_cmd(
             + "\n"
             f"[dim]The secret must include: {', '.join(secrets)}.\n"
             "A production engine refuses to start while a model's variable is missing.\n"
+            "First boot: add TUVL_BOOTSTRAP_ADMIN_EMAIL and TUVL_BOOTSTRAP_ADMIN_PASSWORD to the\n"
+            "secret to create the first administrator; later, manage users and roles with\n"
+            f"kubectl exec -it deploy/{slug} -- tuvl iam roles list\n"
             "The container runs in production mode: no dev routes, no Insight UI,\n"
             "JSON logs, telemetry on.[/dim]",
             title="[green]shipped[/green]",
