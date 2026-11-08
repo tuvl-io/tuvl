@@ -20,16 +20,16 @@ import sys
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Annotated, Any
+from typing import TYPE_CHECKING, Annotated, Any
 
 import typer
 from rich.console import Console
 from rich.table import Table
 
-from tuvl.core.auth import iam_service
-from tuvl.core.auth.iam_service import IamError, NotFoundError
-from tuvl.core.auth.models import IAMRole, IAMUser
 from tuvl.extras import toolchain_installed
+
+if TYPE_CHECKING:
+    from tuvl.core.auth.models import IAMRole, IAMUser
 
 console = Console()
 err = Console(stderr=True)
@@ -80,6 +80,13 @@ def _common(
 
 
 # ── plumbing ──────────────────────────────────────────────────────────────────
+
+
+def _svc() -> Any:
+    """The IAM service, imported when a command runs: loading the CLI must not load the auth runtime."""
+    from tuvl.core.auth import iam_service
+
+    return iam_service
 
 
 def _fail(message: str, code: int = 1) -> typer.Exit:
@@ -153,7 +160,7 @@ def _execute[T](
         try:
             actor: str | None = None
             if credentials:
-                admin = await iam_service.authenticate_admin(
+                admin = await _svc().authenticate_admin(
                     session, login_str=credentials[0], password=credentials[1]
                 )
                 actor = admin.email
@@ -166,7 +173,7 @@ def _execute[T](
         return asyncio.run(main())
     except typer.Exit:
         raise
-    except IamError as exc:
+    except _svc().IamError as exc:
         raise _fail(str(exc) or exc.__class__.__name__) from None
 
 
@@ -177,16 +184,16 @@ def _audit(actor: str | None, action: str, target: str) -> None:
 
 
 async def _role(session: Any, name: str) -> IAMRole:
-    role = await iam_service.get_role_by_name(session, name)
+    role: IAMRole | None = await _svc().get_role_by_name(session, name)
     if role is None:
-        raise NotFoundError(f"No role named '{name}'.")
+        raise _svc().NotFoundError(f"No role named '{name}'.")
     return role
 
 
 async def _user(session: Any, email: str) -> IAMUser:
-    user = await iam_service.get_user_by_login(session, email)
+    user: IAMUser | None = await _svc().get_user_by_login(session, email)
     if user is None:
-        raise NotFoundError(f"No user '{email}'.")
+        raise _svc().NotFoundError(f"No user '{email}'.")
     return user
 
 
@@ -203,8 +210,8 @@ def roles_list(ctx: typer.Context) -> None:
 
     async def op(session: Any, _actor: str | None) -> list[tuple[IAMRole, list[str], int]]:
         rows = []
-        for role, scopes in await iam_service.list_roles(session):
-            members = await iam_service._role_members(session, role.id)
+        for role, scopes in await _svc().list_roles(session):
+            members = await _svc()._role_members(session, role.id)
             rows.append((role, scopes, len(members)))
         return rows
 
@@ -234,7 +241,7 @@ def roles_create(
     """Create a role."""
 
     async def op(session: Any, actor: str | None) -> None:
-        await iam_service.create_role(
+        await _svc().create_role(
             session, name=name, description=description, scopes=list(dict.fromkeys(scope or []))
         )
         _audit(actor, "roles create", name)
@@ -258,7 +265,7 @@ def roles_delete(
 
     async def op(session: Any, actor: str | None) -> None:
         role = await _role(session, name)
-        await iam_service.delete_role(session, role.id, require_empty=not force)
+        await _svc().delete_role(session, role.id, require_empty=not force)
         _audit(actor, "roles delete", name)
 
     _execute(ctx, op)
@@ -268,7 +275,7 @@ def roles_delete(
 def _set_active(ctx: typer.Context, name: str, active: bool) -> None:
     async def op(session: Any, actor: str | None) -> None:
         role = await _role(session, name)
-        await iam_service.set_role_active(session, role.id, active)
+        await _svc().set_role_active(session, role.id, active)
         _audit(actor, "roles enable" if active else "roles disable", name)
 
     _execute(ctx, op)
@@ -297,7 +304,7 @@ def roles_grant(
 
     async def op(session: Any, actor: str | None) -> None:
         role = await _role(session, name)
-        await iam_service.grant_scope(session, role.id, scope)
+        await _svc().grant_scope(session, role.id, scope)
         _audit(actor, "roles grant", f"{name} {scope}")
 
     _execute(ctx, op)
@@ -314,7 +321,7 @@ def roles_revoke(
 
     async def op(session: Any, actor: str | None) -> None:
         role = await _role(session, name)
-        await iam_service.revoke_scope(session, role.id, scope)
+        await _svc().revoke_scope(session, role.id, scope)
         _audit(actor, "roles revoke", f"{name} {scope}")
 
     _execute(ctx, op)
@@ -332,7 +339,7 @@ def roles_add_user(
     async def op(session: Any, actor: str | None) -> None:
         role = await _role(session, name)
         user = await _user(session, email)
-        await iam_service.assign_role(session, user.id, role.id)
+        await _svc().assign_role(session, user.id, role.id)
         _audit(actor, "roles add-user", f"{name} {email}")
 
     _execute(ctx, op)
@@ -350,7 +357,7 @@ def roles_remove_user(
     async def op(session: Any, actor: str | None) -> None:
         role = await _role(session, name)
         user = await _user(session, email)
-        await iam_service.revoke_role(session, user.id, role.id)
+        await _svc().revoke_role(session, user.id, role.id)
         _audit(actor, "roles remove-user", f"{name} {email}")
 
     _execute(ctx, op)
@@ -365,7 +372,8 @@ def users_list(ctx: typer.Context) -> None:
     """List users with their roles."""
 
     async def op(session: Any, _actor: str | None) -> list[tuple[IAMUser, list[str]]]:
-        return await iam_service.list_users(session)
+        users: list[tuple[IAMUser, list[str]]] = await _svc().list_users(session)
+        return users
 
     table = Table("Email", "Name", "Active", "Roles")
     for user, roles in sorted(_execute(ctx, op), key=lambda p: p[0].email):
@@ -395,7 +403,7 @@ def users_create(
 
     async def op(session: Any, actor: str | None) -> None:
         roles = [await _role(session, name) for name in dict.fromkeys(role or [])]
-        user, _ = await iam_service.create_user(
+        user, _ = await _svc().create_user(
             session,
             email=email,
             password=password,
@@ -404,7 +412,7 @@ def users_create(
             phone_number=phone,
         )
         for held in roles:
-            await iam_service.assign_role(session, user.id, held.id)
+            await _svc().assign_role(session, user.id, held.id)
         _audit(actor, "users create", email)
 
     _execute(ctx, op)
@@ -414,7 +422,7 @@ def users_create(
 def _set_user_active(ctx: typer.Context, email: str, active: bool) -> None:
     async def op(session: Any, actor: str | None) -> None:
         user = await _user(session, email)
-        await iam_service.update_user(session, user.id, is_active=active)
+        await _svc().update_user(session, user.id, is_active=active)
         _audit(actor, "users enable" if active else "users disable", email)
 
     _execute(ctx, op)
@@ -473,7 +481,7 @@ def check_cmd(ctx: typer.Context) -> None:
 
     async def op(session: Any, _actor: str | None) -> tuple[dict[str, list[str]], set[str]]:
         granted: set[str] = set()
-        for role, scopes in await iam_service.list_roles(session):
+        for role, scopes in await _svc().list_roles(session):
             if role.is_active:
                 granted.update(scopes)
         return _project_scopes(), granted  # the project is loaded by now
@@ -504,7 +512,7 @@ def reset_admin_cmd(
     password = _new_password(email)
 
     async def op(session: Any, actor: str | None) -> None:
-        await iam_service.reset_admin(session, email=email, password=password)
+        await _svc().reset_admin(session, email=email, password=password)
         _audit(actor, "reset-admin", email)
 
     _execute(ctx, op, auth=False)
@@ -528,7 +536,7 @@ def export_cmd(
 
     async def op(session: Any, _actor: str | None) -> list[dict[str, Any]]:
         roles = []
-        for role, scopes in await iam_service.list_roles(session):
+        for role, scopes in await _svc().list_roles(session):
             if not role.is_active:
                 continue
             entry: dict[str, Any] = {"name": role.name}

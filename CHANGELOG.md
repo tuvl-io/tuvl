@@ -12,6 +12,33 @@ release below is the current one.
 
 ## [Unreleased]
 
+Production IAM and the environment manifest.
+
+### Added
+
+- **`tuvl iam`**: manage users, roles and scopes from inside the deployment (`kubectl exec -it deploy/<app> -- tuvl iam roles list`).
+  The administrator signs in, and the command works on the database directly. Roles: list, create, delete, enable, disable, grant,
+  revoke, add-user, remove-user. Users: list, create, enable, disable. Also `scopes list`, `check` (is every scope the project
+  enforces granted by an active role?), `reset-admin` (break-glass) and `export` (developer toolchain: live roles to a `RoleSeed`).
+  See [Production IAM](docs/auth.md#production-iam).
+- **`kind: RoleSeed`** and **`TUVL_BOOTSTRAP_ADMIN_EMAIL` / `_PASSWORD` / `_PASSWORD_FILE`**: roles and the first administrator are created on
+  the first boot of an empty database, once in its life (an `iam_seeded` marker in `tuvl_system_registry`), under an advisory lock.
+  A database that already holds a user or a role is never touched.
+- **Roles can be disabled.** A disabled role keeps its members and scopes but grants no scopes and adds no group to a token. Existing
+  databases get the `is_active` column on boot.
+- **The last administrator is protected.** A change that would leave no active administrator is refused, for the REST API as well as the CLI.
+- **`kind: EnvConfig`**: a project declares its environment variables with a description, `secret`, `required` and `default`. `tuvl lint project`
+  checks it (V045-V047), `tuvl ship` writes the Secret list, the chart `env:` values and `.env.example` from it, a production server refuses to
+  start without a required variable, and `tuvl check system` reports one that is missing. See [environment](docs/environment.md).
+- **Insight: Settings → Environment** lists the engine's, the project's and the referenced variables, saves values to `.env` (a secret's is
+  write-only), and declares undeclared ones.
+
+### Changed
+
+- **Breaking for production setups that call the REST IAM API.** `/auth/bootstrap` and `/auth/admin/*` move to a new `iam` API group that a
+  production server does not mount by default. Login, refresh, logout, `me` and OAuth stay in `auth`. Use `tuvl iam`, or add `iam` to
+  `spec.api.expose` / `TUVL_API_EXPOSE`. The dev server still mounts every group.
+
 ---
 
 ## [2.0.3] — 2026-11-05

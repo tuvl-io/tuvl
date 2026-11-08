@@ -196,7 +196,7 @@ SUPERADMIN_ROLE = "superadmin"
 async def active_admin_count(session: AsyncSession) -> int:
     """Active users who hold an active role that grants ``iam:admin``."""
     result = await session.exec(
-        select(func.count(distinct(IAMUser.id)))
+        select(func.count(distinct(col(IAMUser.id))))
         .join(IAMUserRole, col(IAMUserRole.user_id) == IAMUser.id)
         .join(IAMRole, col(IAMRole.id) == IAMUserRole.role_id)
         .join(IAMRoleScope, col(IAMRoleScope.role_id) == IAMRole.id)

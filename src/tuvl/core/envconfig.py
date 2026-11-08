@@ -528,9 +528,13 @@ def undeclared_references(project_dir: Path) -> dict[str, Reference]:
 
 
 def unused_declarations(project_dir: Path) -> list[str]:
-    """Manifest variables nothing in the project refers to."""
+    """Manifest variables nothing in the project refers to (the engine reads its own)."""
     refs = scan_references(project_dir)
-    return [name for name in load_manifest(project_dir) if name not in refs]
+    return [
+        name
+        for name in load_manifest(project_dir)
+        if name not in refs and name not in ENGINE_CATALOG
+    ]
 
 
 # ── boot and ship ─────────────────────────────────────────────────────────────

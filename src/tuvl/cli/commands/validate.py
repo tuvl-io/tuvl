@@ -753,7 +753,7 @@ def _validate_env_config(files: list[Path], project_dir: Path, result: ValidateR
             )
         )
     for name, label in sorted(declared.items()):
-        if name not in refs:
+        if name not in refs and name not in envconfig.ENGINE_CATALOG:
             result.issues.append(
                 Issue(
                     "warning",

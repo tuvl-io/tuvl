@@ -10,7 +10,7 @@ project) and `docs/tuvl-agentic-manual.md`.
 | Path | What |
 |---|---|
 | `src/tuvl/contract/` | The 2.0 document model: `schema.py` (Pydantic for Workflow, Test, TaskPlan, artifacts), `types.py` (type language), `tel.py` (expression language), `registry.py`, `surface.py` (input/end schemas for OpenAPI and MCP) |
-| `src/tuvl/validate/` | `tuvl lint project`: per-engine signals, data flow, types, policy, profiles; rule codes in `codes.py` (V001–V043); workflow rules are the package `workflow/` (one module per area: `engines`, `flow`, `expressions`, `policy`, `profile`, `topology`) |
+| `src/tuvl/validate/` | `tuvl lint project`: per-engine signals, data flow, types, policy, profiles; rule codes in `codes.py` (V001–V047); workflow rules are the package `workflow/` (one module per area: `engines`, `flow`, `expressions`, `policy`, `profile`, `topology`) |
 | `src/tuvl/runtime/` | The durable runner (`runner.py`), queue and leases (`queue.py`), journal (`journal.py`), host (`host.py`), SSE wakeup (`wakeup.py`), MCP session pool (`mcp_pool.py`), engines (`code.py`, `tool.py`, `llm.py`, `decide.py`, `decision.py`, `loop.py`, `human.py`, `map.py`, `parallel.py`), judges, dev controls (`devtools.py`) |
 | `src/tuvl/api/` | REST: triggers, runs/events/approvals (`runs.py`), auth helpers, MCP export (`mcp_export.py`), the dev API for Insight (the package `dev/`, one router module per area; `GET /dev/project/summary` is the project summary, `/dev/project` the record) |
 | `src/tuvl/spec/`, `codegen/`, `lock/`, `testing/`, `devmcp/` | Spec analysis and status, codegen, `tuvl.lock`, the offline test runner, `tuvl serve mcp` |

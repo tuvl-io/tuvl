@@ -287,3 +287,11 @@ def test_validate_reports_a_malformed_or_duplicated_manifest(tmp_path):
     result = _validate(tmp_path)
     messages = " ".join(i.message for i in result.issues if i.code == "V045")
     assert "secret and has a default" in messages
+
+
+def test_declaring_an_engine_variable_is_not_reported_as_unused(tmp_path):
+    (tmp_path / "env.yaml").write_text(
+        "kind: EnvConfig\nspec:\n  variables:\n    - {name: TUVL_BOOTSTRAP_ADMIN_PASSWORD, secret: true}\n"
+    )
+    assert _validate(tmp_path).issues == []
+    assert unused_declarations(tmp_path) == []

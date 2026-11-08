@@ -60,6 +60,8 @@ Folder names are conventions: discovery is recursive and dispatched by `kind:`.
 | `DataSource`, `RedisConfig` | Connections |
 | `EmbeddingRegistry` / `EmbeddingConfig`, `CollectionRegistry` / `CollectionConfig` | Vector search |
 | `FederationProvider` | OAuth/OIDC login |
+| `RoleSeed` | Roles a fresh production database starts with, applied once on the first boot ([auth](auth.md#production-iam)) |
+| `EnvConfig` | The project's environment variables: description, `secret`, `required`, `default` ([environment](environment.md)) |
 | `Artifact` | Versioned assets (below) |
 | `Test` | `version: tuvl/v2` (§8) |
 | `TaskPlan` | `version: tuvl/v2`, the task list the coding agent writes (checked by `lint spec`) |
@@ -480,6 +482,10 @@ Severity: **E** error, **W** warning (error under `--strict`). `tuvl lint projec
 | V041 | E | `parallel`: a branch reads an input the step does not take, two branches produce the same output, or the step's outputs are not exactly the branches' (optional with `on_error: collect`) |
 | V042 | E | `parallel` under `transaction: per_run` |
 | V043 | E | `memory`: an owner named from input on a public trigger; `write` names a field the agent does not have or one that carries secure model fields |
+| V044 | E | `RoleSeed`: malformed, a role listed twice, or an invalid role name or scope |
+| V045 | E | `EnvConfig`: malformed, a variable declared twice, or a secret / required variable that has a default |
+| V046 | E | A `${VAR}` or `os.environ` read names a variable no `EnvConfig` declares (only once the project has an `EnvConfig`) |
+| V047 | W | An `EnvConfig` variable nothing in the project refers to |
 | V038 | E / W | A webhook's `stages` names an agent the workflow does not have (E); `allow_private` lets it reach internal addresses and plain http (W) |
 | V037 | E / W | File uploads: `http.upload` without a `file` input, an unknown, read-only or too-small store, a `file` nested deeper than `file` / `list[file]`, or a `file` input with MCP export (E); a `file` input on a route with no `upload`, or a public upload (W) |
 
