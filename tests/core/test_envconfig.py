@@ -75,6 +75,12 @@ def test_a_variable_declared_in_two_documents_is_refused():
         register_env_config_from_dict(_doc({"name": "A"}), "b.yaml")
 
 
+def _manifest_file(root: Path, *variables) -> None:
+    import yaml
+
+    (root / "env.yaml").write_text(yaml.safe_dump(_doc(*variables)))
+
+
 # ── scanning ──────────────────────────────────────────────────────────────────
 
 
@@ -135,12 +141,10 @@ def test_the_manifest_documents_themselves_are_not_scanned(tmp_path):
 
 def test_the_inventory_merges_catalog_manifest_and_references(tmp_path):
     root = _project(tmp_path)
-    register_env_config_from_dict(
-        _doc(
-            {"name": "GEMINI_API_KEY", "description": "key", "secret": True, "required": True},
-            {"name": "UNUSED", "default": "1"},
-        ),
-        "env.yaml",
+    _manifest_file(
+        root,
+        {"name": "GEMINI_API_KEY", "description": "key", "secret": True, "required": True},
+        {"name": "UNUSED", "default": "1"},
     )
     entries = {
         e.var.name: e
@@ -173,7 +177,7 @@ def test_a_value_in_dotenv_counts_as_set(tmp_path):
 
 def test_unused_declarations_are_listed(tmp_path):
     root = _project(tmp_path)
-    register_env_config_from_dict(_doc({"name": "GEMINI_API_KEY"}, {"name": "UNUSED"}), "e.yaml")
+    _manifest_file(root, {"name": "GEMINI_API_KEY"}, {"name": "UNUSED"})
     assert unused_declarations(root) == ["UNUSED"]
 
 
@@ -200,13 +204,11 @@ def test_a_project_without_a_manifest_is_never_stopped():
 
 def test_ship_splits_secrets_from_plain_values(tmp_path):
     root = _project(tmp_path)
-    register_env_config_from_dict(
-        _doc(
-            {"name": "GEMINI_API_KEY", "secret": True},
-            {"name": "THRESHOLD", "default": "0.8"},
-            {"name": "REGION"},
-        ),
-        "e.yaml",
+    _manifest_file(
+        root,
+        {"name": "GEMINI_API_KEY", "secret": True},
+        {"name": "THRESHOLD", "default": "0.8"},
+        {"name": "REGION"},
     )
     secrets, plain = ship_variables(root)
     secret_names = {e.var.name for e in secrets}

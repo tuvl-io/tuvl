@@ -12,8 +12,10 @@ import io
 import json
 import tarfile
 import zipfile
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 EPOCH = 315532800  # 1980-01-01: the earliest time a zip can hold
 FORMATS = ("tar.gz", "zip")
@@ -26,7 +28,12 @@ class Built:
     files: int
 
 
-def env_example(variables: list[str]) -> str:
+def env_example(variables: list[str], described: Mapping[str, Any] | None = None) -> str:
+    """``.env.example``: the fixed variables, then each of *variables* once.
+
+    *described* maps a name to its ``EnvVar``; its description becomes a comment line above it and a
+    non-secret's default is written as the value.
+    """
     lines = [
         "# Copy to .env and fill it in. Never commit .env.",
         "TUVL_ENV=production",
@@ -46,7 +53,15 @@ def env_example(variables: list[str]) -> str:
         "POSTGRES_USER",
         "POSTGRES_PASSWORD",
     }
-    lines += [f"{v}=" for v in variables if v not in seen]
+    described = described or {}
+    for v in dict.fromkeys(variables):
+        if v in seen:
+            continue
+        var = described.get(v)
+        if var is not None and var.description:
+            lines.append(f"# {var.description}")
+        default = "" if var is None or var.secret or var.default is None else var.default
+        lines.append(f"{v}={default}")
     return "\n".join(lines) + "\n"
 
 

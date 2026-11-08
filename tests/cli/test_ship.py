@@ -520,3 +520,62 @@ def test_ship_warns_when_a_kept_dockerignore_leaves_storage_out(tmp_path: Path) 
     res = runner.invoke(app, ["ship", "-d", str(proj), "--no-build"])
     assert res.exit_code == 0, res.output
     assert "storage/ is not in the image" in res.output
+
+
+def test_ship_takes_the_environment_from_the_env_config(tmp_path: Path) -> None:
+    proj = _project(tmp_path)
+    (proj / "config").mkdir()
+    (proj / "config" / "env.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "kind": "EnvConfig",
+                "spec": {
+                    "variables": [
+                        {"name": "CRM_TOKEN", "description": "CRM access", "secret": True},
+                        {"name": "ESCALATION", "description": "Score", "default": "0.8"},
+                    ]
+                },
+            }
+        )
+    )
+    # the declarations are only checked against use once they exist; use both
+    (proj / "workflows" / "ping.yaml").write_text(
+        (proj / "workflows" / "ping.yaml")
+        .read_text()
+        .replace("https://example.com/status", "https://example.com/${ESCALATION}?t=${CRM_TOKEN}")
+    )
+    assert runner.invoke(app, ["generate", "lock", "-d", str(proj)]).exit_code == 0
+
+    res = runner.invoke(app, ["ship", "-d", str(proj), "--no-build", "--force"])
+    assert res.exit_code == 0, res.output
+    assert "CRM_TOKEN" in res.output  # named among the secret's required keys
+
+    chart = proj / "deploy" / "chart" / "demo-app"
+    values = yaml.safe_load((chart / "values.yaml").read_text())
+    assert values["env"]["ESCALATION"] == "0.8"
+    assert "CRM_TOKEN" not in values["env"], "a secret never gets a value in the chart"
+    assert "CRM_TOKEN" in (chart / "values.yaml").read_text()  # listed in the Secret comment
+
+
+def test_ship_without_an_env_config_keeps_the_chart_env_as_it_was(tmp_path: Path) -> None:
+    proj = _project(tmp_path)
+    res = runner.invoke(app, ["ship", "-d", str(proj), "--no-build"])
+    assert res.exit_code == 0, res.output
+    values = yaml.safe_load((proj / "deploy" / "chart" / "demo-app" / "values.yaml").read_text())
+    assert set(values["env"]) == {"POSTGRES_HOST", "POSTGRES_PORT", "POSTGRES_DB", "POSTGRES_USER"}
+
+
+def test_ship_refuses_an_undeclared_reference_once_there_is_a_manifest(tmp_path: Path) -> None:
+    proj = _project(tmp_path)
+    (proj / "env.yaml").write_text(
+        yaml.safe_dump({"kind": "EnvConfig", "spec": {"variables": [{"name": "OTHER"}]}})
+    )
+    (proj / "workflows" / "ping.yaml").write_text(
+        (proj / "workflows" / "ping.yaml")
+        .read_text()
+        .replace("https://example.com/status", "https://example.com/${UNDECLARED}")
+    )
+    assert runner.invoke(app, ["generate", "lock", "-d", str(proj)]).exit_code == 0
+    res = runner.invoke(app, ["ship", "-d", str(proj), "--no-build"])
+    assert res.exit_code == 1
+    assert "V046" in res.output and "UNDECLARED" in res.output

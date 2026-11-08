@@ -15,7 +15,7 @@ import subprocess
 import tomllib
 from pathlib import Path
 from string import Template
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import typer
 from rich.console import Console
@@ -413,7 +413,15 @@ def ship_cmd(
     locked_version = _check_lock(project_dir)
     extras = _resolve_extras(project_dir, tuple(extra))
     model_vars = sorted({v for info in result.models.values() for v in info.get("env") or []})
-    secrets = ["TUVL_SIGNING_KEY (tuvl generate key)", "POSTGRES_PASSWORD", *model_vars]
+    from tuvl.core import envconfig
+
+    secret_entries, plain_entries = envconfig.ship_variables(project_dir)
+    secret_vars = sorted(
+        {e.var.name for e in secret_entries} - {"TUVL_SIGNING_KEY", "POSTGRES_PASSWORD"}
+    )
+    needed_vars = sorted({*model_vars, *secret_vars})
+    secrets = ["TUVL_SIGNING_KEY (tuvl generate key)", "POSTGRES_PASSWORD", *needed_vars]
+    described = {e.var.name: e.var for e in (*secret_entries, *plain_entries)}
 
     console.print("\n[bold]Step 2/3 — deploy artifacts[/bold]")
     deploy = project_dir / "deploy"
@@ -434,7 +442,12 @@ def ship_cmd(
         "laya_memory_note": "One checkpoint (english) resident takes about 2 GiB."
         if laya_en
         else "Both bundled checkpoints resident take about 3.5 GiB.",
-        "model_secrets": ", ".join(model_vars) or "none — no workflow uses a model",
+        "model_secrets": ", ".join(needed_vars) or "none — no workflow uses a model",
+        "extra_env": "".join(
+            f"  {e.var.name}: {json.dumps(e.var.default)}\n"
+            for e in plain_entries
+            if e.var.default is not None
+        ),
     }
     files: dict[Path, str] = {
         deploy / "Dockerfile": tpl.DOCKERFILE.replace("@TUVL_VERSION@", locked_version)
@@ -521,7 +534,8 @@ def ship_cmd(
             locked_version=locked_version,
             extras=extras,
             files=image_files,
-            variables=sorted({*model_vars}),
+            variables=sorted({*needed_vars, *(e.var.name for e in plain_entries)}),
+            described=described,
             runtime_hash=runtime_hash,
             commit=commit,
             out_dir=out if out.is_absolute() else project_dir / out,
@@ -663,6 +677,7 @@ def _build_archive(
     extras: list[str],
     files: list[str],
     variables: list[str],
+    described: dict[str, Any],
     runtime_hash: str,
     commit: str,
     out_dir: Path,
@@ -677,7 +692,7 @@ def _build_archive(
             slug=slug, version=version, tuvl_pin=pin, runtime_hash=runtime_hash, commit=commit
         ),
         "run.sh": shiparchive.run_script(tuvl_pin=pin, locked=locked),
-        ".env.example": shiparchive.env_example(variables),
+        ".env.example": shiparchive.env_example(variables, described),
         "BUILD-INFO.json": shiparchive.build_info(
             project=slug,
             version=version,

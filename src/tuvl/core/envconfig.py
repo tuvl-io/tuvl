@@ -308,6 +308,31 @@ def register_env_config_from_dict(data: dict[str, Any], filename: str = "<unknow
         MANIFEST[var.name] = var
 
 
+def load_manifest(project_dir: Path) -> dict[str, EnvVar]:
+    """The variables the project's ``EnvConfig`` files declare, read from disk now.
+
+    Unlike :data:`MANIFEST` (filled once at boot) this follows edits made while the server runs;
+    a malformed or duplicated declaration is left out here and reported by ``tuvl lint project``.
+    """
+    root = Path(project_dir).resolve()
+    out: dict[str, EnvVar] = {}
+    for path in _yaml_files(root):
+        try:
+            documents = [d for d in yaml.safe_load_all(path.read_text()) if d is not None]
+        except (yaml.YAMLError, OSError, UnicodeDecodeError):
+            continue
+        for document in documents:
+            if not isinstance(document, dict) or document.get("kind") != ENV_CONFIG_KIND:
+                continue
+            try:
+                variables = parse_env_config(document)
+            except ValueError:
+                continue
+            for var in variables:
+                out.setdefault(var.name, var)
+    return out
+
+
 # ── what the project references ───────────────────────────────────────────────
 
 
@@ -443,9 +468,18 @@ def read_dotenv(project_dir: Path) -> dict[str, str]:
     return {k: v for k, v in dotenv_values(path).items() if v is not None}
 
 
-def inventory(project_dir: Path, *, environ: Mapping[str, str] | None = None) -> list[EnvEntry]:
-    """Engine catalog, project declarations and project references, merged by variable name."""
+def inventory(
+    project_dir: Path,
+    *,
+    environ: Mapping[str, str] | None = None,
+    manifest: Mapping[str, EnvVar] | None = None,
+) -> list[EnvEntry]:
+    """Engine catalog, project declarations and project references, merged by variable name.
+
+    The declarations are read from the project's files unless *manifest* is given.
+    """
     root = Path(project_dir).resolve()
+    manifest = load_manifest(root) if manifest is None else manifest
     environ = os.environ if environ is None else environ
     dotenv = read_dotenv(root)
     refs = scan_references(root)
@@ -453,7 +487,7 @@ def inventory(project_dir: Path, *, environ: Mapping[str, str] | None = None) ->
     entries: list[EnvEntry] = []
     names = list(
         dict.fromkeys(
-            [*MANIFEST, *(n for n in refs if n not in MANIFEST and n not in ENGINE_CATALOG)]
+            [*manifest, *(n for n in refs if n not in manifest and n not in ENGINE_CATALOG)]
         )
     )
     # engine variables appear when the project refers to one or has set one
@@ -461,8 +495,8 @@ def inventory(project_dir: Path, *, environ: Mapping[str, str] | None = None) ->
         n for n in ENGINE_CATALOG if n not in names and (n in refs or n in environ or n in dotenv)
     ]
     for name in names:
-        if name in MANIFEST:
-            var, source = MANIFEST[name], "project"
+        if name in manifest:
+            var, source = manifest[name], "project"
         elif name in ENGINE_CATALOG:
             var, source = ENGINE_CATALOG[name], "engine"
         else:
@@ -485,17 +519,18 @@ def inventory(project_dir: Path, *, environ: Mapping[str, str] | None = None) ->
 
 def undeclared_references(project_dir: Path) -> dict[str, Reference]:
     """References to variables neither an ``EnvConfig`` nor the engine catalog declares."""
+    manifest = load_manifest(project_dir)
     return {
         name: ref
         for name, ref in scan_references(project_dir).items()
-        if name not in MANIFEST and name not in ENGINE_CATALOG
+        if name not in manifest and name not in ENGINE_CATALOG
     }
 
 
 def unused_declarations(project_dir: Path) -> list[str]:
     """Manifest variables nothing in the project refers to."""
     refs = scan_references(project_dir)
-    return [name for name in MANIFEST if name not in refs]
+    return [name for name in load_manifest(project_dir) if name not in refs]
 
 
 # ── boot and ship ─────────────────────────────────────────────────────────────
