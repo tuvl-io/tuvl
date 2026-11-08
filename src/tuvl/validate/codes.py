@@ -142,6 +142,10 @@ RULES: dict[str, tuple[str, str]] = {
         "E",
         "`parallel` under `transaction: per_run` (its branches use sessions of their own)",
     ),
+    "V044": (
+        "E",
+        "`RoleSeed`: malformed document, a role listed twice (in one file or across files), or an invalid role name or scope",
+    ),
     "V036": (
         "E",
         "`map`: the mapped workflow has a `human` or `pending` agent, or a loop tool that needs approval, so a run could wait",

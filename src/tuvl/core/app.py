@@ -178,6 +178,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     await sync_model_versions()
 
+    # Roles from `kind: RoleSeed` and the TUVL_BOOTSTRAP_ADMIN_* administrator, once per database.
+    from tuvl.core.auth.seed import seed_iam_at_boot
+
+    await seed_iam_at_boot()
+
     # DB-source artifact rows merge below file-source precedence.
     from tuvl.core.artifacts.db import merge_db_artifacts
 
