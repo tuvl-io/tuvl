@@ -55,6 +55,7 @@ def test_bare_install_lists_the_verbs_but_not_the_one_word_toolchain_commands() 
         (["approve", "spec"], "approve spec"),
         (["review", "code"], "review code"),
         (["run", "tests"], "run tests"),
+        (["replay", "runs"], "replay runs"),
     ],
 )
 def test_a_toolchain_thing_under_a_verb_gets_the_install_hint(words: list[str], shown: str) -> None:
@@ -69,7 +70,7 @@ def test_a_toolchain_thing_under_a_verb_gets_the_install_hint(words: list[str], 
         ["serve", "app", "--help"], ["check", "system", "--help"], ["check", "storage", "--help"],
         ["generate", "key", "--help"], ["generate", "rls", "--help"], ["verify", "rls", "--help"],
         ["list", "runs", "--help"], ["show", "run", "--help"], ["follow", "run", "--help"],
-        ["run", "workflow", "--help"], ["pin", "run", "--help"], ["replay", "runs", "--help"],
+        ["run", "workflow", "--help"], ["pin", "run", "--help"],
         ["list", "objects", "--help"],
     ],
 )  # fmt: skip

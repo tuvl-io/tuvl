@@ -157,7 +157,7 @@
  },
  {
   "command": "replay runs",
-  "hidden": false
+  "hidden": true
  },
  {
   "command": "review code",
