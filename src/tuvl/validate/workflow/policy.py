@@ -6,6 +6,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
+from tuvl.contract.facts import derived_effect, field_types
 from tuvl.contract.schema import (
     AgentToolRef,
     CodeAgent,
@@ -20,12 +21,8 @@ from tuvl.contract.schema import (
 from tuvl.contract.tel import TELError
 from tuvl.contract.types import TypeRef, build_model
 from tuvl.validate.diagnostics import Loc
-from tuvl.validate.signals import field_types
 from tuvl.validate.workflow.base import _Base
-from tuvl.validate.workflow.helpers import (
-    _EFFECT_RANK,
-    derived_effect,
-)
+from tuvl.validate.workflow.helpers import _EFFECT_RANK
 from tuvl.validate.workflow.report import Profile
 
 

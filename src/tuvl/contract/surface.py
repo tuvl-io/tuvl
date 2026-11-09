@@ -17,6 +17,7 @@ from typing import Any
 
 from pydantic import TypeAdapter
 
+from tuvl.contract.facts import field_types
 from tuvl.contract.schema import (
     AgentToolRef,
     CodeAgent,
@@ -34,7 +35,6 @@ from tuvl.contract.types import (
     build_model,
     registry_resolver,
 )
-from tuvl.validate.signals import field_types
 
 _REF = re.compile(r"^\{\{\s*([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)\s*\}\}$")
 _EFFECT_RANK = {"read": 0, "write": 1, "destructive": 2}
@@ -160,7 +160,7 @@ def workflow_effect(doc: WorkflowDocument) -> str:
     """The strongest effect any agent of *doc* can have: ``read``, ``write`` or
     ``destructive`` (spec §15.3 annotations). A loop's MCP and child-workflow
     tools count as ``write``: their effect is only known at runtime."""
-    from tuvl.validate.workflow import derived_effect
+    from tuvl.contract.facts import derived_effect
 
     strongest = "read"
 

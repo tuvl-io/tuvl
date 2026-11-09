@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from tuvl.contract.facts import determinism_of
 from tuvl.contract.schema import (
     DecideAgent,
     LlmAgent,
@@ -13,10 +14,7 @@ from tuvl.contract.schema import (
     WorkflowToolRef,
 )
 from tuvl.validate.workflow.base import _Base
-from tuvl.validate.workflow.helpers import (
-    _sccs,
-    determinism_of,
-)
+from tuvl.validate.workflow.helpers import _sccs
 from tuvl.validate.workflow.report import Profile
 
 

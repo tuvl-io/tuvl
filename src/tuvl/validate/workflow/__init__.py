@@ -8,18 +8,18 @@ Rules implemented here: V002–V012, V014 (tool resolution), V016–V019, V022.
 
 from __future__ import annotations
 
+from tuvl.contract.facts import (
+    artifact_refs,
+    derived_effect,
+    determinism_of,
+    document_artifact_refs,
+)
 from tuvl.contract.schema import WorkflowDocument
 from tuvl.validate.catalog import Catalog
 from tuvl.validate.diagnostics import Diagnostic, line_for, line_index
 from tuvl.validate.workflow.engines import _Engines
 from tuvl.validate.workflow.expressions import _Expressions
 from tuvl.validate.workflow.flow import _DataFlow
-from tuvl.validate.workflow.helpers import (
-    artifact_refs,
-    derived_effect,
-    determinism_of,
-    document_artifact_refs,
-)
 from tuvl.validate.workflow.policy import _Policy
 from tuvl.validate.workflow.profile import _Profiling
 from tuvl.validate.workflow.report import Profile, WorkflowReport, render_path

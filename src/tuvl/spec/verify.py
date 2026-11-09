@@ -143,7 +143,7 @@ def _type(text: str) -> TypeRef | None:
 
 
 def _field_types(fields: Any) -> dict[str, TypeRef]:
-    from tuvl.validate.signals import field_types
+    from tuvl.contract.facts import field_types
 
     return field_types(fields)
 

@@ -5,12 +5,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from tuvl.contract.facts import field_types
 from tuvl.contract.schema import (
     WorkflowDocument,
 )
 from tuvl.validate.catalog import Catalog
 from tuvl.validate.diagnostics import Collector, Loc
-from tuvl.validate.signals import field_types
 
 
 @dataclass

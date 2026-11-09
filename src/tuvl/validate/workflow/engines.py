@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from tuvl.contract.facts import derived_effect, enum_outputs, field_types
 from tuvl.contract.schema import (
     CodeAgent,
     DecideAgent,
@@ -17,13 +18,9 @@ from tuvl.contract.schema import (
 )
 from tuvl.contract.types import TypeRef, format_type
 from tuvl.validate.diagnostics import Loc
-from tuvl.validate.signals import assignable, enum_outputs, field_types, is_reserved
+from tuvl.validate.signals import assignable, is_reserved
 from tuvl.validate.workflow.base import _Base
-from tuvl.validate.workflow.helpers import (
-    _EFFECT_RANK,
-    _waits_for_a_person,
-    derived_effect,
-)
+from tuvl.validate.workflow.helpers import _EFFECT_RANK, _waits_for_a_person
 
 
 class _Engines(_Base):

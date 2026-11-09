@@ -120,9 +120,9 @@ def _safe_artifact_path(name: str) -> Path:
 async def list_artifacts(type: str | None = None):
     """List registered artifacts (all sources), with the reverse index of
     workflow reference sites computed from the live workflow registry."""
+    from tuvl.contract.facts import document_artifact_refs
     from tuvl.contract.registry import WORKFLOWS
     from tuvl.core.artifacts.registry import ARTIFACT_REGISTRY, parse_ref
-    from tuvl.validate.workflow import document_artifact_refs
 
     referenced: dict[str, list[str]] = {}
     for doc in WORKFLOWS.values():

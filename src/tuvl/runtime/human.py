@@ -27,6 +27,7 @@ import sqlalchemy as sa
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from tuvl.contract.facts import field_types
 from tuvl.contract.schema import HumanAgent, WorkflowDocument, duration_seconds
 from tuvl.contract.signals import is_reserved
 from tuvl.contract.tel import compile_template
@@ -34,7 +35,6 @@ from tuvl.contract.types import ModelResolver, build_model, format_type, registr
 from tuvl.runtime import journal, queue
 from tuvl.runtime.engines import AgentResult, EngineContext, register_engine
 from tuvl.runtime.models import SystemApproval, SystemRun
-from tuvl.validate.signals import field_types
 
 _APPROVALS = SystemApproval.__table__  # type: ignore[attr-defined]
 ADMIN_SCOPE = "iam:admin"

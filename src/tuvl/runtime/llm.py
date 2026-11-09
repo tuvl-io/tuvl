@@ -18,6 +18,7 @@ from typing import Any
 import structlog
 from pydantic import BaseModel, ValidationError
 
+from tuvl.contract.facts import field_types
 from tuvl.contract.signals import is_reserved
 from tuvl.contract.tel import compile_template
 from tuvl.contract.types import format_type
@@ -29,7 +30,6 @@ from tuvl.runtime.engines import (
     register_engine,
     render_params,
 )
-from tuvl.validate.signals import field_types
 
 logger = structlog.get_logger(__name__)
 
