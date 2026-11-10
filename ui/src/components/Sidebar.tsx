@@ -185,14 +185,24 @@ export function Sidebar() {
   // ── Collapsed icon rail ───────────────────────────────────────────────────
   if (!sidebarOpen) {
     return (
-      <aside className="hidden lg:flex w-14 shrink-0 bg-slate-900 border-r border-slate-700 flex-col items-center">
-        {/* Logo */}
-        <div className="py-3 flex items-center justify-center w-full border-b border-slate-700">
+      <aside className="hidden lg:flex w-14 shrink-0 h-full min-h-0 bg-slate-900 border-r border-slate-700 flex-col items-center">
+        {/* Logo and the expand button: together at the top, so the button is on screen however short the window */}
+        <div className="shrink-0 py-3 flex flex-col items-center gap-2 w-full border-b border-slate-700">
           <span className="feather-mark w-9 h-9" role="img" aria-label="tuvl" />
+          <button
+            type="button"
+            onClick={toggleSidebar}
+            aria-label="Expand the menu"
+            aria-expanded={false}
+            title="Expand the menu"
+            className="w-9 h-7 rounded-md text-slate-400 hover:bg-slate-800 hover:text-slate-100"
+          >
+            »
+          </button>
         </div>
 
-        {/* Nav icons */}
-        <nav className="flex-1 flex flex-col items-center py-3 gap-1 w-full">
+        {/* Nav icons: scroll when the window is shorter than the list */}
+        <nav className="flex-1 min-h-0 overflow-y-auto overscroll-contain [scrollbar-width:thin] flex flex-col items-center py-3 gap-1 w-full">
           {navGroups.map((group, gi) => (
             <div key={group.title} className="flex flex-col items-center gap-1 w-full">
               {gi > 0 && <div className="w-6 border-t border-slate-700 my-1.5" />}
@@ -201,8 +211,9 @@ export function Sidebar() {
                   key={to}
                   to={to}
                   title={label}
+                  aria-label={label}
                   className={({ isActive }) =>
-                    `flex items-center justify-center w-9 h-9 rounded-md transition-colors ${
+                    `flex items-center justify-center w-9 h-9 shrink-0 rounded-md transition-colors ${
                       isActive
                         ? 'bg-sky-600 text-white'
                         : 'text-slate-400 hover:bg-slate-800 hover:text-slate-100'
@@ -216,10 +227,8 @@ export function Sidebar() {
           ))}
         </nav>
 
-        <button onClick={toggleSidebar} aria-label="Expand the menu" title="Expand the menu"
-          className="mb-2 w-9 h-9 rounded-md text-slate-500 hover:bg-slate-800 hover:text-slate-100">»</button>
         {/* Online status dot */}
-        <div className="py-3 border-t border-slate-700 w-full flex justify-center">
+        <div className="shrink-0 py-3 border-t border-slate-700 w-full flex justify-center">
           <span
             title={online ? 'Engine online' : 'Engine offline'}
             className={`w-2.5 h-2.5 rounded-full ${online ? 'bg-emerald-400' : 'bg-red-500'}`}
@@ -233,7 +242,7 @@ export function Sidebar() {
   return (
     <>
     <div className="lg:hidden fixed inset-0 z-[45] bg-black/50" onClick={toggleSidebar} aria-hidden="true" />
-    <aside className="fixed inset-y-0 left-0 z-50 lg:static lg:z-auto w-52 shrink-0 bg-slate-900 border-r border-slate-700 flex flex-col">
+    <aside className="fixed inset-y-0 left-0 z-50 lg:static lg:z-auto w-52 shrink-0 h-full min-h-0 bg-slate-900 border-r border-slate-700 flex flex-col">
       <div className="px-4 py-4 border-b border-slate-700 flex items-center gap-2.5">
         <span className="feather-mark w-9 h-9 shrink-0" role="img" aria-label="tuvl" />
         <div className="flex flex-col leading-none">
@@ -251,7 +260,7 @@ export function Sidebar() {
         Intelligent Workflows.<br />Deterministic Execution.
       </p>
 
-      <nav className="flex-1 px-2 py-3 overflow-y-auto">
+      <nav className="flex-1 min-h-0 px-2 py-3 overflow-y-auto">
         {navGroups.map((group) => (
           <div key={group.title} className="mb-3">
             <div className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500 select-none">
@@ -280,12 +289,12 @@ export function Sidebar() {
         ))}
       </nav>
 
-      <div className="px-4 py-3 border-t border-slate-700 flex items-center gap-2 text-xs text-slate-400">
+      <div className="shrink-0 px-4 py-3 border-t border-slate-700 flex items-center gap-2 text-xs text-slate-400">
         <span
           className={`w-2 h-2 rounded-full ${online ? 'bg-emerald-400' : 'bg-red-500'}`}
         />
         {online ? 'Engine online' : 'Engine offline'}
-        <button onClick={toggleSidebar} aria-label="Collapse the menu" title="Collapse the menu"
+        <button type="button" onClick={toggleSidebar} aria-label="Collapse the menu" aria-expanded={true} title="Collapse the menu"
           className="ml-auto w-7 h-7 rounded text-slate-500 hover:bg-slate-800 hover:text-slate-100">«</button>
       </div>
     </aside>
