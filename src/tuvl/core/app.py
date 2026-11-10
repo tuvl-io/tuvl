@@ -31,9 +31,10 @@ from tuvl.core.models.schemas import SCHEMA_REGISTRY
 from tuvl.core.system_config import api_docs_mode, exposed_api_groups
 
 if settings.tuvl_dev_mode:
-    from tuvl.api.dev import router as dev_v2_router
+    from tuvl.api.dev import router as dev_live_router
+    from tuvl.core.dev.artifacts import router as dev_artifacts_router
+    from tuvl.core.dev.extensions import mount_dev_extensions
     from tuvl.core.dev.middleware import DevMiddleware
-    from tuvl.core.dev.router import router as dev_router
 
 if not settings.tuvl_dev_mode and settings.tuvl_allowed_hosts:
     from tuvl.core.access_control import AllowedHostsMiddleware
@@ -261,10 +262,9 @@ app = FastAPI(
 
 if settings.tuvl_dev_mode:
     app.add_middleware(DevMiddleware)
-    app.include_router(
-        dev_v2_router, include_in_schema=_system_in_docs
-    )  # registered first: its /dev/validate replaces the YAML-only one
-    app.include_router(dev_router, include_in_schema=_system_in_docs)
+    app.include_router(dev_live_router, include_in_schema=_system_in_docs)
+    mount_dev_extensions(app, include_in_schema=_system_in_docs)
+    app.include_router(dev_artifacts_router, include_in_schema=_system_in_docs)
     logger.info("Dev mode enabled — /dev/* routes active, insight loaded via tuvl.main.")
 
 # ── FastAPI OpenTelemetry instrumentation ─────────────────────────────────────

@@ -31,6 +31,7 @@ from opentelemetry.trace import Status, StatusCode
 from pydantic import BaseModel, ValidationError
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
+from tuvl.contract.facts import determinism_of, field_types
 from tuvl.contract.schema import WorkflowDocument, duration_seconds
 from tuvl.contract.signals import is_reserved
 from tuvl.contract.tel import compile_template
@@ -48,8 +49,6 @@ from tuvl.runtime import tool as _tool  # noqa: F401 — registers the tool engi
 from tuvl.runtime.engines import ENGINES, AgentResult, EngineContext, EngineError, contract_model
 from tuvl.runtime.models import SystemRun, SystemRunCheckpoint
 from tuvl.runtime.queue import Lease
-from tuvl.validate.signals import field_types
-from tuvl.validate.workflow import determinism_of
 
 logger = structlog.get_logger(__name__)
 _tracer = trace.get_tracer("tuvl.runtime")

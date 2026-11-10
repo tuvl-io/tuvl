@@ -12,6 +12,9 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.requires_insight
+
+
 GATE = [
     ["lint", "project", "--strict"],
     ["generate", "code", "--check"],

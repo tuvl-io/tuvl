@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import pytest
 from typer.testing import CliRunner
 
 from tuvl.cli import app
+
+pytestmark = pytest.mark.requires_insight
+
 
 runner = CliRunner()
 

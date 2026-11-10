@@ -39,7 +39,7 @@ def test_bump_sets_every_site(copy: Path) -> None:
 def test_check_names_the_site_that_drifted(copy: Path) -> None:
     pyproject = copy / "pyproject.toml"
     pyproject.write_text(
-        pyproject.read_text().replace('"tuvl-insight>=', '"tuvl-insight>=0.0.1+', 1)
+        pyproject.read_text().replace('"tuvl-insight==', '"tuvl-insight==0.0.1+', 1)
     )
     problems = bump.check(copy)
     assert any(line.startswith("tuvl-insight pin") for line in problems)

@@ -202,8 +202,9 @@ def test_the_administrator_comes_from_the_environment_and_a_file_wins(monkeypatc
         read_admin_from_env()
 
 
+@pytest.mark.requires_insight
 def test_validate_reports_a_bad_or_duplicated_role_seed(tmp_path):
-    from tuvl.cli.commands.validate import ValidateResult, _validate_role_seeds
+    from tuvl_insight.cli.commands.validate import ValidateResult, _validate_role_seeds
 
     (tmp_path / "a.yaml").write_text("kind: RoleSeed\nspec:\n  roles: [{name: ops}]\n")
     (tmp_path / "b.yaml").write_text("kind: RoleSeed\nspec:\n  roles: [{name: ops}]\n")

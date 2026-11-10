@@ -1692,41 +1692,21 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
-codegen = [
-    { name = "libcst" },
-]
 mcp = [
     { name = "mcp" },
 ]
 otel-grpc = [
     { name = "opentelemetry-exporter-otlp-proto-grpc" },
 ]
-pdf = [
-    { name = "pypdf" },
-]
 redis = [
     { name = "redis" },
 ]
-review = [
-    { name = "ruff" },
-]
 standard = [
-    { name = "aiosqlite" },
-    { name = "libcst" },
     { name = "mcp" },
     { name = "opentelemetry-exporter-otlp-proto-grpc" },
     { name = "pgvector" },
-    { name = "pypdf" },
     { name = "redis" },
-    { name = "ruff" },
-    { name = "textual" },
     { name = "tuvl-insight" },
-]
-test = [
-    { name = "aiosqlite" },
-]
-tui = [
-    { name = "textual" },
 ]
 vector = [
     { name = "pgvector" },
@@ -1734,6 +1714,7 @@ vector = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "aiosqlite" },
     { name = "mypy" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
@@ -1743,7 +1724,6 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "aiosqlite", marker = "extra == 'test'", specifier = ">=0.20.0" },
     { name = "asyncpg", specifier = ">=0.31.0" },
     { name = "bcrypt", specifier = ">=5.0.0" },
     { name = "cronsim", specifier = ">=2.7" },
@@ -1751,7 +1731,6 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.136.0" },
     { name = "greenlet", specifier = ">=3.4.0" },
     { name = "httpx", specifier = ">=0.27.0" },
-    { name = "libcst", marker = "extra == 'codegen'", specifier = ">=1.4" },
     { name = "mcp", marker = "extra == 'mcp'", specifier = ">=1.30.0,<2" },
     { name = "opentelemetry-api", specifier = ">=1.45.1" },
     { name = "opentelemetry-exporter-otlp-proto-grpc", marker = "extra == 'otel-grpc'", specifier = ">=1.42.0" },
@@ -1762,27 +1741,25 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.13.4,<3" },
     { name = "pydantic-settings", specifier = ">=2.14.2,<3" },
     { name = "pyjwt", extras = ["crypto"], specifier = ">=2.15.0" },
-    { name = "pypdf", marker = "extra == 'pdf'", specifier = ">=6.21.4" },
     { name = "python-dotenv", specifier = ">=1.2.2,<2" },
     { name = "python-multipart", specifier = ">=0.0.31" },
     { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "redis", marker = "extra == 'redis'", specifier = ">=5.0.0" },
     { name = "rich", specifier = ">=15.0.0" },
-    { name = "ruff", marker = "extra == 'review'", specifier = ">=0.8" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0,<2.1" },
     { name = "sqlmodel", specifier = ">=0.0.38" },
     { name = "starlette", specifier = ">=1.3.1" },
     { name = "structlog", specifier = ">=24.0.0" },
-    { name = "textual", marker = "extra == 'tui'", specifier = ">=1.0" },
-    { name = "tuvl", extras = ["mcp", "redis", "vector", "otel-grpc", "codegen", "test", "pdf", "review", "tui"], marker = "extra == 'standard'", editable = "." },
-    { name = "tuvl-insight", marker = "extra == 'standard'", editable = "src/tuvl_insight" },
+    { name = "tuvl", extras = ["mcp", "redis", "vector", "otel-grpc"], marker = "extra == 'standard'", editable = "." },
+    { name = "tuvl-insight", marker = "extra == 'standard'", editable = "insight" },
     { name = "typer", specifier = ">=0.26.5,<0.27" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.44.0" },
 ]
-provides-extras = ["standard", "mcp", "redis", "vector", "otel-grpc", "codegen", "test", "tui", "review", "pdf"]
+provides-extras = ["standard", "mcp", "redis", "vector", "otel-grpc"]
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "aiosqlite", specifier = ">=0.20.0" },
     { name = "mypy", specifier = ">=2.0.0" },
     { name = "pytest", specifier = ">=9.0.0" },
     { name = "pytest-asyncio", specifier = ">=1.0.0" },
@@ -1793,13 +1770,25 @@ dev = [
 [[package]]
 name = "tuvl-insight"
 version = "2.0.3"
-source = { editable = "src/tuvl_insight" }
+source = { editable = "insight" }
 dependencies = [
+    { name = "aiosqlite" },
+    { name = "libcst" },
+    { name = "pypdf" },
+    { name = "ruff" },
+    { name = "textual" },
     { name = "tuvl" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "tuvl", editable = "." }]
+requires-dist = [
+    { name = "aiosqlite", specifier = ">=0.20.0" },
+    { name = "libcst", specifier = ">=1.4" },
+    { name = "pypdf", specifier = ">=6.21.4" },
+    { name = "ruff", specifier = ">=0.8" },
+    { name = "textual", specifier = ">=1.0" },
+    { name = "tuvl", editable = "." },
+]
 
 [[package]]
 name = "typer"

@@ -10,7 +10,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 #: SHA-256 of the unmodified text published at apache.org/licenses/LICENSE-2.0.txt.
 APACHE_SHA256 = "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
-PACKAGES = (ROOT, ROOT / "src" / "tuvl_insight")
+PACKAGES = (ROOT, ROOT / "insight")
 
 
 def test_license_text_is_the_unmodified_apache_2_0() -> None:

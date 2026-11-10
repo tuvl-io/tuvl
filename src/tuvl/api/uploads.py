@@ -23,12 +23,12 @@ from starlette.datastructures import UploadFile
 from starlette.formparsers import MultiPartException, MultiPartParser
 
 from tuvl.api.auth import trigger_user
+from tuvl.contract.facts import field_types
 from tuvl.contract.files import FileRef
 from tuvl.contract.schema import Upload, WorkflowDocument
 from tuvl.contract.types import TypeRef
 from tuvl.storage import get_store
 from tuvl.storage.errors import StorageError, TooLarge
-from tuvl.validate.signals import field_types
 
 logger = structlog.get_logger(__name__)
 

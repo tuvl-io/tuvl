@@ -138,6 +138,7 @@ def test_workflow_effect(agents: str, effect: str) -> None:
 GOLDEN = Path(__file__).parent / "golden" / "triage_ticket.openapi.json"
 
 
+@pytest.mark.requires_insight
 def test_sample_trigger_openapi_snapshot(tmp_path: Path) -> None:
     """The sample project's trigger operation, generated from its contracts.
     Regenerate with UPDATE_GOLDEN=1."""

@@ -17,7 +17,7 @@ project) and `docs/tuvl-agentic-manual.md`.
 | `src/tuvl/cli/` | Typer commands; `--json` shapes in `cli/json_output.py` |
 | `src/tuvl/core/` | Carried-forward platform: config, models/loader, datasources, auth/IAM (Ed25519 JWT), artifacts, telemetry, tenancy |
 | `src/tuvl/skills/` | Package-data skills + `AGENTS.md` scaffolded into projects |
-| `ui/` | Insight (React + Vite); `pnpm build:cli` writes `src/tuvl_insight/static/` |
+| `ui/` | Insight (React + Vite); `pnpm build:cli` writes `insight/src/tuvl_insight/static/` |
 | `docs/` | Subsystem docs, mirrored to the docs site by `make sync-internals` there |
 | `proposals/` (workspace) | The 2.0 specification and implementation plan |
 

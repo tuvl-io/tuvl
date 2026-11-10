@@ -36,6 +36,8 @@ from pydantic import BaseModel, ValidationError
 from pydantic_core import to_jsonable_python
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from tuvl.contract.facts import field_types
+from tuvl.contract.lockfile import check_live_mcp
 from tuvl.contract.schema import (
     AgentToolRef,
     CollectionToolRef,
@@ -47,7 +49,6 @@ from tuvl.contract.signals import is_reserved
 from tuvl.contract.tel import TELError, compile_expr
 from tuvl.contract.types import format_type
 from tuvl.core.config import settings
-from tuvl.lock import check_live_mcp
 from tuvl.runtime import devtools, journal, queue
 from tuvl.runtime.engines import (
     ENGINES,
@@ -72,7 +73,6 @@ from tuvl.runtime.llm import (
 )
 from tuvl.runtime.models import SystemApproval
 from tuvl.runtime.tool import mcp_session, mcp_value
-from tuvl.validate.signals import field_types
 
 logger = structlog.get_logger(__name__)
 
@@ -120,7 +120,7 @@ class LoopState:
 
 
 def _effect_of(agent: Any) -> str:
-    from tuvl.validate.workflow import derived_effect
+    from tuvl.contract.facts import derived_effect
 
     effect = derived_effect(agent)
     if effect is None:

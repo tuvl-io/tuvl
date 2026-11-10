@@ -180,8 +180,8 @@ def resolve_artifact_refs() -> list[str]:
     workflow. Returns the problem list; the caller decides the posture
     (production: startup failure, dev: warn and error at runtime).
     """
+    from tuvl.contract.facts import document_artifact_refs
     from tuvl.contract.registry import WORKFLOWS
-    from tuvl.validate.workflow import document_artifact_refs
 
     problems: list[str] = []
     for doc in WORKFLOWS.values():

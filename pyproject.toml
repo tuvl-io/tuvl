@@ -56,13 +56,12 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Activates Tuvl Insight — a full browser-based developer portal for designing models
-# and workflows, configuring datasources and LLM providers, managing IAM and federation,
-# and testing runs with breakpoints, step mode and approvals.
+# The developer toolchain: the tuvl-insight package (the browser UI, `tuvl init`, `tuvl dev`, `tuvl ship`, the lint
+# engine, spec and code generation) plus the production extras.
 # Install with: pip install tuvl[standard]
 standard = [
-    "tuvl-insight>=2.0.3",
-    "tuvl[mcp,redis,vector,otel-grpc,codegen,test,pdf,review,tui]",
+    "tuvl-insight==2.0.3",
+    "tuvl[mcp,redis,vector,otel-grpc]",
 ]
 
 # Features a production image installs only when the project uses them: `tuvl ship` reads the
@@ -71,12 +70,6 @@ mcp = ["mcp>=1.30.0,<2"]  # `use: mcp` tools, MCP export, `tuvl serve mcp` (2.x 
 redis = ["redis>=5.0.0"]  # a `redis` datasource
 vector = ["pgvector>=0.3.0"]  # vector search (pulls in numpy)
 otel-grpc = ["opentelemetry-exporter-otlp-proto-grpc>=1.42.0"]  # TUVL_OTLP_PROTOCOL=grpc
-# Development tooling, never shipped
-codegen = ["libcst>=1.4"]  # tuvl generate code, init --sample
-test = ["aiosqlite>=0.20.0"]  # tuvl run tests runs workflows against in-memory SQLite
-tui = ["textual>=1.0"]  # the terminal UI that `tuvl dev` starts on a terminal
-review = ["ruff>=0.8"]  # tuvl review code lints the Python of code agents
-pdf = ["pypdf>=6.21.4"]  # tuvl import idea reads the text of PDF ideas (Word files need nothing extra)
 
 # Dev tooling is a PEP 735 dependency group (uv-native), not a published extra.
 [dependency-groups]
@@ -86,6 +79,7 @@ dev = [
     "pytest>=9.0.0",
     "pytest-asyncio>=1.0.0",
     "pytest-timeout>=2.3.0",
+    "aiosqlite>=0.20.0",  # core tests run the engine against in-memory SQLite
 ]
 
 [project.scripts]
@@ -99,7 +93,7 @@ Changelog = "https://github.com/tuvl-io/tuvl/blob/main/CHANGELOG.md"
 Issues = "https://github.com/tuvl-io/tuvl/issues"
 
 [tool.uv.workspace]
-members = ["src/tuvl_insight"]
+members = ["insight"]
 
 [tool.uv.sources]
 tuvl-insight = { workspace = true }
@@ -116,6 +110,7 @@ exclude = ["src/tuvl/cli/ui"]
 
 [tool.hatch.build.targets.sdist]
 exclude = [
+    "insight",
     "ui/node_modules",
     "ui/src",
     ".github",
@@ -149,7 +144,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.isort]
-known-first-party = ["tuvl"]
+known-first-party = ["tuvl", "tuvl_insight"]
 
 [tool.ruff.format]
 quote-style = "double"
@@ -164,7 +159,8 @@ line-ending = "auto"
 "src/tuvl/core/api/crud_router.py" = ["N806"]
 "src/tuvl/core/api/manager.py" = ["N806"]
 # Dev-mode-only surface — annotate when its endpoints get pydantic models.
-"src/tuvl/core/dev/router.py" = ["ANN"]
+"insight/src/tuvl_insight/api/dev_core_router.py" = ["ANN"]
+"src/tuvl/core/dev/artifacts.py" = ["ANN"]
 # The annotation ratchet is for src/ — test signatures stay lightweight.
 "tests/**" = ["ANN", "N806"]  # N806: generated model classes bound to capitalised locals
 
@@ -183,3 +179,4 @@ asyncio_mode = "auto"
 testpaths = ["tests"]
 # A hung test fails and is named, instead of stalling the run (TD-60).
 timeout = 180
+markers = ["requires_insight: needs the tuvl-insight package (the developer toolchain); skipped on a bare install"]
