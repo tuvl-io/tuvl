@@ -10,8 +10,8 @@ from typing import Any
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
 from pydantic import BaseModel
 
-from tuvl.api.dev.jobs import _cli_argv, _cli_env, _start_job
 from tuvl.core.dev.project import project_dir
+from tuvl_insight.api.dev.jobs import _cli_argv, _cli_env, _start_job
 
 router = APIRouter()
 

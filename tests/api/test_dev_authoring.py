@@ -9,7 +9,7 @@ import httpx
 import pytest
 from fastapi import FastAPI
 
-from tuvl.api.dev import router
+from tests.dev_app import router
 from tuvl.core.config import use_project
 from tuvl_insight.audit import ledger
 from tuvl_insight.spec import ids, lifecycle
@@ -257,7 +257,7 @@ async def test_a_task_is_built_with_the_agent_only_after_consent(
     import asyncio
     import sys
 
-    from tuvl.api.dev import jobs as dev
+    from tuvl_insight.api.dev import jobs as dev
 
     monkeypatch.setattr(
         dev,
@@ -351,7 +351,7 @@ async def test_only_an_agent_task_is_built_by_the_agent_and_a_failed_command_say
     import asyncio
     import sys
 
-    from tuvl.api.dev import jobs as dev
+    from tuvl_insight.api.dev import jobs as dev
 
     name = "SPEC-SK-0001-01.md"
     (project / "specs" / "SPEC-SK-0001-01.tasks.yaml").write_text(
@@ -389,7 +389,7 @@ async def test_a_command_survives_a_restart_of_the_dev_server(
     import asyncio
     import sys
 
-    from tuvl.api.dev import jobs as dev
+    from tuvl_insight.api.dev import jobs as dev
 
     script = "import time; print('first'); time.sleep(0.6); print('second')"
     monkeypatch.setattr(dev, "_cli_argv", lambda args: [sys.executable, "-c", script])
@@ -421,7 +421,7 @@ async def test_a_commands_log_lines_are_not_mixed_into_what_it_prints(
     import asyncio
     import sys
 
-    from tuvl.api.dev import jobs as dev
+    from tuvl_insight.api.dev import jobs as dev
 
     script = (
         "print('2026-10-22T10:02:10Z INFO  tuvl.models Loaded model  model=Order'); print('scaffold: 2 files'); "
@@ -683,7 +683,7 @@ async def test_a_spec_is_generated_with_the_agent_only_when_one_is_chosen_and_co
     import asyncio
     import sys
 
-    from tuvl.api.dev import jobs as dev
+    from tuvl_insight.api.dev import jobs as dev
     from tuvl_insight.coding_agents import Settings, write_settings
 
     monkeypatch.setattr(

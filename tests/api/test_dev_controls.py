@@ -11,7 +11,7 @@ import pytest
 from fastapi import FastAPI
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from tuvl.api.dev import router as dev_router
+from tests.dev_app import router as dev_router
 from tuvl.api.runs import router as runs_router
 from tuvl.contract.schema import WorkflowDocument
 from tuvl.core.config import settings

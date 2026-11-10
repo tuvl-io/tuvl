@@ -9,7 +9,7 @@ import httpx
 import pytest
 from fastapi import FastAPI
 
-from tuvl.api.dev import router
+from tests.dev_app import router
 from tuvl.core.config import use_project
 
 

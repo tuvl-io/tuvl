@@ -7,8 +7,8 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from tuvl.api.dev.validation import DraftRequest, validate, validate_draft
 from tuvl.core.dev.project import project_dir
+from tuvl_insight.api.dev.validation import DraftRequest, validate, validate_draft
 
 router = APIRouter()
 

@@ -54,12 +54,12 @@ GROUPS: dict[str, list[tuple[str, str]]] = {
     "lint": _same(["validate", "lock"]),
     "cli": _cli_commands() + _same(["cli.nest", "cli.laya", "cli.agent_run", "cli.session", "cli.select", "cli.json_output"]),
     "api": [
-        ("tuvl.api.code_assist", "tuvl_insight.api.code_assist"),
+        ("tuvl_insight.api.code_assist", "tuvl_insight.api.code_assist"),
         *[
             (f"tuvl.api.dev.{n}", f"tuvl_insight.api.dev.{n}")
             for n in ("files", "specs", "jobs", "agents", "validation", "telemetry", "canvas", "probe")
         ],
-        ("tuvl.core.dev.router", "tuvl_insight.api.dev_core_router"),
+        ("tuvl_insight.api.dev_core_router", "tuvl_insight.api.dev_core_router"),
     ],
     "doctor": [("tuvl.doctor.toolchain_groups", "tuvl_insight.doctor_groups")],
 }  # fmt: skip

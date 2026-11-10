@@ -638,7 +638,7 @@ async def test_list_runs_is_scoped_to_the_caller(client: httpx.AsyncClient) -> N
 async def test_dev_pin_writes_a_replayable_fixture(
     host: RuntimeHost, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from tuvl.api.dev import router as dev_router
+    from tests.dev_app import router as dev_router
 
     monkeypatch.setattr(settings, "tuvl_project_dir", str(tmp_path))
     app = FastAPI()

@@ -8,8 +8,8 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from tuvl.api.dev.files import _area_path
 from tuvl.core.dev.project import project_dir
+from tuvl_insight.api.dev.files import _area_path
 
 router = APIRouter()
 

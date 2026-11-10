@@ -155,7 +155,7 @@ def test_the_settings_endpoint_writes_only_what_it_is_given(monkeypatch, tmp_pat
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
 
-    from tuvl.core.dev.router import router as dev_router
+    from tuvl_insight.api.dev_core_router import router as dev_router
 
     _project(monkeypatch, tmp_path, "    expose_model_crud: false\n")
     app = FastAPI()

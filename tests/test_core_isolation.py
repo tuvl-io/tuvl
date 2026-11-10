@@ -1,4 +1,4 @@
-"""The engine that runs a project does not load the tooling that lints, generates or edits it."""
+"""The engine that runs a project does not load the tooling (tuvl_insight) that lints, generates or edits it."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ CHECK = """
 import sys
 import {module}
 
-loaded = sorted(m for m in sys.modules if m == "tuvl.validate" or m.startswith("tuvl.validate."))
+loaded = sorted(m for m in sys.modules if m == "tuvl_insight" or m.startswith("tuvl_insight."))
 print(",".join(loaded))
 """
 
@@ -27,7 +27,7 @@ print(",".join(loaded))
         "tuvl.core.artifacts.loader",
     ],
 )
-def test_the_engine_does_not_load_the_lint_engine(module: str) -> None:
+def test_the_engine_does_not_load_the_tooling(module: str) -> None:
     done = subprocess.run(
         [sys.executable, "-c", CHECK.format(module=module)],
         capture_output=True,

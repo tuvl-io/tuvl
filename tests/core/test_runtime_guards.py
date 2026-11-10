@@ -108,7 +108,7 @@ def test_cli_validate_import_does_not_construct_key_manager() -> None:
     }
     code = (
         "import sys\n"
-        "import tuvl.cli.commands.validate\n"
+        "import tuvl_insight.cli.commands.validate\n"
         "assert 'tuvl.core.auth.access' not in sys.modules, 'auth runtime imported'\n"
         "assert 'tuvl.core.auth.keys' not in sys.modules, 'key manager module imported'\n"
     )

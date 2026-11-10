@@ -22,7 +22,7 @@ CORE_COMMANDS = {"run", "runs", "db", "doctor", "keys", "memory", "storage", "ia
 
 TOOLING_PREFIXES = (
     "tuvl.api.dev",
-    "tuvl.api.code_assist",
+    "tuvl_insight.api.code_assist",
     "tuvl.core.dev",
     "tuvl_insight.codegen",
     "tuvl_insight.coding_agents",

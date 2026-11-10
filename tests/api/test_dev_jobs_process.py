@@ -6,7 +6,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from tuvl.api.dev import jobs
+from tuvl_insight.api.dev import jobs
 
 
 def test_the_runner_leaves_the_output_and_the_exit_code_in_files(tmp_path: Path) -> None:

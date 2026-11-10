@@ -13,7 +13,6 @@ from typer.testing import CliRunner
 
 from tuvl.cli import app as cli_app
 from tuvl.core.config import settings
-from tuvl.core.dev.router import router as dev_router
 from tuvl.core.project_info import (
     ProjectInfoError,
     create_project,
@@ -28,6 +27,7 @@ from tuvl.core.project_info import (
     update_project,
     validate_field,
 )
+from tuvl_insight.api.dev_core_router import router as dev_router
 
 runner = CliRunner()
 

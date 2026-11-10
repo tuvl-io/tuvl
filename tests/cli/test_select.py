@@ -87,7 +87,7 @@ def test_in_a_real_terminal_the_arrow_keys_move_and_enter_chooses(tmp_path: Path
     script.write_text(
         textwrap.dedent(
             """
-            from tuvl.cli.select import Choice, pick
+            from tuvl_insight.cli.select import Choice, pick
             got = pick("Agent", [Choice("a", "Alpha"), Choice("b", "Beta"), Choice("c", "Gamma")], "a")
             print("RESULT=" + str(got))
             """

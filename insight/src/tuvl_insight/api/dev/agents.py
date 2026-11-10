@@ -70,7 +70,7 @@ async def agent_source(run: str, description: str = "") -> dict[str, Any]:
     found = _agent_function(settings.dir_for("agents"), run)
     if found is None:
         # a new code agent (e.g. just added on the canvas): start from codegen's stub
-        from tuvl.api.code_assist import stub_for
+        from tuvl_insight.api.code_assist import stub_for
 
         target = settings.dir_for("agents") / f"{function_name(run)}.py"
         return {
@@ -107,8 +107,8 @@ class SourceWrite(BaseModel):
 async def save_agent_source(run: str, request: SourceWrite) -> dict[str, Any]:
     import ast
 
-    from tuvl.api.code_assist import normalize
     from tuvl.runtime.code import load_agents
+    from tuvl_insight.api.code_assist import normalize
     from tuvl_insight.codegen.stubs import function_name
 
     if not re.fullmatch(r"[A-Za-z_]\w*", run):
@@ -156,7 +156,7 @@ async def save_agent_source(run: str, request: SourceWrite) -> dict[str, Any]:
 
 @router.get("/agents/assist/models", summary="LLM AgentModels the code assistant can use")
 async def code_assist_models() -> list[dict[str, Any]]:
-    from tuvl.api.code_assist import assist_models
+    from tuvl_insight.api.code_assist import assist_models
 
     return assist_models()
 
@@ -174,7 +174,7 @@ class AssistRequest(BaseModel):
     "/agents/{run}/assist", summary="AI help writing a code agent's body (nothing is saved)"
 )
 async def code_assist(run: str, request: AssistRequest) -> dict[str, Any]:
-    from tuvl.api.code_assist import assist, assist_models
+    from tuvl_insight.api.code_assist import assist, assist_models
     from tuvl_insight.skills import skill_text
 
     if not request.prompt.strip():

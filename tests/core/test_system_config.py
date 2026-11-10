@@ -9,8 +9,8 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from tuvl.core.config import settings
-from tuvl.core.dev.router import router as dev_router
 from tuvl.core.system_config import expose_model_crud, load_system_config
+from tuvl_insight.api.dev_core_router import router as dev_router
 
 
 @pytest.fixture(autouse=True)

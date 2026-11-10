@@ -18,9 +18,13 @@ SNAPSHOTS = Path(__file__).parent / "snapshots"
 
 PROBE = """
 import json
+import re
+
+from starlette.routing import Match
+
 from tuvl.main import app
 
-rows = set()
+declared = set()
 
 
 def walk(routes, prefix=""):
@@ -28,13 +32,25 @@ def walk(routes, prefix=""):
         path = prefix + getattr(route, "path", "")
         if getattr(route, "methods", None):
             for method in sorted(route.methods - {"HEAD", "OPTIONS"}):
-                rows.add(f"{method} {path}")
+                declared.add((method, path))
         elif getattr(route, "routes", None):
             walk(route.routes, path)
 
 
 walk(app.routes)
-print(json.dumps(sorted(rows)))
+# FastAPI answers a URL with the first route that matches, so also record which handler that is: moving a
+# router in the registration order must not let one route shadow another.
+table = {}
+for method, path in sorted(declared):
+    scope = {
+        "type": "http", "method": method, "path": re.sub(r"\\{[^}]+\\}", "x", path),
+        "root_path": "", "headers": [], "query_string": b"",
+    }
+    handler = next(
+        (getattr(r, "endpoint", r).__name__ for r in app.routes if r.matches(scope)[0] == Match.FULL), None
+    )
+    table[f"{method} {path}"] = handler
+print(json.dumps(table, sort_keys=True))
 """
 
 DEV = {
@@ -46,7 +62,7 @@ DEV = {
 PRODUCTION = {"TUVL_ENV": "production", "TUVL_SIGNING_KEY": "k" * 40}
 
 
-def _routes(mode: dict[str, str], cwd: Path) -> list[str]:
+def _routes(mode: dict[str, str], cwd: Path) -> dict[str, str | None]:
     env = {k: v for k, v in os.environ.items() if not k.startswith("TUVL_")}
     env.update(mode)
     env["TUVL_TOOLCHAIN"] = "1"
@@ -62,9 +78,11 @@ def test_the_route_table_is_unchanged(name: str, mode: dict[str, str], tmp_path:
     snapshot = SNAPSHOTS / f"routes_{name}.json"
     current = _routes(mode, tmp_path)
     if os.environ.get("UPDATE_SNAPSHOTS"):
-        snapshot.write_text(json.dumps(current, indent=1) + "\n")
+        snapshot.write_text(json.dumps(current, indent=1, sort_keys=True) + "\n")
     expected = json.loads(snapshot.read_text())
-    assert current == expected, (
+    assert set(current) == set(expected), (
         f"routes added: {sorted(set(current) - set(expected))}; "
         f"routes dropped: {sorted(set(expected) - set(current))}"
     )
+    moved = {k: (expected[k], current[k]) for k in expected if expected[k] != current[k]}
+    assert not moved, f"a different handler now answers: {moved}"
