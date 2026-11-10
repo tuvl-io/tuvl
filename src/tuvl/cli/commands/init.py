@@ -750,12 +750,11 @@ def _finish_sample(project_dir: Path) -> None:
     """Run codegen and lock so the sample passes the CI gate as created."""
     from dotenv import load_dotenv
 
-    from tuvl import lock
     from tuvl.contract.registry import TESTS, WORKFLOWS
     from tuvl.core.artifacts.registry import ARTIFACT_REGISTRY
     from tuvl.core.config_loader import load_all_configs
     from tuvl.core.models.schemas import SCHEMA_REGISTRY
-    from tuvl_insight import codegen
+    from tuvl_insight import codegen, lock
     from tuvl_insight.spec import load_specs
 
     use_project(str(project_dir))

@@ -15,7 +15,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from tuvl.contract.schema import StorageTool, WorkflowDocument
 from tuvl.runtime import journal
 from tuvl.storage import STORE_REGISTRY, register_store_from_dict
-from tuvl.validate import Catalog, validate_workflow
+from tuvl_insight.validate import Catalog, validate_workflow
 
 from .test_tool_engine import execute, tool_agent, workflow
 
@@ -205,7 +205,7 @@ def test_v007_output_types() -> None:
 
 
 def test_effects_are_derived() -> None:
-    from tuvl.validate.workflow import derived_effect
+    from tuvl_insight.validate.workflow import derived_effect
 
     def effect(tool: dict[str, Any]) -> str | None:
         return derived_effect(

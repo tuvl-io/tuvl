@@ -426,13 +426,13 @@ async def project_state(project: Path, *, run_tests: bool = True) -> ProjectStat
 
 
 async def _project_state(project: Path, *, run_tests: bool) -> ProjectState:
-    from tuvl import lock
     from tuvl.cli.commands.validate import run_validation
     from tuvl.contract.registry import TESTS, WORKFLOWS
     from tuvl.core.artifacts.registry import ARTIFACT_REGISTRY
     from tuvl.core.config import settings
     from tuvl.core.config_loader import load_all_configs
     from tuvl.runtime.code import load_agents
+    from tuvl_insight import lock
     from tuvl_insight.testing import run_test
 
     result, *_ = run_validation(project, echo=False)

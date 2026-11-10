@@ -234,8 +234,8 @@ def _write(
 
 def _check_lock(project_dir: Path) -> str:
     """V024: the lock must exist and match the project. Returns the pinned tuvl version."""
-    from tuvl import lock
     from tuvl.cli.commands.lock import fresh_lock
+    from tuvl_insight import lock
 
     try:
         fresh, current = fresh_lock(project_dir, live_mcp=False)

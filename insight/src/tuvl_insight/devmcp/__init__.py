@@ -167,7 +167,7 @@ def build_server(project: Path, *, allow_write: bool = False) -> FastMCP:
     @server.tool()
     def explain_error(code: str) -> dict[str, Any]:
         """What a validation code (V001…) means and its severity."""
-        from tuvl.validate.codes import RULES
+        from tuvl_insight.validate.codes import RULES
 
         key = code.strip().upper().strip("[]")
         if key not in RULES:

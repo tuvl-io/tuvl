@@ -17,9 +17,9 @@ console = Console()
 
 def fresh_lock(project: Path, *, live_mcp: bool) -> tuple[dict[str, Any], dict[str, Any] | None]:
     """``(fresh lock document, lock file contents)`` for *project*."""
-    from tuvl import lock
     from tuvl.contract.registry import TESTS, WORKFLOWS
     from tuvl.core.config_loader import load_all_configs
+    from tuvl_insight import lock
 
     load_all_configs(project)
     inv = lock.inventory(dict(WORKFLOWS), TESTS.values())
@@ -41,7 +41,7 @@ def lock_cmd(
     ] = True,
 ) -> None:
     """Pin model ids, artifact hashes, judge/decision models and MCP schemas."""
-    from tuvl import lock
+    from tuvl_insight import lock
 
     project = project_dir.resolve()
     use_project(str(project))

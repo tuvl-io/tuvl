@@ -11,11 +11,11 @@ from typing import Any
 import pytest
 import structlog
 
-from tuvl import lock
 from tuvl.contract.schema import TestDocument, WorkflowDocument
 from tuvl.core.artifacts import registry as artifacts
 from tuvl.core.artifacts.registry import ArtifactEntry, ArtifactVersion
 from tuvl.core.models.agent_models import AGENT_MODEL_REGISTRY
+from tuvl_insight import lock
 
 BUDGET = {"timeout": "5s", "max_tokens": 10}
 LLM_ROUTES = {

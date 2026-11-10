@@ -15,15 +15,15 @@ from tuvl.contract.facts import (
     document_artifact_refs,
 )
 from tuvl.contract.schema import WorkflowDocument
-from tuvl.validate.catalog import Catalog
-from tuvl.validate.diagnostics import Diagnostic, line_for, line_index
-from tuvl.validate.workflow.engines import _Engines
-from tuvl.validate.workflow.expressions import _Expressions
-from tuvl.validate.workflow.flow import _DataFlow
-from tuvl.validate.workflow.policy import _Policy
-from tuvl.validate.workflow.profile import _Profiling
-from tuvl.validate.workflow.report import Profile, WorkflowReport, render_path
-from tuvl.validate.workflow.topology import _Topology
+from tuvl_insight.validate.catalog import Catalog
+from tuvl_insight.validate.diagnostics import Diagnostic, line_for, line_index
+from tuvl_insight.validate.workflow.engines import _Engines
+from tuvl_insight.validate.workflow.expressions import _Expressions
+from tuvl_insight.validate.workflow.flow import _DataFlow
+from tuvl_insight.validate.workflow.policy import _Policy
+from tuvl_insight.validate.workflow.profile import _Profiling
+from tuvl_insight.validate.workflow.report import Profile, WorkflowReport, render_path
+from tuvl_insight.validate.workflow.topology import _Topology
 
 __all__ = [
     "Profile",

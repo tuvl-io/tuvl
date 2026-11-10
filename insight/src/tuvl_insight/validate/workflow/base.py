@@ -9,8 +9,8 @@ from tuvl.contract.facts import field_types
 from tuvl.contract.schema import (
     WorkflowDocument,
 )
-from tuvl.validate.catalog import Catalog
-from tuvl.validate.diagnostics import Collector, Loc
+from tuvl_insight.validate.catalog import Catalog
+from tuvl_insight.validate.diagnostics import Collector, Loc
 
 
 @dataclass

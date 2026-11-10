@@ -48,10 +48,10 @@ def _area_path(area: str, name: str) -> Path:
     "/project/summary", summary="What the project holds: workflows, models, specs, tests, lock"
 )
 async def project_summary() -> dict[str, Any]:
-    from tuvl import lock
     from tuvl.contract.registry import TESTS, WORKFLOWS
     from tuvl.core.models.loader import MODEL_REGISTRY
     from tuvl.runtime.host import unavailable_reasons
+    from tuvl_insight import lock
     from tuvl_insight.spec import load_specs
 
     project = project_dir()

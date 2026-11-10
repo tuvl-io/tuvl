@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from tuvl.validate.diagnostics import Diagnostic, Loc
+from tuvl_insight.validate.diagnostics import Diagnostic, Loc
 
 
 @dataclass(frozen=True)

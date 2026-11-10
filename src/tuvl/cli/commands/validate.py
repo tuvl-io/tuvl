@@ -969,7 +969,7 @@ def _validate_v2_documents(
     workflow, recording its determinism/cost profile."""
     from tuvl.contract.registry import DocumentLoadError, parse_document
     from tuvl.contract.schema import WorkflowDocument
-    from tuvl.validate import Catalog, validate_workflow
+    from tuvl_insight.validate import Catalog, validate_workflow
 
     parsed: list[tuple[str, str, object]] = []
     names: dict[tuple[str, str], str] = {}

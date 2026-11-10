@@ -7,14 +7,9 @@ from typing import Any
 from tuvl.contract.facts import field_types
 from tuvl.contract.tel import TELError, compile_template
 from tuvl.contract.types import TypeRef, format_type
-from tuvl.validate.signals import assignable, signals_of
-from tuvl.validate.workflow.base import _Base
-from tuvl.validate.workflow.helpers import (
-    _TRIGGER,
-    _merge,
-    _strings,
-    _tel_message,
-)
+from tuvl_insight.validate.signals import assignable, signals_of
+from tuvl_insight.validate.workflow.base import _Base
+from tuvl_insight.validate.workflow.helpers import _TRIGGER, _merge, _strings, _tel_message
 
 
 class _DataFlow(_Base):

@@ -24,9 +24,9 @@ from tuvl.contract.schema import (
 from tuvl.contract.tel import TELError, compile_expr, compile_template
 from tuvl.contract.types import TypeRef, build_model
 from tuvl.core.artifacts.kinds import REF_SITE_COMPAT
-from tuvl.validate.diagnostics import Loc
-from tuvl.validate.workflow.base import _Base
-from tuvl.validate.workflow.helpers import _strings, _tel_message
+from tuvl_insight.validate.diagnostics import Loc
+from tuvl_insight.validate.workflow.base import _Base
+from tuvl_insight.validate.workflow.helpers import _strings, _tel_message
 
 
 class _Expressions(_Base):

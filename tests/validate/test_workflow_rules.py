@@ -12,7 +12,7 @@ import pytest
 import yaml
 
 from tuvl.contract.schema import WorkflowDocument
-from tuvl.validate import Catalog, WorkflowReport, validate_workflow
+from tuvl_insight.validate import Catalog, WorkflowReport, validate_workflow
 
 FIXTURE = Path(__file__).parents[1] / "contract" / "fixtures" / "refund_flow.yaml"
 BASE: dict[str, Any] = yaml.safe_load(FIXTURE.read_text())

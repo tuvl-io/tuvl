@@ -20,10 +20,10 @@ from tuvl.contract.schema import (
 )
 from tuvl.contract.tel import TELError
 from tuvl.contract.types import TypeRef, build_model
-from tuvl.validate.diagnostics import Loc
-from tuvl.validate.workflow.base import _Base
-from tuvl.validate.workflow.helpers import _EFFECT_RANK
-from tuvl.validate.workflow.report import Profile
+from tuvl_insight.validate.diagnostics import Loc
+from tuvl_insight.validate.workflow.base import _Base
+from tuvl_insight.validate.workflow.helpers import _EFFECT_RANK
+from tuvl_insight.validate.workflow.report import Profile
 
 
 class _Policy(_Base):

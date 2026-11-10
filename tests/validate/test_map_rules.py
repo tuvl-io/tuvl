@@ -7,7 +7,7 @@ from typing import Any
 import pytest
 
 from tuvl.contract.schema import WorkflowDocument
-from tuvl.validate import Catalog, validate_workflow
+from tuvl_insight.validate import Catalog, validate_workflow
 
 
 def wf(

@@ -41,7 +41,7 @@ TOOLING_PREFIXES = (
     "tuvl_insight.shiparchive",
     "tuvl_insight.skills",
     "tuvl_insight.testing",
-    "tuvl.validate",
+    "tuvl_insight.validate",
     "tuvl.lock",
     "tuvl.cli.nest",
     "tuvl.cli.laya",

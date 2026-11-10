@@ -16,11 +16,9 @@ from tuvl.contract.schema import (
     ToolAgent,
     WorkflowToolRef,
 )
-from tuvl.validate.signals import is_reserved, signals_of
-from tuvl.validate.workflow.base import _Base
-from tuvl.validate.workflow.helpers import (
-    _sccs,
-)
+from tuvl_insight.validate.signals import is_reserved, signals_of
+from tuvl_insight.validate.workflow.base import _Base
+from tuvl_insight.validate.workflow.helpers import _sccs
 
 
 class _Topology(_Base):

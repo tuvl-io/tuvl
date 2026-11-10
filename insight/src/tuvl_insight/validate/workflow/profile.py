@@ -13,9 +13,9 @@ from tuvl.contract.schema import (
     ParallelAgent,
     WorkflowToolRef,
 )
-from tuvl.validate.workflow.base import _Base
-from tuvl.validate.workflow.helpers import _sccs
-from tuvl.validate.workflow.report import Profile
+from tuvl_insight.validate.workflow.base import _Base
+from tuvl_insight.validate.workflow.helpers import _sccs
+from tuvl_insight.validate.workflow.report import Profile
 
 
 class _Profiling(_Base):
@@ -24,7 +24,7 @@ class _Profiling(_Base):
         child = self.cat.workflows.get(name)
         if child is None or child.metadata.name == self.doc.metadata.name:
             return 0
-        from tuvl.validate.workflow import _Validator
+        from tuvl_insight.validate.workflow import _Validator
 
         child_v = _Validator(child, self.cat)
         child_v.check_ids()
