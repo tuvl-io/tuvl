@@ -104,7 +104,8 @@ def entry_secret(url: str, project_id: str) -> str | None:
 
 def store_entry_secret(url: str, project_id: str, secret: str) -> None:
     cache = _read_cache()
-    entry = cache.get(url) if isinstance(cache.get(url), dict) else {}
+    current = cache.get(url)
+    entry: dict[str, Any] = current if isinstance(current, dict) else {}
     entry[project_id] = {"entry_secret": secret, "saved_at": int(time.time())}
     cache[url] = entry
     _write_cache(cache)
