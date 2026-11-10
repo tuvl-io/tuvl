@@ -76,6 +76,74 @@
   "hidden": false
  },
  {
+  "command": "iam check",
+  "hidden": false
+ },
+ {
+  "command": "iam export",
+  "hidden": true
+ },
+ {
+  "command": "iam reset-admin",
+  "hidden": false
+ },
+ {
+  "command": "iam roles add-user",
+  "hidden": false
+ },
+ {
+  "command": "iam roles create",
+  "hidden": false
+ },
+ {
+  "command": "iam roles delete",
+  "hidden": false
+ },
+ {
+  "command": "iam roles disable",
+  "hidden": false
+ },
+ {
+  "command": "iam roles enable",
+  "hidden": false
+ },
+ {
+  "command": "iam roles grant",
+  "hidden": false
+ },
+ {
+  "command": "iam roles list",
+  "hidden": false
+ },
+ {
+  "command": "iam roles remove-user",
+  "hidden": false
+ },
+ {
+  "command": "iam roles revoke",
+  "hidden": false
+ },
+ {
+  "command": "iam scopes list",
+  "hidden": false
+ },
+ {
+  "command": "iam users create",
+  "hidden": false
+ },
+ {
+  "command": "iam users disable",
+  "hidden": false
+ },
+ {
+  "command": "iam users enable",
+  "hidden": false
+ },
+ {
+  "command": "iam users list",
+  "hidden": false
+ },
+ {
   "command": "import idea",
   "hidden": true
  },

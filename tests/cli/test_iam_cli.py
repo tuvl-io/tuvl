@@ -238,6 +238,7 @@ def test_check_names_scopes_no_active_role_grants(db, monkeypatch):
     assert iam("check").exit_code == 1  # a disabled role grants nothing
 
 
+@pytest.mark.requires_insight
 def test_export_writes_a_role_seed_the_loader_accepts(db, monkeypatch, tmp_path):
     iam("roles", "create", "recruiter", "--description", "Reads", "-s", "b:read", "-s", "a:read")
     iam("roles", "create", "dormant", "-s", "z:read")
@@ -254,6 +255,7 @@ def test_export_writes_a_role_seed_the_loader_accepts(db, monkeypatch, tmp_path)
     assert "password" not in target.read_text().lower()
 
 
+@pytest.mark.requires_insight
 def test_export_in_production_asks_for_the_login(db, monkeypatch):
     monkeypatch.setattr(settings, "tuvl_env", "production")
     assert (
