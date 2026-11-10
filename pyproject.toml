@@ -165,6 +165,7 @@ line-ending = "auto"
 "src/tuvl/core/api/manager.py" = ["N806"]
 # Dev-mode-only surface — annotate when its endpoints get pydantic models.
 "src/tuvl/core/dev/router.py" = ["ANN"]
+"src/tuvl/core/dev/artifacts.py" = ["ANN"]
 # The annotation ratchet is for src/ — test signatures stay lightweight.
 "tests/**" = ["ANN", "N806"]  # N806: generated model classes bound to capitalised locals
 

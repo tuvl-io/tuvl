@@ -7,6 +7,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from tuvl.contract.facts import artifact_refs, field_types
 from tuvl.contract.schema import (
     AgentToolRef,
     CodeAgent,
@@ -24,13 +25,8 @@ from tuvl.contract.tel import TELError, compile_expr, compile_template
 from tuvl.contract.types import TypeRef, build_model
 from tuvl.core.artifacts.kinds import REF_SITE_COMPAT
 from tuvl.validate.diagnostics import Loc
-from tuvl.validate.signals import field_types
 from tuvl.validate.workflow.base import _Base
-from tuvl.validate.workflow.helpers import (
-    _strings,
-    _tel_message,
-    artifact_refs,
-)
+from tuvl.validate.workflow.helpers import _strings, _tel_message
 
 
 class _Expressions(_Base):

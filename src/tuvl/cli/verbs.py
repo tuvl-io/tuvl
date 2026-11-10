@@ -192,6 +192,7 @@ def register(app: typer.Typer) -> None:
             lock,
             mcp,
             project,
+            replay,
             review,
             schema,
             skills,
@@ -209,6 +210,7 @@ def register(app: typer.Typer) -> None:
             lock=lock,
             mcp=mcp,
             project=project,
+            replay=replay,
             review=review,
             schema=schema,
             skills=skills,
@@ -267,7 +269,7 @@ def register(app: typer.Typer) -> None:
     g["serve"].add("mcp", fn("mcp", "mcp_cmd"))
     g["follow"].add("run", follow_run, toolchain=False)
     g["pin"].add("run", runs.pin_cmd, toolchain=False)
-    g["replay"].add("runs", runs.replay_cmd, toolchain=False)
+    g["replay"].add("runs", fn("replay", "replay_cmd"))
 
     g["list"].add("ideas", fn("spec", "ideas_cmd"))
     g["list"].add("specs", fn("spec", "list_cmd"))

@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from typing import Any
 
+from tuvl.contract.facts import field_types
 from tuvl.contract.tel import TELError, compile_template
 from tuvl.contract.types import TypeRef, format_type
-from tuvl.validate.signals import assignable, field_types, signals_of
+from tuvl.validate.signals import assignable, signals_of
 from tuvl.validate.workflow.base import _Base
 from tuvl.validate.workflow.helpers import (
     _TRIGGER,

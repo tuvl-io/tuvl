@@ -17,13 +17,20 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
 
-from tuvl.api.dev.files import _project
+from tuvl.core.dev.project import project_dir
 
 router = APIRouter()
 
 
 def _cli_argv(args: list[str]) -> list[str]:
-    return [sys.executable, "-c", "from tuvl.cli import main; main()", *args, "-d", str(_project())]
+    return [
+        sys.executable,
+        "-c",
+        "from tuvl.cli import main; main()",
+        *args,
+        "-d",
+        str(project_dir()),
+    ]
 
 
 # Runs the command with its output in a file and its exit code beside it. Python, not `sh`, so it works on Windows.
@@ -79,7 +86,7 @@ _JOBS: dict[str, _Job] = {}
 
 
 def _jobs_dir() -> Path:
-    path = _project() / ".tuvl" / "live" / "jobs"
+    path = project_dir() / ".tuvl" / "live" / "jobs"
     path.mkdir(parents=True, exist_ok=True)
     return path
 

@@ -49,6 +49,7 @@ TOOLING_PREFIXES = (
     "tuvl.cli.session",
     "tuvl.cli.select",
     "tuvl.cli.json_output",
+    "tuvl.doctor.toolchain_groups",
 )
 
 # Stay in the core even though they sit under a tooling prefix: the dev-key gate and the live-state routes.
@@ -56,6 +57,7 @@ CORE_EXCEPTIONS = (
     "tuvl.core.dev.middleware",
     "tuvl.core.dev.project",
     "tuvl.core.dev.artifacts",
+    "tuvl.core.dev.extensions",
     "tuvl.api.dev.breakpoints",
     "tuvl.api.dev.memory",
     "tuvl.api.dev.schedules",
@@ -81,6 +83,15 @@ def module_name(path: Path) -> str:
     return ".".join(parts)
 
 
+def absolute(module: str, path: Path, node: ast.ImportFrom) -> str | None:
+    """The dotted module a `from ... import` names, resolving a relative import against *module*."""
+    if node.level == 0:
+        return node.module
+    package = module.split(".") if path.name == "__init__.py" else module.split(".")[:-1]
+    package = package[: len(package) - (node.level - 1)]
+    return ".".join([*package, *([node.module] if node.module else [])])
+
+
 def scan() -> tuple[dict[str, int], dict[str, dict[str, bool]]]:
     """Return {module: line count} and {module: {imported module: only imported lazily}}."""
     sizes: dict[str, int] = {}
@@ -98,12 +109,11 @@ def scan() -> tuple[dict[str, int], dict[str, dict[str, bool]]]:
         found: dict[str, bool] = {}
         for node in ast.walk(tree):
             targets: list[str] = []
-            if isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
-                if node.module.split(".")[0] == "tuvl":
+            if isinstance(node, ast.ImportFrom):
+                base = absolute(module, files[module], node)
+                if base and base.split(".")[0] == "tuvl":
                     targets = [
-                        f"{node.module}.{a.name}"
-                        if f"{node.module}.{a.name}" in sizes
-                        else node.module
+                        f"{base}.{a.name}" if f"{base}.{a.name}" in sizes else base
                         for a in node.names
                     ]
             elif isinstance(node, ast.Import):
@@ -114,6 +124,35 @@ def scan() -> tuple[dict[str, int], dict[str, dict[str, bool]]]:
                     found[target] = found.get(target, True) and lazy
         edges[module] = found
     return sizes, edges
+
+
+# Modules that may import the tooling: the places where the engine reaches for it on purpose.
+SEAMS = {
+    "tuvl.cli": "registers the one-word toolchain commands",
+    "tuvl.cli.verbs": "registers the verb tree; each toolchain action is imported when it runs",
+    "tuvl.core.dev.extensions": "mounts the tooling's /dev routes in dev mode",
+    "tuvl.doctor": "registers the toolchain's check groups",
+}
+
+
+def seam_violations() -> list[tuple[str, str]]:
+    """Core modules that import the tooling without being a listed seam."""
+    sizes, edges = scan()
+    tooling = {m for m in sizes if is_tooling(m)}
+    return sorted(
+        (module, target)
+        for module, targets in edges.items()
+        if module not in tooling and module not in SEAMS
+        for target in targets
+        if target in tooling
+    )
+
+
+def core_used_by_tooling() -> list[str]:
+    """The core modules the tooling imports: the surface the tooling depends on."""
+    sizes, edges = scan()
+    tooling = {m for m in sizes if is_tooling(m)}
+    return sorted({t for m in tooling for t in edges[m] if t not in tooling})
 
 
 def main() -> int:
@@ -138,7 +177,9 @@ def main() -> int:
     print(
         f"\nimports from tooling into core: {back} (allowed; kept to a short list by tests/test_boundary.py)"
     )
-    if "--check" in sys.argv and total:
+    if "--check" in sys.argv and (bad := seam_violations()):
+        for module, target in bad:
+            print(f"  not a seam: {module} -> {target}", file=sys.stderr)
         print("\nsplit check FAILED: the core imports the tooling", file=sys.stderr)
         return 1
     return 0

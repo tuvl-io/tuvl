@@ -9,8 +9,8 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from tuvl.api.dev.files import _project
 from tuvl.core.config import settings
+from tuvl.core.dev.project import project_dir
 
 router = APIRouter()
 
@@ -66,7 +66,7 @@ async def agent_source(run: str, description: str = "") -> dict[str, Any]:
             "file_text": None,
             "exists": True,
         }
-    project = _project()
+    project = project_dir()
     found = _agent_function(settings.dir_for("agents"), run)
     if found is None:
         # a new code agent (e.g. just added on the canvas): start from codegen's stub
@@ -120,7 +120,7 @@ async def save_agent_source(run: str, request: SourceWrite) -> dict[str, Any]:
     decorator = r"""@(?:\w+\.)?agent\(\s*["']""" + re.escape(run) + r"""["']"""
     if not re.search(decorator, request.text):
         raise HTTPException(422, {"error": f'keep the @agent("{run}") decorator', "line": None})
-    project = _project()
+    project = project_dir()
     agents_dir = settings.dir_for("agents")
     found = _agent_function(agents_dir, run)
     note: str | None

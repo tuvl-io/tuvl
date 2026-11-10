@@ -10,8 +10,8 @@ from typing import Any
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
 from pydantic import BaseModel
 
-from tuvl.api.dev.files import _project
 from tuvl.api.dev.jobs import _cli_argv, _cli_env, _start_job
+from tuvl.core.dev.project import project_dir
 
 router = APIRouter()
 
@@ -22,7 +22,7 @@ router = APIRouter()
 async def spec_lifecycle() -> dict[str, Any]:
     from tuvl.spec.views import lifecycle_view
 
-    return {"specs": lifecycle_view(_project())}
+    return {"specs": lifecycle_view(project_dir())}
 
 
 @router.get("/ideas", summary="The project's ideas and the specs drawn from them, and who you are")
@@ -30,9 +30,9 @@ async def ideas() -> dict[str, Any]:
     from tuvl.coding_agents import read_settings
     from tuvl.spec.views import ideas_view
 
-    saved = read_settings(_project())
+    saved = read_settings(project_dir())
     return {
-        "ideas": ideas_view(_project()),
+        "ideas": ideas_view(project_dir()),
         # what an upload and "generate spec" need: your initials (they number the ideas), your coding agent, and whether
         # you already agreed that the project's files may be sent to it
         "me": {
@@ -50,7 +50,7 @@ async def idea(idea_id: str) -> dict[str, Any]:
 
     if not ids.IDEA_ID.match(idea_id):
         raise HTTPException(400, "not an idea id")
-    found = idea_view(_project(), idea_id)
+    found = idea_view(project_dir(), idea_id)
     if found is None:
         raise HTTPException(404, f"{idea_id} is not an idea in this project")
     return found
@@ -89,7 +89,7 @@ async def upload_idea(
     from tuvl.spec import ids
     from tuvl.spec.views import idea_view
 
-    project = _project()
+    project = project_dir()
     links = [u.strip() for u in urls if u.strip()]
     if not files and not text.strip() and not links:
         raise HTTPException(422, "Add at least one file or link, or write the idea.")
@@ -154,7 +154,7 @@ async def generate_spec_from_idea(idea_id: str, request: GenerateSpec) -> dict[s
     from tuvl.coding_agents import read_settings
     from tuvl.spec import ids
 
-    project = _project()
+    project = project_dir()
     if not ids.IDEA_ID.match(idea_id) or idea_id not in ids.idea_ids(project):
         raise HTTPException(404, f"{idea_id} is not an idea in this project")
     if request.where not in ("here", "branch"):
@@ -198,7 +198,9 @@ async def audit(
 ) -> dict[str, Any]:
     from tuvl.spec.views import audit_view
 
-    return audit_view(_project(), entity=entity, kind=kind, actor=actor, limit=limit, after=after)
+    return audit_view(
+        project_dir(), entity=entity, kind=kind, actor=actor, limit=limit, after=after
+    )
 
 
 @router.get("/specs/check", summary="tuvl lint spec --json")
@@ -207,7 +209,7 @@ async def spec_check(spec: str | None = None) -> dict[str, Any]:
     from tuvl.spec.parse import SpecError
 
     try:
-        return check_report(_project(), spec)
+        return check_report(project_dir(), spec)
     except SpecError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
@@ -220,7 +222,7 @@ async def spec_verify(
     from tuvl.spec.verify import verify_report
 
     try:
-        return await verify_report(_project(), spec, run_tests=run_tests)
+        return await verify_report(project_dir(), spec, run_tests=run_tests)
     except SpecError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
@@ -232,7 +234,7 @@ async def spec_status(
     from tuvl.spec.tasks import TaskPlanError, status_report
 
     try:
-        return await status_report(_project(), spec, run_tests=run_tests)
+        return await status_report(project_dir(), spec, run_tests=run_tests)
     except TaskPlanError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
@@ -241,14 +243,14 @@ async def spec_status(
 async def spec_branches(spec: str | None = None) -> dict[str, Any]:
     from tuvl.spec.branches import report
 
-    return await asyncio.to_thread(report, _project(), Path(spec) if spec else None)
+    return await asyncio.to_thread(report, project_dir(), Path(spec) if spec else None)
 
 
 @router.get("/specs/{name}/tasks/{task_id}", summary="One task and the spec section it comes from")
 async def spec_task(name: str, task_id: str) -> dict[str, Any]:
     from tuvl.spec.tasks import task_detail
 
-    found = task_detail(_project(), task_id, Path(_spec_arg(name)))
+    found = task_detail(project_dir(), task_id, Path(_spec_arg(name)))
     if found is None:
         raise HTTPException(status_code=404, detail=f"no task {task_id} in {name}")
     return found
@@ -259,7 +261,7 @@ async def spec_diff(spec: str | None = None) -> dict[str, Any]:
     from tuvl.spec.tasks import TaskPlanError, diff_report
 
     try:
-        return diff_report(_project(), spec)
+        return diff_report(project_dir(), spec)
     except TaskPlanError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
@@ -277,7 +279,7 @@ async def build_task(name: str, task_id: str, request: BuildTask) -> dict[str, s
     from tuvl.spec.tasks import TaskPlanError, status_report
 
     try:
-        report = await status_report(_project(), _spec_arg(name), run_tests=False)
+        report = await status_report(project_dir(), _spec_arg(name), run_tests=False)
     except TaskPlanError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     task = next((t for p in report["plans"] for t in p["tasks"] if t["id"] == task_id), None)
@@ -291,7 +293,7 @@ async def build_task(name: str, task_id: str, request: BuildTask) -> dict[str, s
         raise HTTPException(
             status_code=409, detail="; ".join(task["reasons"]) or "The task is blocked."
         )
-    settings = read_settings(_project())
+    settings = read_settings(project_dir())
     args = ["generate", "code", "--spec", _spec_arg(name)]
     args += ["--no-agent"] if request.scaffold else ["--task", task_id]
     args.append("--no-pr")
@@ -368,7 +370,7 @@ async def new_spec(request: NewSpec) -> dict[str, str]:
     from tuvl.spec.parse import slug
 
     stem = slug(request.name)
-    target = _project() / "specs" / f"{stem}.md"
+    target = project_dir() / "specs" / f"{stem}.md"
     if target.exists():
         raise HTTPException(409, f"specs/{stem}.md already exists")
     target.parent.mkdir(parents=True, exist_ok=True)

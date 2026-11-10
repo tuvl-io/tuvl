@@ -199,7 +199,7 @@ async def test_mcp_hashes(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_runtime_warns_once_on_drift(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(lock, "_WARNED", set())
+    monkeypatch.setattr("tuvl.contract.lockfile._WARNED", set())
     (tmp_path / "tuvl.lock").write_text(
         lock.render({"mcp": {"artifact://web@1": {"fetch": lock.schema_hash({"a": 1})}}})
     )
@@ -207,7 +207,7 @@ def test_runtime_warns_once_on_drift(tmp_path: Path, monkeypatch: pytest.MonkeyP
         lock.check_live_mcp(tmp_path, "artifact://web@1", "fetch", {"a": 1})
         lock.check_live_mcp(tmp_path, "artifact://web@1", "other", {"b": 2})  # not pinned: silent
     assert logs == []
-    monkeypatch.setattr(lock, "_WARNED", set())
+    monkeypatch.setattr("tuvl.contract.lockfile._WARNED", set())
     with structlog.testing.capture_logs() as logs:
         lock.check_live_mcp(tmp_path, "artifact://web@1", "fetch", {"a": 2})
         lock.check_live_mcp(tmp_path, "artifact://web@1", "fetch", {"a": 2})

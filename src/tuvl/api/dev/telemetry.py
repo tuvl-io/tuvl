@@ -8,7 +8,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
-from tuvl.api.dev.files import _project
+from tuvl.core.dev.project import project_dir
 
 router = APIRouter()
 
@@ -31,7 +31,7 @@ class DevRegisterBody(BaseModel):
 async def get_dev_telemetry() -> dict[str, Any]:
     from tuvl import devtelemetry
 
-    return devtelemetry.status(_project())
+    return devtelemetry.status(project_dir())
 
 
 @router.put("/dev-telemetry", summary="tuvl set dev-telemetry")
@@ -39,17 +39,17 @@ async def put_dev_telemetry(body: DevTelemetryBody) -> dict[str, Any]:
     from tuvl import devtelemetry
 
     try:
-        devtelemetry.save(_project(), devtelemetry.Config(**body.model_dump()))
+        devtelemetry.save(project_dir(), devtelemetry.Config(**body.model_dump()))
     except devtelemetry.TelemetryError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return devtelemetry.status(_project())
+    return devtelemetry.status(project_dir())
 
 
 @router.post("/dev-telemetry/register", summary="tuvl register developer")
 async def register_developer(body: DevRegisterBody) -> dict[str, Any]:
     from tuvl import devtelemetry
 
-    config = devtelemetry.load(_project())
+    config = devtelemetry.load(project_dir())
     if config is None or not config.server:
         raise HTTPException(status_code=409, detail="Save the collector's address first.")
     try:
@@ -62,7 +62,7 @@ async def register_developer(body: DevRegisterBody) -> dict[str, Any]:
         )
     except devtelemetry.TelemetryError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return devtelemetry.status(_project())
+    return devtelemetry.status(project_dir())
 
 
 @router.post("/dev-telemetry/rotate", summary="tuvl set dev-telemetry --rotate-token")
@@ -70,27 +70,27 @@ async def rotate_developer_token() -> dict[str, Any]:
     from tuvl import devtelemetry
 
     try:
-        await asyncio.to_thread(devtelemetry.rotate, _project())
+        await asyncio.to_thread(devtelemetry.rotate, project_dir())
     except devtelemetry.TelemetryError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return devtelemetry.status(_project())
+    return devtelemetry.status(project_dir())
 
 
 @router.delete("/dev-telemetry/token", summary="tuvl set dev-telemetry --forget")
 async def forget_developer_token() -> dict[str, Any]:
     from tuvl import devtelemetry
 
-    config = devtelemetry.load(_project())
+    config = devtelemetry.load(project_dir())
     if config is not None and config.server:
         devtelemetry.forget(config.server)
-    return devtelemetry.status(_project())
+    return devtelemetry.status(project_dir())
 
 
 @router.post("/dev-telemetry/check", summary="tuvl check dev-telemetry [--flush]")
 async def check_dev_telemetry(flush: bool = False) -> dict[str, Any]:
     from tuvl import devtelemetry
 
-    project = _project()
+    project = project_dir()
     error = await asyncio.to_thread(devtelemetry.ping, project)
     sent = 0
     if not error and flush:
@@ -110,11 +110,11 @@ async def team_events(
     from tuvl import devtelemetry
     from tuvl.core.project_info import load_project
 
-    record = load_project(_project()) or {}
+    record = load_project(project_dir()) or {}
     try:
         events = await asyncio.to_thread(
             devtelemetry.team_events,
-            _project(),
+            project_dir(),
             project=str(record.get("id", "")),
             actor=actor,
             entity=entity,

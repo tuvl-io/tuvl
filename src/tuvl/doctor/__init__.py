@@ -60,18 +60,25 @@ def group(name: str, *, toolchain: bool = False) -> Callable[[GroupFn], GroupFn]
     return register
 
 
-def available_groups() -> list[str]:
+def _register_groups() -> bool:
+    """Register the built-in groups, and the toolchain's when it is installed. Returns whether it is."""
     from tuvl.extras import toolchain_installed
 
-    from . import groups as _groups  # noqa: F401 — registers the built-in groups
+    from . import groups as _groups  # noqa: F401
 
     installed = toolchain_installed()
+    if installed:
+        from . import toolchain_groups as _toolchain_groups  # noqa: F401
+    return installed
+
+
+def available_groups() -> list[str]:
+    installed = _register_groups()
     return [g.name for g in GROUPS.values() if installed or not g.toolchain]
 
 
 def run(ctx: Context, names: list[str]) -> list[Check]:
-    from . import groups as _groups  # noqa: F401
-
+    _register_groups()
     out: list[Check] = []
     for name in names:
         try:

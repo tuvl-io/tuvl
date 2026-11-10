@@ -9,7 +9,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from tuvl.api.dev.files import _project
+from tuvl.core.dev.project import project_dir
 
 router = APIRouter()
 
@@ -53,7 +53,7 @@ async def judge_calibrate(request: JudgeRequest) -> dict[str, Any]:
     from tuvl.runtime import judges
 
     try:
-        result = await judges.calibrate_with(_judge(request), _project())
+        result = await judges.calibrate_with(_judge(request), project_dir())
     except (OSError, ValueError) as exc:
         raise HTTPException(422, f"calibration set unreadable: {exc}") from exc
     return asdict(result)
@@ -72,7 +72,7 @@ async def judge_label(request: LabelRequest) -> dict[str, str]:
     """Insight then appends ``{input, expect}`` to the judge's calibration list."""
     if not _FIXTURE_NAME.fullmatch(request.label):
         raise HTTPException(400, "label: lowercase letters, digits, - and _")
-    path = _project() / "fixtures" / "judge" / f"{request.label}.json"
+    path = project_dir() / "fixtures" / "judge" / f"{request.label}.json"
     if path.exists():
         raise HTTPException(409, f"fixtures/judge/{request.label}.json already exists")
     path.parent.mkdir(parents=True, exist_ok=True)

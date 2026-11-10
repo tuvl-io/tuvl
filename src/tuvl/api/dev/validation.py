@@ -8,7 +8,8 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from tuvl.api.dev.files import _area_path, _project
+from tuvl.api.dev.files import _area_path
+from tuvl.core.dev.project import project_dir
 
 router = APIRouter()
 
@@ -19,7 +20,7 @@ router = APIRouter()
 async def validate() -> dict[str, Any]:
     from tuvl.cli.commands.validate import run_validation
 
-    result, *_ = run_validation(_project(), echo=False)
+    result, *_ = run_validation(project_dir(), echo=False)
     return {
         "valid": not result.errors,
         "errors": [i.to_json() for i in result.errors],
@@ -45,7 +46,7 @@ async def validate_draft(request: DraftRequest) -> dict[str, Any]:
     from tuvl.cli.commands.validate import run_validation
     from tuvl.core.config import use_project
 
-    project = _project()
+    project = project_dir()
     target = _area_path(request.area, request.name).relative_to(project.resolve())
     ignore = shutil.ignore_patterns(
         ".git", ".venv", "node_modules", "__pycache__", ".tuvl", "deploy"
@@ -92,7 +93,7 @@ class CodegenRequest(BaseModel):
 async def codegen(request: CodegenRequest) -> dict[str, Any]:
     from tuvl import codegen as generator
 
-    return generator.run(_project(), write=request.write)
+    return generator.run(project_dir(), write=request.write)
 
 
 class TestRequest(BaseModel):
@@ -107,7 +108,7 @@ async def run_tests(request: TestRequest) -> dict[str, Any]:
     from tuvl.cli.commands.test import _run
 
     results, warnings = await _run(
-        _project(), live=request.live, allow_uncertain=False, only=request.only, strict=False
+        project_dir(), live=request.live, allow_uncertain=False, only=request.only, strict=False
     )
     return {
         "passed": all(r.status == "passed" for r in results),

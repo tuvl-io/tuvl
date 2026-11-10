@@ -18,12 +18,12 @@ from typing import Any, Literal
 from pydantic import BaseModel, ValidationError
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
+from tuvl.contract.facts import field_types
 from tuvl.contract.schema import WorkflowDocument, duration_seconds
 from tuvl.contract.types import build_model
 from tuvl.runtime import queue
 from tuvl.runtime.models import SystemRun
 from tuvl.runtime.runner import Runner, workflow_hash
-from tuvl.validate.signals import field_types
 
 Role = Literal["all", "api", "worker"]
 

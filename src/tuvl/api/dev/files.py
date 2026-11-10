@@ -10,6 +10,7 @@ from fastapi import APIRouter, Body, HTTPException
 from fastapi.responses import PlainTextResponse
 
 from tuvl.core.config import settings
+from tuvl.core.dev.project import project_dir
 
 router = APIRouter()
 
@@ -26,10 +27,6 @@ TEXT_AREAS: dict[str, tuple[str, tuple[str, ...]]] = {
 }
 
 
-def _project() -> Path:
-    return settings.project_dir
-
-
 def _area_path(area: str, name: str) -> Path:
     if area not in TEXT_AREAS:
         raise HTTPException(400, f"unknown area {area!r} — one of {sorted(TEXT_AREAS)}")
@@ -37,7 +34,7 @@ def _area_path(area: str, name: str) -> Path:
     base = (
         settings.dir_for(directory)
         if area != "specs" and area != "tests"
-        else _project() / directory
+        else project_dir() / directory
     ).resolve()
     target = (base / name).resolve()
     if not target.is_relative_to(base) or name.startswith(".") or "\\" in name:
@@ -57,7 +54,7 @@ async def project_summary() -> dict[str, Any]:
     from tuvl.runtime.host import unavailable_reasons
     from tuvl.spec import load_specs
 
-    project = _project()
+    project = project_dir()
     specs = []
     for spec in load_specs(project):
         tasks = project / Path(spec.path).with_suffix("").with_suffix(".tasks.yaml")
@@ -118,7 +115,7 @@ async def write_text(
             raise HTTPException(422, f"YAML parse error: {exc}") from exc
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text)
-    return {"saved": str(path.relative_to(_project()))}
+    return {"saved": str(path.relative_to(project_dir()))}
 
 
 @router.delete("/text/{area}/{name:path}", summary="Delete a file")
@@ -127,4 +124,4 @@ async def delete_text(area: str, name: str) -> dict[str, str]:
     if not path.is_file():
         raise HTTPException(404, f"{area}/{name} not found")
     path.unlink()
-    return {"deleted": str(path.relative_to(_project()))}
+    return {"deleted": str(path.relative_to(project_dir()))}

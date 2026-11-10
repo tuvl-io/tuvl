@@ -8,7 +8,7 @@ from typing import Any
 from fastapi import APIRouter, Body, HTTPException, UploadFile
 from pydantic import BaseModel
 
-from tuvl.api.dev.files import _project
+from tuvl.core.dev.project import project_dir
 
 router = APIRouter()
 
@@ -26,7 +26,7 @@ async def get_breakpoints(workflow: str) -> list[str]:
 async def put_breakpoints(workflow: str, agents: list[str] = Body(...)) -> list[str]:
     from tuvl.runtime import devtools
 
-    devtools.set_breakpoints(_project(), workflow, agents)
+    devtools.set_breakpoints(project_dir(), workflow, agents)
     return sorted(devtools.BREAKPOINTS.get(workflow, set()))
 
 

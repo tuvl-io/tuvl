@@ -18,7 +18,37 @@ import typer
 
 PAGE = Path(__file__).resolve().parent.parent / "docs" / "cli-reference.md"
 SKIP = {"help"}
-VERB_ORDER = ["init", "dev", "ship", "deploy", "create", "import", "use", "set", "upgrade", "register", "update", "generate", "approve", "reject", "reopen", "renumber", "lint", "verify", "check", "review", "run", "serve", "follow", "pin", "replay", "list", "show", "export", "prune"]
+VERB_ORDER = [
+    "init",
+    "dev",
+    "ship",
+    "deploy",
+    "create",
+    "import",
+    "use",
+    "set",
+    "upgrade",
+    "register",
+    "update",
+    "generate",
+    "approve",
+    "reject",
+    "reopen",
+    "renumber",
+    "lint",
+    "verify",
+    "check",
+    "review",
+    "run",
+    "serve",
+    "follow",
+    "pin",
+    "replay",
+    "list",
+    "show",
+    "export",
+    "prune",
+]
 
 HEADER = """# CLI reference (every command and option)
 

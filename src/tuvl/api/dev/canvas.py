@@ -10,7 +10,7 @@ from typing import Any
 from fastapi import APIRouter, Body, HTTPException
 from pydantic import BaseModel
 
-from tuvl.api.dev.files import _project
+from tuvl.core.dev.project import project_dir
 
 router = APIRouter()
 
@@ -20,7 +20,7 @@ router = APIRouter()
 def _layout_path(workflow: str) -> Path:
     if not workflow.replace("_", "").isalnum():
         raise HTTPException(400, "invalid workflow name")
-    return _project() / ".tuvl" / "layout" / f"{workflow}.json"
+    return project_dir() / ".tuvl" / "layout" / f"{workflow}.json"
 
 
 @router.get("/layout/{workflow}", summary="Node positions of a workflow's canvas")
@@ -34,7 +34,7 @@ async def put_layout(workflow: str, layout: dict[str, Any] = Body(...)) -> dict[
     path = _layout_path(workflow)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(layout, indent=2, sort_keys=True) + "\n")
-    return {"saved": str(path.relative_to(_project()))}
+    return {"saved": str(path.relative_to(project_dir()))}
 
 
 # ── runs: pin and replay ─────────────────────────────────────────────────────
@@ -62,11 +62,11 @@ async def pin_run(run_id: uuid.UUID, request: PinRequest) -> dict[str, str]:
     if not name.replace("-", "").replace("_", "").isalnum():
         raise HTTPException(400, "fixture names use letters, digits, - and _")
     target = (
-        _project() / "tests" / "fixtures" / document["run"]["workflow"] / f"{name}.journal.json"
+        project_dir() / "tests" / "fixtures" / document["run"]["workflow"] / f"{name}.journal.json"
     )
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(json.dumps(document, indent=2) + "\n")
-    return {"pinned": str(target.relative_to(_project()))}
+    return {"pinned": str(target.relative_to(project_dir()))}
 
 
 class ReplayRequest(BaseModel):
@@ -75,11 +75,11 @@ class ReplayRequest(BaseModel):
 
 @router.post("/runs/replay", summary="tuvl replay runs --json: re-run pinned journals offline")
 async def replay(request: ReplayRequest) -> dict[str, Any]:
-    from tuvl.cli.commands.runs import replay_test
+    from tuvl.cli.commands.replay import replay_test
     from tuvl.contract.registry import WORKFLOWS
     from tuvl.testing import run_test
 
-    project = _project()
+    project = project_dir()
     results = []
     for fixture in request.fixtures:
         path = (project / fixture).resolve()

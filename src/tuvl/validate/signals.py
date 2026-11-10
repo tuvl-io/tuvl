@@ -6,11 +6,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from tuvl.contract.facts import enum_outputs, field_types
 from tuvl.contract.schema import (
     DecideAgent,
     HumanAgent,
     LlmAgent,
-    LongFormField,
     LoopAgent,
     MapAgent,
     ParallelAgent,
@@ -18,7 +18,7 @@ from tuvl.contract.schema import (
     ToolAgent,
 )
 from tuvl.contract.signals import HTTP_STATUS, is_reserved
-from tuvl.contract.types import TypeParseError, TypeRef, parse_field
+from tuvl.contract.types import TypeRef
 
 _HTTP_STATUS = HTTP_STATUS
 
@@ -45,25 +45,6 @@ class Signals:
             or signal in self.optional
             or (_HTTP_STATUS.fullmatch(signal) is not None and "http_*" in self.optional)
         )
-
-
-def field_types(fields: dict[str, Any] | None) -> dict[str, TypeRef]:
-    """A schema field map (short or long form) → parsed types. Assumes the
-    schema already rejected malformed types."""
-    out: dict[str, TypeRef] = {}
-    for name, spec in (fields or {}).items():
-        raw = spec.model_dump(exclude_unset=True) if isinstance(spec, LongFormField) else spec
-        try:
-            out[name] = parse_field(raw).type
-        except TypeParseError:
-            continue
-    return out
-
-
-def enum_outputs(agent: Any) -> dict[str, TypeRef]:
-    return {
-        k: t for k, t in field_types(agent.outputs).items() if t.kind == "enum" and not t.optional
-    }
 
 
 def signals_of(agent: Any) -> Signals:
