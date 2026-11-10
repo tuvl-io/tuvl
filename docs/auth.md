@@ -122,7 +122,9 @@ All identity endpoints live in `tuvl/core/auth/router.py` under `/auth`.
 
 ### Bootstrap
 
-`POST /auth/bootstrap` creates the first administrator. It is only available while `tuvl_system_iam_users` is empty (409 afterwards) and requires no token. It creates a `superadmin` role carrying `iam:admin`, assigns it to the new user, and returns a token.
+`POST /auth/bootstrap` creates the first administrator. It is only available while `tuvl_system_iam_users` is empty (409 afterwards) and requires no token. It creates a `superadmin` role carrying `iam:admin` (or reuses a seeded one), assigns it to the new user, and returns a token.
+
+It belongs to the `iam` API group, which a production server does not mount (see [Production IAM](#production-iam)); on a production database the first administrator comes from the environment instead.
 
 ### Password login
 
@@ -297,6 +299,59 @@ When no signing key is configured in dev mode, an ephemeral Ed25519 key pair is 
 
 Production runs with dev mode off: no dev key, no `/dev` or Insight execution surfaces, signed tokens only. `TUVL_SIGNING_KEY` **must** be set — `TuvlKeyManager` (`tuvl/core/auth/keys.py`) fails closed with a `RuntimeError` pointing at `tuvl generate key` when the variable is missing outside dev mode.
 
+Users and roles are database rows, and `tuvl ship` carries none of them. A production database starts empty and has no Insight, so IAM is set up in three steps: a seed on the first boot, then `tuvl iam` from inside the deployment.
+
+### Production IAM
+
+**1. Roles: `kind: RoleSeed`.** Keep the roles a fresh environment should start with in the project:
+
+```yaml
+kind: RoleSeed
+spec:
+  roles:
+    - name: superadmin
+      description: Full platform administrator
+      scopes: [iam:admin]
+    - name: recruiter
+      description: Reads candidates and interviews
+      scopes: [candidate:read, interview:read]
+```
+
+`tuvl lint project` checks it (V044). Model the roles in Insight in development, then write them out with `tuvl iam export --out iam/roles.yaml` (users and passwords are never exported).
+
+**2. The first administrator: environment.** Set `TUVL_BOOTSTRAP_ADMIN_EMAIL` and `TUVL_BOOTSTRAP_ADMIN_PASSWORD` (or `TUVL_BOOTSTRAP_ADMIN_PASSWORD_FILE` with a mounted secret). Put the password in the cluster Secret, not in the chart values.
+
+**3. Once.** On boot, in one transaction under an advisory lock (several replicas boot together), tuvl seeds the roles and the administrator, then writes an `iam_seeded` marker to `tuvl_system_registry`. The seed runs **once in the life of a database**:
+
+- a database that already has a user or a role is left alone (the marker is written and the seed ignored), so a restored or migrated database is never overwritten;
+- the marker, not emptiness, is what stops a second seed, so deleting every role later does not bring the seed back;
+- a boot with nothing to seed writes no marker, so a later boot that carries a seed still applies.
+
+Roles and users are changed afterwards with `tuvl iam`. Editing the `RoleSeed` file later changes nothing in a running database; `tuvl iam check` tells you when the project and the database drift.
+
+**`tuvl iam`.** Production mounts no IAM administration over HTTP: `/auth/bootstrap` and `/auth/admin/*` are the `iam` API group, which is off unless you expose it. Run the command where the database is reachable:
+
+```bash
+kubectl exec -it deploy/<app> -- tuvl iam roles list
+```
+
+It asks for an administrator's email and password (prompted, `--password-stdin`, or `TUVL_IAM_EMAIL` / `TUVL_IAM_PASSWORD`), then works on the primary datasource directly. The credentials say who made a change; they are not a network boundary, because whoever can exec into the pod already holds the database credentials.
+
+| Command | Does |
+|---|---|
+| `roles list` · `create` · `delete` · `enable` · `disable` | The roles. A disabled role keeps its members and scopes but grants nothing. `delete` refuses a role that still has members unless `--force`. |
+| `roles grant <role> <scope>` · `revoke` | One scope at a time. Revoking signs the holders out. |
+| `roles add-user <role> <email>` · `remove-user` | Who holds the role. |
+| `users list` · `create` · `enable` · `disable` | The users. `create` prompts for the password (or `TUVL_IAM_NEW_PASSWORD`). |
+| `scopes list` | The scopes this project enforces and what each guards. |
+| `check` | Is every scope the project enforces granted by an active role? Exits 1 if not. Run it after a release that adds a scope. |
+| `reset-admin <email>` | Break-glass: makes the user an active administrator with a new password and restores the `superadmin` role. Asks for no login, so only use it when no administrator can sign in. |
+| `export` | Developer toolchain only: the live roles as a `RoleSeed`. |
+
+The service refuses a change that would leave no active administrator (a user holding an active role with `iam:admin`): disabling or deleting the last such role, revoking `iam:admin` from it, removing its last member, or disabling or deleting the last such user. A database that never had an administrator is not locked. `tuvl iam` changes appear in the logs as `auth.iam.cli` events with the acting administrator.
+
+To reach the REST admin API in production anyway, add `iam` to `spec.api.expose` / `TUVL_API_EXPOSE`. Nothing in tuvl needs it.
+
 ---
 
 ## 10. Key Management
@@ -344,6 +399,8 @@ Rules of thumb: 401 always carries `WWW-Authenticate: Bearer` and means "re-auth
 | `tuvl/core/auth/blacklist.py` | Token revocation store (Redis / in-process) |
 | `tuvl/core/auth/iam_service.py` | Transport-neutral IAM service — the one implementation of bootstrap, login, refresh/logout, user & role CRUD, and federation-provider admin; `router.py` is a thin adapter over it |
 | `tuvl/core/auth/router.py` | `/auth` REST surface: bootstrap, login, me/refresh/logout, user & role admin, OAuth federation flow — a thin adapter over `iam_service.py` |
+| `tuvl/core/auth/seed.py` | `kind: RoleSeed` and the once-only first-boot seed (roles + `TUVL_BOOTSTRAP_ADMIN_*` administrator) |
+| `tuvl/cli/commands/iam.py` | `tuvl iam`: the production IAM command line |
 | `tuvl/core/auth/federation_loader.py` | `kind: FederationProvider` YAML loader and registry |
 | `tuvl/core/api/crud_router.py` | CRUD scope/group derivation, enforcement, `build_crud_routers` kill-switch gate |
 | `tuvl/core/auth/workflow_policy.py` | `WorkflowAuthPolicy` — default-deny and `public` |

@@ -111,7 +111,7 @@ def verify_lock(
     ] = True,
 ) -> None:
     """Is tuvl.lock up to date? Exits 1 if it is missing or stale."""
-    from tuvl.cli.commands.lock import lock_cmd
+    from tuvl_insight.cli.commands.lock import lock_cmd
 
     lock_cmd(project_dir=project_dir, check=True, mcp=mcp)
 
@@ -127,7 +127,7 @@ def verify_ui_spec(
     as_json: Annotated[bool, typer.Option("--json", help="Machine-readable result")] = False,
 ) -> None:
     """Is ui/specs/ what `tuvl generate ui-spec` would write now? Exits 1 if not."""
-    from tuvl.cli.commands.ui import DEFAULT_BASE, spec_cmd
+    from tuvl_insight.cli.commands.ui import DEFAULT_BASE, spec_cmd
 
     spec_cmd(
         project_dir=project_dir,
@@ -184,7 +184,7 @@ def register(app: typer.Typer) -> None:
     if toolchain:
         import types
 
-        from tuvl.cli.commands import (
+        from tuvl_insight.cli.commands import (
             agent,
             audit,
             codegen,
@@ -192,6 +192,7 @@ def register(app: typer.Typer) -> None:
             lock,
             mcp,
             project,
+            replay,
             review,
             schema,
             skills,
@@ -209,6 +210,7 @@ def register(app: typer.Typer) -> None:
             lock=lock,
             mcp=mcp,
             project=project,
+            replay=replay,
             review=review,
             schema=schema,
             skills=skills,
@@ -267,7 +269,7 @@ def register(app: typer.Typer) -> None:
     g["serve"].add("mcp", fn("mcp", "mcp_cmd"))
     g["follow"].add("run", follow_run, toolchain=False)
     g["pin"].add("run", runs.pin_cmd, toolchain=False)
-    g["replay"].add("runs", runs.replay_cmd, toolchain=False)
+    g["replay"].add("runs", fn("replay", "replay_cmd"))
 
     g["list"].add("ideas", fn("spec", "ideas_cmd"))
     g["list"].add("specs", fn("spec", "list_cmd"))
@@ -292,3 +294,7 @@ def register(app: typer.Typer) -> None:
 
     for verb, panel, _ in VERBS:
         app.add_typer(groups[verb].app, name=verb, rich_help_panel=panel)
+
+    from tuvl.cli.commands.iam import iam_app
+
+    app.add_typer(iam_app, name="iam", rich_help_panel="Admin")

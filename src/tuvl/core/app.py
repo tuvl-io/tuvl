@@ -13,6 +13,7 @@ from tuvl.core.api.artifacts_router import router as artifacts_router
 from tuvl.core.api.crud_router import build_crud_routers
 from tuvl.core.api.system_router import require_dev_mode
 from tuvl.core.api.system_router import router as system_router
+from tuvl.core.auth.router import iam_router
 from tuvl.core.auth.router import router as auth_router
 from tuvl.core.bootstrap import run_pre_flight
 from tuvl.core.config import settings
@@ -30,9 +31,10 @@ from tuvl.core.models.schemas import SCHEMA_REGISTRY
 from tuvl.core.system_config import api_docs_mode, exposed_api_groups
 
 if settings.tuvl_dev_mode:
-    from tuvl.api.dev import router as dev_v2_router
+    from tuvl.api.dev import router as dev_live_router
+    from tuvl.core.dev.artifacts import router as dev_artifacts_router
+    from tuvl.core.dev.extensions import mount_dev_extensions
     from tuvl.core.dev.middleware import DevMiddleware
-    from tuvl.core.dev.router import router as dev_router
 
 if not settings.tuvl_dev_mode and settings.tuvl_allowed_hosts:
     from tuvl.core.access_control import AllowedHostsMiddleware
@@ -141,6 +143,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     check_at_boot(production=settings.tuvl_env == "production")
 
+    # ... and on the variables the project's EnvConfig declares required.
+    from tuvl.core import envconfig
+
+    envconfig.check_at_boot(production=settings.tuvl_env == "production")
+
     logger.info("Running deployment mode pre-flight check")
     await run_pre_flight()
 
@@ -176,6 +183,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     from tuvl.core.models.model_version import sync_model_versions
 
     await sync_model_versions()
+
+    # Roles from `kind: RoleSeed` and the TUVL_BOOTSTRAP_ADMIN_* administrator, once per database.
+    from tuvl.core.auth.seed import seed_iam_at_boot
+
+    await seed_iam_at_boot()
 
     # DB-source artifact rows merge below file-source precedence.
     from tuvl.core.artifacts.db import merge_db_artifacts
@@ -250,10 +262,9 @@ app = FastAPI(
 
 if settings.tuvl_dev_mode:
     app.add_middleware(DevMiddleware)
-    app.include_router(
-        dev_v2_router, include_in_schema=_system_in_docs
-    )  # registered first: its /dev/validate replaces the YAML-only one
-    app.include_router(dev_router, include_in_schema=_system_in_docs)
+    app.include_router(dev_live_router, include_in_schema=_system_in_docs)
+    mount_dev_extensions(app, include_in_schema=_system_in_docs)
+    app.include_router(dev_artifacts_router, include_in_schema=_system_in_docs)
     logger.info("Dev mode enabled — /dev/* routes active, insight loaded via tuvl.main.")
 
 # ── FastAPI OpenTelemetry instrumentation ─────────────────────────────────────
@@ -269,6 +280,7 @@ if not settings.tuvl_dev_mode and settings.tuvl_telemetry_enabled:
 for _group, _router in (
     ("system", system_router),
     ("auth", auth_router),
+    ("iam", iam_router),
     ("admin", admin_router),
     ("artifacts", artifacts_router),
     ("runs", runs_router),

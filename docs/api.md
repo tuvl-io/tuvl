@@ -19,7 +19,7 @@ surface per workflow. (gRPC was removed in 2.0.)
 | `POST /api/approvals/{id}` | Decide: `{ values }` for a human form, `{ decision: approve\|edit\|reject, edited_args?, message? }` for a tool call |
 | `POST /api/runs/{id}/human/{agent_id}` | Submit a human agent's form (alias) |
 | `/models/{model}/…` | CRUD for models that opt in with `spec.api.crud: [list, read, create, update, delete]` |
-| `/auth/*`, `/admin/*` | Login, IAM, federation; engine admin (`admin` is off in production unless you expose it) |
+| `/auth/*`, `/admin/*` | Login; IAM administration and federation admin (the `iam` group) and engine admin (`admin`), both off in production unless you expose them |
 | `/api/artifacts` | Artifact list/upload (off in production unless you expose it) |
 | `/health` | Liveness and decision-model readiness |
 | `/openapi.json`, `/docs`, `/redoc` | OpenAPI generated from the contracts; off in production unless you turn it on |
@@ -90,14 +90,15 @@ spec:
 
 | Group | Routes | Dev server | Production default |
 |---|---|---|---|
-| `auth` | `/auth/*`: token, refresh, JWKS, IAM login | mounted | mounted |
+| `auth` | `/auth/*`: token, refresh, logout, JWKS, `me`, OAuth login | mounted | mounted |
+| `iam` | `/auth/bootstrap`, `/auth/admin/*`: users, roles, federation providers | mounted | **not mounted** (production IAM is `tuvl iam`) |
 | `runs` | `/api/runs/*`, `/api/approvals/*`, `POST /api/workflows/{name}/runs` | mounted | **always mounted**; it cannot be switched off |
 | `admin` | `/admin/*`: engine administration | mounted | **not mounted** |
 | `artifacts` | `/api/artifacts/*` | mounted | **not mounted** |
 | `system` | `/api/_system/*`: introspection | mounted | **not mounted** |
 
 Your workflow trigger routes, and any `/models/*` CRUD you opted into, are never affected.
-`TUVL_API_EXPOSE=auth,runs,admin` overrides `spec.api.expose`. Add `admin`, `artifacts` or `system`
+`TUVL_API_EXPOSE=auth,runs,iam,admin` overrides `spec.api.expose`. Add `iam`, `admin`, `artifacts` or `system`
 to a production server only when something there calls them: the TypeScript client and the CLI use
 `auth` and `runs` (and your workflow routes) only, and `system` is read by Insight alone. `runs` is
 not a choice: every client starts runs through it and every run is followed through it.

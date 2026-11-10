@@ -8,7 +8,7 @@ block is a schema error, not a silently ignored field.
 This module checks *shape*: field presence, closed vocabularies, value
 ranges, and the syntax of embedded types (§6.1), TEL conditions (§6.2) and
 cron expressions. Cross-references — route targets, data flow, budgets per
-engine, artifact resolution — are the validator's job (``tuvl.validate``),
+engine, artifact resolution — are the validator's job (``tuvl_insight.validate``),
 where they get rule codes and file locations.
 
 ``workflow_json_schema()`` is the artefact Insight renders its forms from.
@@ -1111,7 +1111,7 @@ class SpecRef(_Strict):
 
 
 class Task(_Strict):
-    # `T3` (a list-local id) or `TASK-<INITIALS>-<idea>-<spec>-<task>`; tuvl.spec.ids holds the same pattern
+    # `T3` (a list-local id) or `TASK-<INITIALS>-<idea>-<spec>-<task>`; tuvl_insight.spec.ids holds the same pattern
     id: str = Field(pattern=r"^(T\d+|TASK-[A-Z][A-Z0-9]{1,3}-\d{4,}-\d{2,}-\d{3,})$")
     title: str = Field(min_length=1)
     type: Literal[

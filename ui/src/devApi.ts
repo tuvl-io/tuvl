@@ -558,6 +558,39 @@ export interface TeamEvent {
   developer: { id?: string; name: string }
 }
 
+export interface EnvVariable {
+  name: string
+  description: string
+  secret: boolean
+  required: boolean
+  default: string | null
+  example: string | null
+  group: string
+  first_boot: boolean
+  /** engine: built in; project: declared by an EnvConfig; referenced: only used by a ${VAR} */
+  source: 'engine' | 'project' | 'referenced'
+  declared: boolean
+  referenced_by: string[]
+  /** a ${VAR} with no default points at it */
+  needed: boolean
+  is_set: boolean
+  in_dotenv: boolean
+  /** a plain variable's current value; a secret's is never sent */
+  value: string | null
+  restart_needed: boolean
+}
+export interface EnvState {
+  variables: EnvVariable[]
+  dotenv: { path: string; exists: boolean; gitignored: boolean }
+  manifest_file: string | null
+}
+export interface EnvDeclaration { name: string; description?: string; secret?: boolean; required?: boolean; default?: string | null }
+
+export const devEnv = () => request<EnvState>('/dev/env')
+export const saveDevEnv = (b: { set?: Record<string, string>; unset?: string[] }) =>
+  request<EnvState>('/dev/env', { method: 'PUT', ...body(b) })
+export const declareDevEnv = (b: EnvDeclaration) => request<EnvState>('/dev/env/declare', { method: 'POST', ...body(b) })
+
 export const devTelemetry = () => request<DevTelemetryState>('/dev/dev-telemetry')
 export const saveDevTelemetry = (b: Pick<DevTelemetryState, 'enabled' | 'server' | 'identity' | 'commands' | 'token_env'>) =>
   request<DevTelemetryState>('/dev/dev-telemetry', { method: 'PUT', ...body(b) })

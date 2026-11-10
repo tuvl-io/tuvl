@@ -8,7 +8,7 @@
     "build": "tsc -b && vite build",
     "lint": "eslint . --max-warnings 0",
     "preview": "vite preview",
-    "build:cli": "pnpm build && rm -rf ../src/tuvl_insight/static/* && cp -r dist/* ../src/tuvl_insight/static/",
+    "build:cli": "pnpm build && rm -rf ../insight/src/tuvl_insight/static/* && cp -r dist/* ../insight/src/tuvl_insight/static/",
     "test": "vitest run",
     "test:watch": "vitest",
     "e2e": "playwright test"

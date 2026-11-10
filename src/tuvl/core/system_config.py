@@ -31,7 +31,7 @@ SYSTEM_API_KEYS: frozenset[str] = frozenset(
 )
 
 #: the system route groups ``spec.api.expose`` chooses between
-API_GROUPS: tuple[str, ...] = ("auth", "admin", "artifacts", "system")
+API_GROUPS: tuple[str, ...] = ("auth", "iam", "admin", "artifacts", "system")
 #: always mounted: starting, following and approving runs, which every client and trigger depends on
 ALWAYS_MOUNTED: frozenset[str] = frozenset({"runs"})
 #: what a production server mounts, besides ``runs``, unless told otherwise
@@ -98,9 +98,10 @@ def exposed_api_groups(production: bool | None = None) -> frozenset[str]:
     The dev server mounts all of them (Insight needs them) unless ``spec.api.dev_expose_all`` is
     false, when it follows the production rules. A production server mounts only ``auth`` unless
     ``TUVL_API_EXPOSE`` (comma-separated) or ``spec.api.expose`` (a list) says otherwise, so IAM
-    administration, artifact storage and the introspection API are not reachable where nobody
-    asked for them. ``production=True`` answers for a production server whatever mode this
-    process runs in.
+    administration (``iam``: bootstrap, users, roles, federation), artifact storage and the
+    introspection API are not reachable where nobody asked for them. Production IAM is run with
+    ``tuvl iam`` inside the cluster. ``production=True`` answers for a production server whatever
+    mode this process runs in.
     """
     if not _production(production):
         return frozenset(API_GROUPS) | ALWAYS_MOUNTED

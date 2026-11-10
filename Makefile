@@ -70,20 +70,20 @@ dev: ## Run engine + Vite hot-reload dev server in parallel (legacy)
 
 # ── Lint / Format ─────────────────────────────────────────────────────────────
 lint:
-	$(RUFF) check src/
+	$(RUFF) check src/ insight/
 
 fmt:
-	$(RUFF) check src/ --fix
-	$(RUFF) format src/
+	$(RUFF) check src/ insight/ --fix
+	$(RUFF) format src/ insight/
 
 # `check` is the CI lint gate (ruff + format); `typecheck` is mypy over all of src/, also a gate.
 check:
-	$(RUFF) check src/ tests/ --output-format=concise
-	$(RUFF) format --check src/ tests/
+	$(RUFF) check src/ insight/ tests/ --output-format=concise
+	$(RUFF) format --check src/ insight/ tests/
 
 typecheck:
 	@echo "→ mypy (all of src/ — must pass)"
-	$(MYPY) src/
+	$(MYPY) src/ insight/src/
 
 # ── Test ──────────────────────────────────────────────────────────────────────
 test:
@@ -96,7 +96,7 @@ test-verbose:
 build-ui:
 	@echo "→ Compiling Tuvl Insight React SPA..."
 	$(PYTHON) scripts/bundle_ui.py
-	@echo "✓ Assets ready in src/tuvl_insight/static/"
+	@echo "✓ Assets ready in insight/src/tuvl_insight/static/"
 
 # ── Python Build ──────────────────────────────────────────────────────────────
 build: build-ui
@@ -169,5 +169,5 @@ publish-dry: smoke
 # ── Clean ─────────────────────────────────────────────────────────────────────
 clean:
 	rm -rf dist/ .mypy_cache/ .ruff_cache/ src/tuvl.egg-info/
-	rm -rf src/tuvl_insight/static/
+	rm -rf insight/src/tuvl_insight/static/
 	find . -type d -name __pycache__ -exec rm -rf {} +

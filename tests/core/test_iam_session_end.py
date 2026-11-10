@@ -87,6 +87,7 @@ async def app(monkeypatch, request):
     _use(monkeypatch, engine)
     api = FastAPI()
     api.include_router(auth_router.router)
+    api.include_router(auth_router.iam_router)
     yield api
     await engine.dispose()
 

@@ -18,6 +18,8 @@ Supported kinds
 - ``DataSource``           → :mod:`tuvl.core.datasources.loader`
 - ``RedisConfig``          → :mod:`tuvl.core.datasources.loader`
 - ``FederationProvider``   → :mod:`tuvl.core.auth.federation_loader`
+- ``RoleSeed``             → :mod:`tuvl.core.auth.seed` (first-boot roles, applied once)
+- ``EnvConfig``            → :mod:`tuvl.core.envconfig` (the project's environment variables)
 - ``AgentModel``           → :mod:`tuvl.core.models.agent_models`
 - ``Workflow``             → :mod:`tuvl.contract.registry` when it declares
   ``version: tuvl/v2``, else the 1.x :mod:`tuvl.core.api.manager`
@@ -67,13 +69,13 @@ _SCAN_EXCLUDE: frozenset[str] = frozenset(
 _DEV_KINDS: frozenset[str] = frozenset({"Test", "TaskPlan"})
 
 # Kinds that are intentionally NOT handled by the central loader
-_SKIP_KINDS: frozenset[str] = frozenset(
+SKIP_KINDS: frozenset[str] = frozenset(
     {"ProjectConfig", "TelemetryConfig", "SystemConfig", "test", "Idea", "IdeaIndex"}
 )
 
 # Processing order — earlier kinds must be registered before later ones
 # (e.g. collections reference embeddings, workflows reference collections)
-_PROCESS_ORDER: list[str] = [
+PROCESS_ORDER: list[str] = [
     "Artifact",
     "AgentModel",
     "ModelDefinition",
@@ -84,6 +86,8 @@ _PROCESS_ORDER: list[str] = [
     "DataSource",
     "RedisConfig",
     "FederationProvider",
+    "RoleSeed",
+    "EnvConfig",
     "Storage",
     "Workflow",
     "Test",
@@ -91,7 +95,7 @@ _PROCESS_ORDER: list[str] = [
 ]
 
 
-def _walk_yaml_files(root: pathlib.Path) -> Iterator[pathlib.Path]:
+def walk_yaml_files(root: pathlib.Path) -> Iterator[pathlib.Path]:
     """Yield every ``*.yaml`` path under *root*, skipping excluded dirs."""
     for dirpath, dirnames, filenames in os.walk(root):
         # Prune excluded dirs in-place so os.walk does not descend into them
@@ -145,10 +149,12 @@ def load_all_configs(
     # ── 1. Clear all registries ────────────────────────────────────────────
     from tuvl.core.artifacts.registry import ARTIFACT_REGISTRY
     from tuvl.core.auth.federation_loader import FEDERATION_REGISTRY
+    from tuvl.core.auth.seed import ROLE_SEED_REGISTRY
     from tuvl.core.datasources.loader import (
         DATASOURCE_REGISTRY,
         _reset_primary_state,
     )
+    from tuvl.core.envconfig import MANIFEST as ENV_MANIFEST
     from tuvl.core.models.agent_models import AGENT_MODEL_REGISTRY
     from tuvl.core.models.collections_loader import COLLECTION_REGISTRY
     from tuvl.core.models.embeddings_loader import EMBEDDING_REGISTRY
@@ -177,6 +183,8 @@ def load_all_configs(
     DATASOURCE_REGISTRY.clear()
     _reset_primary_state()
     FEDERATION_REGISTRY.clear()
+    ROLE_SEED_REGISTRY.clear()
+    ENV_MANIFEST.clear()
 
     from tuvl.contract import registry as contract_registry
 
@@ -192,7 +200,7 @@ def load_all_configs(
     by_kind: dict[str, list[tuple[dict[str, Any], str]]] = defaultdict(list)
     unknown_kinds: set[str] = set()
 
-    for yaml_path in _walk_yaml_files(root):
+    for yaml_path in walk_yaml_files(root):
         try:
             with open(yaml_path) as f:
                 docs = [d for d in yaml.safe_load_all(f) if d is not None]
@@ -218,10 +226,10 @@ def load_all_configs(
                 continue
 
             kind = data["kind"]
-            if kind in _SKIP_KINDS:
+            if kind in SKIP_KINDS:
                 continue
 
-            if kind not in _PROCESS_ORDER:
+            if kind not in PROCESS_ORDER:
                 unknown_kinds.add(kind)
                 continue
 
@@ -233,10 +241,12 @@ def load_all_configs(
     # ── 3. Dispatch in dependency order ───────────────────────────────────
     from tuvl.core.artifacts.loader import _register_artifact_from_dict
     from tuvl.core.auth.federation_loader import _register_federation_from_dict
+    from tuvl.core.auth.seed import register_role_seed_from_dict
     from tuvl.core.datasources.loader import (
         _finalize_primary_ds,
         _register_datasource_from_dict,
     )
+    from tuvl.core.envconfig import register_env_config_from_dict
     from tuvl.core.models.agent_models import _register_agent_model_from_dict
     from tuvl.core.models.collections_loader import _register_collection_from_dict
     from tuvl.core.models.embeddings_loader import _register_embedding_from_dict
@@ -254,6 +264,8 @@ def load_all_configs(
         "DataSource": _register_datasource_from_dict,
         "RedisConfig": _register_datasource_from_dict,
         "FederationProvider": _register_federation_from_dict,
+        "RoleSeed": register_role_seed_from_dict,
+        "EnvConfig": register_env_config_from_dict,
         "Storage": register_store_from_dict,
         "Workflow": _register_workflow,
         "Test": contract_registry.register_document,
@@ -261,7 +273,7 @@ def load_all_configs(
         "TaskPlan": lambda data, filename="<unknown>": None,
     }
 
-    for kind in _PROCESS_ORDER:
+    for kind in PROCESS_ORDER:
         entries = by_kind.get(kind, [])
         if not entries:
             continue
@@ -288,6 +300,8 @@ def load_all_configs(
         collections=len(COLLECTION_REGISTRY),
         datasources=len(DATASOURCE_REGISTRY),
         federation=len(FEDERATION_REGISTRY),
+        role_seeds=len(ROLE_SEED_REGISTRY),
+        env_variables=len(ENV_MANIFEST),
         storage=len(STORE_REGISTRY),
         workflows=len(contract_registry.WORKFLOWS),
         v2_tests=len(contract_registry.TESTS),

@@ -33,6 +33,7 @@ import structlog
 from pydantic import BaseModel
 from sqlmodel import SQLModel
 
+from tuvl.contract.facts import field_types
 from tuvl.contract.types import build_model
 from tuvl.runtime.engines import (
     AgentResult,
@@ -41,7 +42,6 @@ from tuvl.runtime.engines import (
     register_engine,
     render_params,
 )
-from tuvl.validate.signals import field_types
 
 logger = structlog.get_logger(__name__)
 

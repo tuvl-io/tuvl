@@ -649,6 +649,7 @@ def test_json_schema_describes_engines() -> None:
     assert schema["additionalProperties"] is False
 
 
+@pytest.mark.requires_insight
 def test_schema_export_cli(tmp_path: Path) -> None:
     from tuvl.cli import app
 

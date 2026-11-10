@@ -10,6 +10,7 @@ import { useUIStore } from '../store'
 import type { ProjectInfo } from '../api'
 import { previewRegistration, registerProject, pollRegistration } from '../api'
 import { DevTelemetrySettings } from '../settings/DevTelemetrySettings'
+import { EnvironmentSettings } from '../settings/EnvironmentSettings'
 
 // ── Setting sections registry — add future sections here ─────────────────────
 
@@ -28,6 +29,16 @@ const SECTIONS: SettingSection[] = [
     icon: (
       <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 shrink-0">
         <path d="M2 6a2 2 0 012-2h4l2 2h6a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" />
+      </svg>
+    ),
+  },
+  {
+    id: 'environment',
+    label: 'Environment',
+    category: 'General',
+    icon: (
+      <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 shrink-0">
+        <path fillRule="evenodd" d="M12.316 3.051a1 1 0 01.633 1.265l-4 12a1 1 0 11-1.898-.632l4-12a1 1 0 011.265-.633zM5.707 6.293a1 1 0 010 1.414L3.414 10l2.293 2.293a1 1 0 11-1.414 1.414l-3-3a1 1 0 010-1.414l3-3a1 1 0 011.414 0zm8.586 0a1 1 0 011.414 0l3 3a1 1 0 010 1.414l-3 3a1 1 0 11-1.414-1.414L16.586 10l-2.293-2.293a1 1 0 010-1.414z" clipRule="evenodd" />
       </svg>
     ),
   },
@@ -1051,6 +1062,7 @@ const DEFAULT_API_ACCESS: ApiAccessFormState = {
 
 const PRODUCTION_BASE = ['auth', 'runs']
 const OPTIONAL_GROUPS: { key: string; label: string; hint: string }[] = [
+  { key: 'iam', label: 'iam', hint: '/auth/bootstrap, /auth/admin/* — users, roles, federation; production uses `tuvl iam` instead' },
   { key: 'admin', label: 'admin', hint: '/admin/* — engine administration' },
   { key: 'artifacts', label: 'artifacts', hint: '/api/artifacts/* — artifact list and upload' },
   { key: 'system', label: 'system', hint: '/api/_system/* — introspection; only Insight uses it' },
@@ -1320,6 +1332,7 @@ export function SettingsPage() {
         <SettingsNav active={active} onSelect={setActive} />
         <div className="flex flex-1 min-w-0 min-h-0">
           {active === 'project' && <ProjectSettings />}
+          {active === 'environment' && <EnvironmentSettings />}
           {active === 'dev-telemetry' && <DevTelemetrySettings />}
           {active === 'redis' && <RedisSettings />}
           {active === 'telemetry' && <TelemetrySettings />}

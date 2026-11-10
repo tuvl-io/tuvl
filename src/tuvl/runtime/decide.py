@@ -25,11 +25,11 @@ from typing import Any
 
 import structlog
 
+from tuvl.contract.facts import enum_outputs
 from tuvl.contract.schema import duration_seconds
 from tuvl.contract.tel import TELError, compile_expr
 from tuvl.runtime import decision as providers
 from tuvl.runtime.engines import AgentResult, EngineContext, EngineError, register_engine
-from tuvl.validate.signals import enum_outputs
 
 logger = structlog.get_logger(__name__)
 

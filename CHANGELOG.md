@@ -14,6 +14,59 @@ release below is the current one.
 
 ---
 
+## [2.1.0-beta.1] — 2026-11-10
+
+**Production IAM, an environment manifest, and a thinner engine.** `tuvl` and `tuvl-insight` release together as `2.1.0b1`. This is a
+beta: install it with `uv tool install --prerelease allow "tuvl[standard]"` (or pin `tuvl[standard]==2.1.0b1`).
+
+Upgrading from 2.0.x: nothing in your YAML or in the CLI changes. Check the three items under *Breaking* below if you run a production
+server that calls the REST IAM admin API, import tuvl's Python modules, or install `tuvl[codegen]`, `[test]`, `[tui]`, `[review]` or `[pdf]`.
+
+### Added
+
+- **`tuvl iam`**: manage users, roles and scopes from inside the deployment (`kubectl exec -it deploy/<app> -- tuvl iam roles list`).
+  The administrator signs in, and the command works on the database directly. Roles: list, create, delete, enable, disable, grant,
+  revoke, add-user, remove-user. Users: list, create, enable, disable. Also `scopes list`, `check` (is every scope the project
+  enforces granted by an active role?), `reset-admin` (break-glass) and `export` (developer toolchain: live roles to a `RoleSeed`).
+  See [Production IAM](docs/auth.md#production-iam).
+- **`kind: RoleSeed`** and **`TUVL_BOOTSTRAP_ADMIN_EMAIL` / `_PASSWORD` / `_PASSWORD_FILE`**: roles and the first administrator are created on
+  the first boot of an empty database, once in its life (an `iam_seeded` marker in `tuvl_system_registry`), under an advisory lock.
+  A database that already holds a user or a role is never touched.
+- **Roles can be disabled.** A disabled role keeps its members and scopes but grants no scopes and adds no group to a token. Existing
+  databases get the `is_active` column on boot.
+- **The last administrator is protected.** A change that would leave no active administrator is refused, for the REST API as well as the CLI.
+- **`kind: EnvConfig`**: a project declares its environment variables with a description, `secret`, `required` and `default`. `tuvl lint project`
+  checks it (V045-V047), `tuvl ship` writes the Secret list, the chart `env:` values and `.env.example` from it, a production server refuses to
+  start without a required variable, and `tuvl check system` reports one that is missing. See [environment](docs/environment.md).
+- **Insight: Settings → Environment** lists the engine's, the project's and the referenced variables, saves values to `.env` (a secret's is
+  write-only), and declares undeclared ones.
+
+### Changed
+
+- **The developer tooling moves into the `tuvl-insight` package.** `tuvl` is now the engine and the production CLI
+  (160 modules instead of 264): it parses the YAML, talks to the database and serves the API. Everything that exists to
+  *develop* a project is in `tuvl-insight`: the lint engine (`tuvl lint project`), spec and task tooling, code
+  generation, `tuvl init` / `dev` / `ship`, the terminal UI, the offline test runner, the file-based dev API and Insight.
+  It is still one `tuvl` command: on a bare install the toolchain commands answer with how to install them, and
+  `tuvl[standard]` installs everything as before. See [Core and Insight](docs/core-and-insight.md).
+- `tuvl` and `tuvl-insight` are released in lockstep and pin each other with `==`.
+- `tuvl replay runs` is a toolchain command (it runs `tuvl.testing`); `tuvl pin run` stays in the production CLI.
+- The engine no longer loads the lint engine: `import tuvl.runtime.runner` used to pull in all of `tuvl.validate`.
+
+### Breaking
+
+- **The REST IAM admin API is off in production by default.** `/auth/bootstrap` and `/auth/admin/*` move to a new `iam` API group that a
+  production server does not mount by default. Login, refresh, logout, `me` and OAuth stay in `auth`. Use `tuvl iam`, or add `iam` to
+  `spec.api.expose` / `TUVL_API_EXPOSE`. The dev server still mounts every group.
+- Python imports of tooling modules moved from `tuvl.<name>` to `tuvl_insight.<name>`: `spec`, `specgen`, `taskrun`,
+  `codegen`, `coding_agents`, `skills`, `review`, `audit`, `uispec`, `tui`, `devmcp`, `devtelemetry`, `testing`,
+  `gitflow`, `gitutil`, `shipgate`, `shiparchive`, `validate`, `lock` (generation), `cli.commands.<toolchain command>`.
+  These were never documented API. `tuvl.contract.facts` and `tuvl.contract.lockfile` hold what the engine needs from them.
+- The extras `tuvl[codegen]`, `tuvl[test]`, `tuvl[tui]`, `tuvl[review]` and `tuvl[pdf]` are gone: their packages are
+  dependencies of `tuvl-insight`. Use `tuvl[standard]`.
+
+---
+
 ## [2.0.3] — 2026-11-05
 
 A security patch release of `tuvl` and `tuvl-insight`: patched dependencies for every open Dependabot advisory. Dependency updates only, no changes to tuvl's own code.

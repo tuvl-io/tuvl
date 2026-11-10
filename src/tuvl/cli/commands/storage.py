@@ -30,13 +30,13 @@ def _load(project_dir: Path) -> dict[str, Any]:
     import yaml
 
     from tuvl.core.config import use_project
-    from tuvl.core.config_loader import _walk_yaml_files
+    from tuvl.core.config_loader import walk_yaml_files
     from tuvl.storage import STORE_REGISTRY, ConfigError, register_store_from_dict
 
     project = project_dir.resolve()
     use_project(str(project))
     STORE_REGISTRY.clear()
-    for path in _walk_yaml_files(project):
+    for path in walk_yaml_files(project):
         try:
             documents = [d for d in yaml.safe_load_all(path.read_text()) if isinstance(d, dict)]
         except (OSError, yaml.YAMLError):
