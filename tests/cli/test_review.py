@@ -57,7 +57,7 @@ def project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(tmp_path / "gc"))
     (tmp_path / "gc").write_text("[user]\n\tname = Ada\n\temail = a@b.c\n")
     monkeypatch.setattr("tuvl_insight.coding_agents.detect", lambda *a, **k: [])
-    monkeypatch.setattr("tuvl.cli.agent_run.detect", lambda *a, **k: [])
+    monkeypatch.setattr("tuvl_insight.cli.agent_run.detect", lambda *a, **k: [])
     p = tmp_path / "p"
     (p / "agents").mkdir(parents=True)
     (p / "workflows").mkdir()

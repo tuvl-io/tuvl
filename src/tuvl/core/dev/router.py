@@ -332,8 +332,8 @@ def _registrable_record() -> dict:
 @router.post("/project/register/preview")
 async def register_preview(body: dict):
     """The exact payload a registration would send."""
-    from tuvl.cli.nest import nest_url
     from tuvl.core.project_info import registration_payload
+    from tuvl_insight.cli.nest import nest_url
 
     record = _registrable_record()
     payload = registration_payload(record, tuvl_version=_engine_version())
@@ -371,7 +371,7 @@ async def _post_registration(url: str, token: str, body: dict):
 async def _device_start(url: str) -> dict:
     import httpx
 
-    from tuvl.cli.nest import PROVIDER
+    from tuvl_insight.cli.nest import PROVIDER
 
     try:
         async with httpx.AsyncClient(timeout=20) as http:
@@ -389,7 +389,7 @@ async def _device_start(url: str) -> dict:
 @router.post("/project/register")
 async def register_project(body: dict):
     """Register or update the listing. Starts a GitHub device login when none is cached."""
-    from tuvl.cli.nest import cached_token, forget_token, nest_url
+    from tuvl_insight.cli.nest import cached_token, forget_token, nest_url
 
     url = nest_url(body.get("nest"))
     token = cached_token(url)
@@ -407,7 +407,7 @@ async def register_poll(body: dict):
     """Poll the device login; on approval, complete the registration."""
     import httpx
 
-    from tuvl.cli.nest import PROVIDER, nest_url, store_token
+    from tuvl_insight.cli.nest import PROVIDER, nest_url, store_token
 
     url = nest_url(body.get("nest"))
     handle = str(body.get("handle", ""))

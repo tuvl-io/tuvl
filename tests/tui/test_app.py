@@ -405,7 +405,7 @@ def test_every_action_is_a_real_tuvl_command(project: Path) -> None:
 
 
 def test_the_ui_starts_only_on_a_terminal_unless_declined() -> None:
-    from tuvl.cli.commands.dev import tui_unavailable
+    from tuvl_insight.cli.commands.dev import tui_unavailable
 
     assert tui_unavailable(no_tui=False, tty=True) is None
     assert tui_unavailable(no_tui=True, tty=True) == ""  # asked not to: silent
@@ -417,7 +417,7 @@ def test_the_ui_starts_only_on_a_terminal_unless_declined() -> None:
 def test_a_toolchain_without_textual_says_how_to_get_the_ui(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from tuvl.cli.commands.dev import tui_unavailable
+    from tuvl_insight.cli.commands.dev import tui_unavailable
 
     monkeypatch.setattr("tuvl.extras.available", lambda name: name != "tui")
     why = tui_unavailable(no_tui=False, tty=True)

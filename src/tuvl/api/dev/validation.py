@@ -18,7 +18,7 @@ router = APIRouter()
 
 @router.post("/validate", summary="Validate the project (tuvl lint project --json)")
 async def validate() -> dict[str, Any]:
-    from tuvl.cli.commands.validate import run_validation
+    from tuvl_insight.cli.commands.validate import run_validation
 
     result, *_ = run_validation(project_dir(), echo=False)
     return {
@@ -43,8 +43,8 @@ async def validate_draft(request: DraftRequest) -> dict[str, Any]:
     import shutil
     import tempfile
 
-    from tuvl.cli.commands.validate import run_validation
     from tuvl.core.config import use_project
+    from tuvl_insight.cli.commands.validate import run_validation
 
     project = project_dir()
     target = _area_path(request.area, request.name).relative_to(project.resolve())
@@ -75,7 +75,7 @@ async def schema(kind: str) -> dict[str, Any]:
     from tuvl.contract.schema import DOCUMENT_MODELS, workflow_json_schema
 
     if kind == "cli":
-        from tuvl.cli.json_output import json_schemas
+        from tuvl_insight.cli.json_output import json_schemas
 
         return json_schemas()
     if kind == "Workflow":
@@ -105,7 +105,7 @@ class TestRequest(BaseModel):
 
 @router.post("/tests/run", summary="tuvl run tests --json")
 async def run_tests(request: TestRequest) -> dict[str, Any]:
-    from tuvl.cli.commands.test import _run
+    from tuvl_insight.cli.commands.test import _run
 
     results, warnings = await _run(
         project_dir(), live=request.live, allow_uncertain=False, only=request.only, strict=False

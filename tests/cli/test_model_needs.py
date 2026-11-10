@@ -10,8 +10,8 @@ import yaml
 from typer.testing import CliRunner
 
 from tuvl.cli import app
-from tuvl.cli.commands.validate import run_validation
 from tuvl.core.models.requirements import need_for
+from tuvl_insight.cli.commands.validate import run_validation
 
 runner = CliRunner()
 

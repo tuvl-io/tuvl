@@ -9,8 +9,8 @@ from pathlib import Path
 
 import pytest
 
-from tuvl.cli import select
-from tuvl.cli.select import DOWN, ENTER, UP, Choice, Menu
+from tuvl_insight.cli import select
+from tuvl_insight.cli.select import DOWN, ENTER, UP, Choice, Menu
 
 CHOICES = [
     Choice("claude", "Claude Code", "builds"),

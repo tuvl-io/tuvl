@@ -9,7 +9,7 @@ import yaml
 from typer.testing import CliRunner
 
 from tuvl.cli import app
-from tuvl.cli.json_output import COMMANDS, json_schemas
+from tuvl_insight.cli.json_output import COMMANDS, json_schemas
 from tuvl_insight.spec import parse_spec
 
 SNAPSHOT = Path(__file__).parent / "snapshots" / "cli_json_schemas.json"

@@ -201,7 +201,7 @@ def test_yaml_flow_mapping_hint() -> None:
 
 
 def _validate(root: Path) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
-    from tuvl.cli.commands.validate import run_validation
+    from tuvl_insight.cli.commands.validate import run_validation
 
     result, *_ = run_validation(root, echo=False)
     errors = [(i.file, i.message) for i in result.issues if i.severity == "error"]
@@ -276,7 +276,7 @@ def test_validate_accepts_a_v2_only_project(tmp_path: Path) -> None:
 
 
 def test_validate_reports_rule_codes_with_lines_and_profile(tmp_path: Path) -> None:
-    from tuvl.cli.commands.validate import run_validation
+    from tuvl_insight.cli.commands.validate import run_validation
 
     full_project(tmp_path)
     doc = yaml.safe_load(FIXTURE.read_text())

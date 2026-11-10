@@ -13,8 +13,9 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.rule import Rule
 
-from tuvl.cli import laya, select
-from tuvl.cli.commands.init_templates import (
+from tuvl.core.config import use_project
+from tuvl_insight.cli import laya, select
+from tuvl_insight.cli.commands.init_templates import (
     _SAMPLE_CANDIDATE_MODEL,
     _SAMPLE_DATASOURCE,
     _SAMPLE_LLM,
@@ -25,8 +26,7 @@ from tuvl.cli.commands.init_templates import (
     _SAMPLE_TRIAGE_WORKFLOW,
     PRESETS,
 )
-from tuvl.cli.select import Choice
-from tuvl.core.config import use_project
+from tuvl_insight.cli.select import Choice
 
 console = Console()
 
@@ -121,7 +121,7 @@ def init_cmd(
 ) -> None:
     """Scaffold a new tuvl project: its folders, a database connection, AI model presets and the coding-agent rules and skills; --sample adds a working example."""
     if list_agents:
-        from tuvl.cli.commands.agent import agents_table
+        from tuvl_insight.cli.commands.agent import agents_table
 
         console.print(agents_table())
         raise typer.Exit()
@@ -402,7 +402,7 @@ def _ask_agent(detected: list[Any], *, yes: bool) -> str:
         return "none"
     if yes:
         return "none"
-    from tuvl.cli.commands.agent import agents_table
+    from tuvl_insight.cli.commands.agent import agents_table
 
     console.print(agents_table())
     runnable = [
@@ -931,7 +931,7 @@ def _write_ui_specs(project_dir: Path) -> str:
 
 
 def _write_ci(project_dir: Path, kind: str) -> str:
-    from tuvl.cli.commands import init_templates as tpl
+    from tuvl_insight.cli.commands import init_templates as tpl
 
     if kind == "github":
         path, text = project_dir / ".github" / "workflows" / "tuvl.yml", tpl.github_workflow()

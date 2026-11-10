@@ -213,7 +213,7 @@ def test_the_default_screen_drops_the_feather_on_a_narrow_terminal() -> None:
 
 
 def test_the_dev_reload_does_not_watch_the_runtime_folders(tmp_path) -> None:
-    from tuvl.cli.commands.dev import _reload_excludes
+    from tuvl_insight.cli.commands.dev import _reload_excludes
 
     (tmp_path / ".git").mkdir()
     shown = _reload_excludes(tmp_path)

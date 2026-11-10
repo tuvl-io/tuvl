@@ -10,9 +10,9 @@ import yaml
 from typer.testing import CliRunner
 
 from tuvl.cli import app
-from tuvl.cli.commands.init import _SAMPLE_TRIAGE_SPEC
 from tuvl_insight.audit import ledger as lg
 from tuvl_insight.audit import live, read_events, verify
+from tuvl_insight.cli.commands.init import _SAMPLE_TRIAGE_SPEC
 from tuvl_insight.coding_agents import Settings, write_settings
 
 runner = CliRunner()
@@ -194,7 +194,7 @@ def test_watch_shows_live_progress_over_the_derived_status(
         if calls["n"] >= 2:
             raise KeyboardInterrupt
 
-    monkeypatch.setattr("tuvl.cli.commands.spec._pause", pause)
+    monkeypatch.setattr("tuvl_insight.cli.commands.spec._pause", pause)
     done = runner.invoke(app, ["list", "tasks", "--watch", "--no-tests", "-d", str(project)])
     assert done.exit_code == 0, done.output
     flat = " ".join(done.output.split())  # the console wraps at 80 columns

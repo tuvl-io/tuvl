@@ -8,8 +8,8 @@ import yaml
 from typer.testing import CliRunner
 
 from tuvl.cli import app
-from tuvl.cli.commands import ship_deps
 from tuvl.extras import EXTRAS
+from tuvl_insight.cli.commands import ship_deps
 
 runner = CliRunner()
 

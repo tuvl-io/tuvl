@@ -30,7 +30,7 @@ def export_cmd(
     from tuvl.contract.schema import DOCUMENT_MODELS, document_json_schemas, workflow_json_schema
 
     if kind == "cli":
-        from tuvl.cli.json_output import json_schemas
+        from tuvl_insight.cli.json_output import json_schemas
 
         payload: object = json_schemas()
     elif kind == "all":

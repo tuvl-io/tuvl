@@ -14,8 +14,8 @@ from pathlib import Path
 
 import pytest
 
-from tuvl.cli.commands.init import _write_env
-from tuvl.cli.session import clear_session, read_session, session_file, write_session
+from tuvl_insight.cli.commands.init import _write_env
+from tuvl_insight.cli.session import clear_session, read_session, session_file, write_session
 
 
 @pytest.fixture
@@ -103,7 +103,7 @@ def test_write_env_example_file_is_not_forced_to_0600(tmp_path: Path):
 def test_pg_datasource_yaml_never_contains_secret(tmp_path: Path):
     """The generated DataSource YAML must reference ``${POSTGRES_PASSWORD}``,
     never the literal — the file is committable and baked into ship images."""
-    from tuvl.cli.commands.init import _write_pg_datasource
+    from tuvl_insight.cli.commands.init import _write_pg_datasource
 
     target = tmp_path / "postgres.yaml"
     _write_pg_datasource(
@@ -126,8 +126,8 @@ def test_pg_datasource_yaml_resolves_via_env(tmp_path: Path, monkeypatch):
     interpolation — password from env, defaults for the rest."""
     import yaml
 
-    from tuvl.cli.commands.init import _write_pg_datasource
     from tuvl.core.datasources.loader import _resolve_env
+    from tuvl_insight.cli.commands.init import _write_pg_datasource
 
     target = tmp_path / "postgres.yaml"
     _write_pg_datasource(target, host="dbhost", port="5432", db="appdb", user="tuvl")
@@ -152,8 +152,8 @@ def test_pg_datasource_yaml_fails_closed_without_password_env(tmp_path: Path, mo
     silently connect with an empty password."""
     import yaml
 
-    from tuvl.cli.commands.init import _write_pg_datasource
     from tuvl.core.datasources.loader import _resolve_env
+    from tuvl_insight.cli.commands.init import _write_pg_datasource
 
     target = tmp_path / "postgres.yaml"
     _write_pg_datasource(target, host="dbhost", port="5432", db="appdb", user="tuvl")

@@ -7,7 +7,6 @@ from __future__ import annotations
 import pytest
 from fastapi import FastAPI, HTTPException
 
-from tuvl.cli.commands.validate import ValidateResult, _validate_model_api
 from tuvl.core.api.admin_router import admin_list_scopes
 from tuvl.core.api.crud_router import build_crud_routers
 from tuvl.core.auth.access import Claims, decode_token
@@ -20,6 +19,7 @@ from tuvl.core.models.loader import (
     SCHEMA_REGISTRY,
     _register_model_from_dict,
 )
+from tuvl_insight.cli.commands.validate import ValidateResult, _validate_model_api
 
 
 def _model_dict(name: str, crud: list[str] | None = None, access: dict | None = None) -> dict:

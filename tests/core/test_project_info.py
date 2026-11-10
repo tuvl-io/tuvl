@@ -158,7 +158,7 @@ def test_cli_info_without_project_fails(tmp_path: Path):
 def test_cli_register_sends_the_shown_payload_and_records_it(monkeypatch, tmp_path: Path):
     import httpx
 
-    from tuvl.cli import nest as nest_mod
+    from tuvl_insight.cli import nest as nest_mod
 
     create_project(tmp_path, name="demo", author="Jane", email="jane@example.com")
     sent: dict = {}
@@ -222,7 +222,7 @@ def _fake_nest(monkeypatch, *, pending_polls: int = 0, cached: str | None = None
     """Route the dev server's outbound httpx calls to an in-memory nest."""
     import httpx
 
-    from tuvl.cli import nest as nest_mod
+    from tuvl_insight.cli import nest as nest_mod
 
     seen: dict = {"register": [], "polls": 0}
     monkeypatch.setattr(nest_mod, "cached_token", lambda url: cached)

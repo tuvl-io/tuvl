@@ -27,7 +27,7 @@ def test_dev_env_sets_tuvl_env_development(monkeypatch: pytest.MonkeyPatch) -> N
     layer-1 production sentinel in tuvl.core.auth.access."""
     monkeypatch.delenv("TUVL_ENV", raising=False)
 
-    from tuvl.cli.commands.dev import _build_env
+    from tuvl_insight.cli.commands.dev import _build_env
 
     env = _build_env(
         key="DEV-KEY",
@@ -51,7 +51,7 @@ def test_dev_env_respects_external_tuvl_env_override(
     fire."""
     monkeypatch.setenv("TUVL_ENV", "production")
 
-    from tuvl.cli.commands.dev import _build_env
+    from tuvl_insight.cli.commands.dev import _build_env
 
     env = _build_env(
         key="DEV-KEY",
@@ -69,7 +69,7 @@ def test_dev_env_respects_external_tuvl_env_override(
 def test_dev_env_sets_dev_mode_and_ack_flag() -> None:
     """The dev-key superuser shortcut requires both ``TUVL_DEV_MODE=true``
     and ``TUVL_ALLOW_DEV_AUTH=true``; ``tuvl dev`` MUST set both."""
-    from tuvl.cli.commands.dev import _build_env
+    from tuvl_insight.cli.commands.dev import _build_env
 
     env = _build_env(
         key="DEV-KEY",

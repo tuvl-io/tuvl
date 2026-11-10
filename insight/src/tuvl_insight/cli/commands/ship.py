@@ -22,11 +22,11 @@ from rich.console import Console
 from rich.markup import escape
 from rich.panel import Panel
 
-from tuvl.cli import laya
-from tuvl.cli.commands import ship_deps
-from tuvl.cli.commands import ship_templates as tpl
-from tuvl.cli.commands.validate import _print_report, run_validation
 from tuvl.extras import EXTRAS
+from tuvl_insight.cli import laya
+from tuvl_insight.cli.commands import ship_deps
+from tuvl_insight.cli.commands import ship_templates as tpl
+from tuvl_insight.cli.commands.validate import _print_report, run_validation
 
 if TYPE_CHECKING:
     from tuvl_insight import shiparchive
@@ -234,8 +234,8 @@ def _write(
 
 def _check_lock(project_dir: Path) -> str:
     """V024: the lock must exist and match the project. Returns the pinned tuvl version."""
-    from tuvl.cli.commands.lock import fresh_lock
     from tuvl_insight import lock
+    from tuvl_insight.cli.commands.lock import fresh_lock
 
     try:
         fresh, current = fresh_lock(project_dir, live_mcp=False)

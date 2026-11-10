@@ -150,7 +150,7 @@ def test_init_rejects_an_unknown_decision_model(tmp_path: Path) -> None:
 def _pyproject(tmp_path, monkeypatch, version: str | None) -> str:
     import importlib.metadata
 
-    from tuvl.cli.commands.init import _write_pyproject
+    from tuvl_insight.cli.commands.init import _write_pyproject
 
     if version is None:
 
@@ -191,7 +191,7 @@ def _no_agents(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_the_target_follows_the_name_and_the_project_dir(tmp_path: Path) -> None:
-    from tuvl.cli.commands.init import _resolve_target
+    from tuvl_insight.cli.commands.init import _resolve_target
 
     assert _resolve_target("trade", None) == (Path.cwd() / "trade").resolve()
     assert _resolve_target("trade", tmp_path) == (tmp_path / "trade").resolve()
@@ -201,7 +201,7 @@ def test_the_target_follows_the_name_and_the_project_dir(tmp_path: Path) -> None
 def test_options_are_refused_before_anything_is_asked(tmp_path: Path) -> None:
     import typer
 
-    from tuvl.cli.commands.init import _check_options
+    from tuvl_insight.cli.commands.init import _check_options
 
     ok = {"preset": None, "decision_model": None, "ci": "none", "agent": None, "initials": None}
     target = tmp_path / "new"
@@ -224,7 +224,7 @@ def test_options_are_refused_before_anything_is_asked(tmp_path: Path) -> None:
 
 
 def test_the_answers_become_the_env_file() -> None:
-    from tuvl.cli.commands.init import Answers, LlmAnswers, PgAnswers, _env_values
+    from tuvl_insight.cli.commands.init import Answers, LlmAnswers, PgAnswers, _env_values
 
     answers = Answers(
         pg=PgAnswers("h", "1", "d", "u", "pw"),
@@ -240,7 +240,12 @@ def test_the_answers_become_the_env_file() -> None:
 
 
 def test_yes_accepts_the_postgres_defaults_and_asks_nothing() -> None:
-    from tuvl.cli.commands.init import PgAnswers, _ask_decision_model, _ask_llm, _ask_postgres
+    from tuvl_insight.cli.commands.init import (
+        PgAnswers,
+        _ask_decision_model,
+        _ask_llm,
+        _ask_postgres,
+    )
 
     assert _ask_postgres(multi_tenant=False, yes=True) == PgAnswers(
         "localhost", "5432", "tuvl", "postgres", "postgres"

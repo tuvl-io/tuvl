@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from tuvl.cli.json_output import COMMANDS
+from tuvl_insight.cli.json_output import COMMANDS
 
 ENTRY = "from tuvl.cli import main; main()"
 

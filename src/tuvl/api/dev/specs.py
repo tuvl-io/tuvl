@@ -366,7 +366,7 @@ class NewSpec(BaseModel):
 
 @router.post("/specs/new", summary="tuvl create spec")
 async def new_spec(request: NewSpec) -> dict[str, str]:
-    from tuvl.cli.commands.spec import SPEC_TEMPLATE
+    from tuvl_insight.cli.commands.spec import SPEC_TEMPLATE
     from tuvl_insight.spec.parse import slug
 
     stem = slug(request.name)

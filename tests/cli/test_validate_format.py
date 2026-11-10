@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import yaml
 
-from tuvl.cli.commands.validate import (
+from tuvl_insight.cli.commands.validate import (
     _FIELD_TYPES,
     ValidateResult,
     _validate_llms,

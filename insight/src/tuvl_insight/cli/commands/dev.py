@@ -10,7 +10,13 @@ import typer
 from rich.console import Console
 from rich.panel import Panel
 
-from tuvl.cli.session import clear_session, generate_key, read_session, session_file, write_session
+from tuvl_insight.cli.session import (
+    clear_session,
+    generate_key,
+    read_session,
+    session_file,
+    write_session,
+)
 
 console = Console()
 

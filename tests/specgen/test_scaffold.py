@@ -1,7 +1,7 @@
 import yaml
 
-from tuvl.cli.commands.init import _SAMPLE_TRIAGE_SPEC
 from tuvl.contract.schema import WorkflowDocument
+from tuvl_insight.cli.commands.init import _SAMPLE_TRIAGE_SPEC
 from tuvl_insight.codegen import scaffold
 from tuvl_insight.spec.grammar import parse_structure
 from tuvl_insight.spec.parse import parse_text

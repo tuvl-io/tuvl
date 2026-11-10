@@ -41,10 +41,10 @@ app = typer.Typer(
 
 
 def _register_toolchain() -> None:
-    from tuvl.cli.commands.deploy import deploy_cmd
-    from tuvl.cli.commands.dev import dev_cmd
-    from tuvl.cli.commands.init import init_cmd
-    from tuvl.cli.commands.ship import ship_cmd
+    from tuvl_insight.cli.commands.deploy import deploy_cmd
+    from tuvl_insight.cli.commands.dev import dev_cmd
+    from tuvl_insight.cli.commands.init import init_cmd
+    from tuvl_insight.cli.commands.ship import ship_cmd
 
     app.command("init", rich_help_panel="Setup")(init_cmd)
     app.command("dev", rich_help_panel="Run")(dev_cmd)

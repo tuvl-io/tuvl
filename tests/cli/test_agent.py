@@ -287,7 +287,7 @@ def test_init_writes_the_gate_as_a_gitlab_pipeline(agent_bin, project: Path) -> 
 
 def test_every_command_in_the_generated_ci_exists() -> None:
     from tuvl.cli import app
-    from tuvl.cli.commands import init_templates as tpl
+    from tuvl_insight.cli.commands import init_templates as tpl
 
     known = {c.name for c in app.registered_commands} | {g.name for g in app.registered_groups}
     used = _tuvl_commands_in(tpl.github_workflow()) | _tuvl_commands_in(tpl.gitlab_pipeline())
@@ -327,7 +327,7 @@ def test_choosing_a_review_only_agent_says_so_and_it_cannot_write(
     )
     import typer
 
-    from tuvl.cli import agent_run
+    from tuvl_insight.cli import agent_run
     from tuvl_insight.coding_agents import Detected, get
 
     fake = [Detected(get("cursor"), "/x/agent", "1.0")]  # type: ignore[arg-type]
@@ -358,7 +358,8 @@ def test_init_asks_for_the_agent_with_the_menu_when_there_is_a_terminal(
 ) -> None:
     from typer.testing import CliRunner
 
-    from tuvl.cli import app, select
+    from tuvl.cli import app
+    from tuvl_insight.cli import select
 
     agent_bin("claude")
     agent_bin("agy")

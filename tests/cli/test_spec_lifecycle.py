@@ -8,7 +8,7 @@ import yaml
 from typer.testing import CliRunner
 
 from tuvl.cli import app
-from tuvl.cli.commands.init import _SAMPLE_TRIAGE_SPEC
+from tuvl_insight.cli.commands.init import _SAMPLE_TRIAGE_SPEC
 from tuvl_insight.coding_agents import Settings, write_settings
 from tuvl_insight.spec import ids, lifecycle
 

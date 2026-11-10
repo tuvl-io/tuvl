@@ -226,9 +226,9 @@ def _agent_review(
     budget: float,
     timeout: float,
 ) -> _Opinion:
-    from tuvl.cli import agent_run
     from tuvl_insight import audit, gitflow
     from tuvl_insight.audit import trace
+    from tuvl_insight.cli import agent_run
     from tuvl_insight.coding_agents import read_settings, runner
     from tuvl_insight.review import agent as agent_review
     from tuvl_insight.review.static import python_files

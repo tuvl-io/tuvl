@@ -1209,8 +1209,8 @@ def gen_cmd(
     ] = False,
 ) -> None:
     """A coding agent writes a draft spec from an idea, on a spec/<id> branch with a pull request."""
-    from tuvl.cli import agent_run
     from tuvl_insight import audit, gitflow, specgen
+    from tuvl_insight.cli import agent_run
     from tuvl_insight.coding_agents import runner
     from tuvl_insight.spec import ids
 

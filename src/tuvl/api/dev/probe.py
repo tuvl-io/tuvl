@@ -99,9 +99,9 @@ async def change_check(request: ChangeCheckRequest) -> dict[str, Any]:
     import yaml as pyyaml
     from pydantic import ValidationError
 
-    from tuvl.cli.commands.replay import replay_test
     from tuvl.contract.registry import WORKFLOWS
     from tuvl.contract.schema import WorkflowDocument
+    from tuvl_insight.cli.commands.replay import replay_test
     from tuvl_insight.testing import run_test
 
     project = project_dir()

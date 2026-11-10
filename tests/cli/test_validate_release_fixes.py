@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import warnings
 
-from tuvl.cli.commands.validate import run_validation
+from tuvl_insight.cli.commands.validate import run_validation
 
 # ── TD-16: same name at different schema_version is NOT a duplicate ──────────
 

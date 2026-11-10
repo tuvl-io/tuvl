@@ -1,6 +1,6 @@
 import yaml
 
-from tuvl.cli.commands.init import _SAMPLE_TRIAGE_SPEC, _sample_task_plan
+from tuvl_insight.cli.commands.init import _SAMPLE_TRIAGE_SPEC, _sample_task_plan
 from tuvl_insight.spec.derive import _key, derive, dump, merge
 from tuvl_insight.spec.grammar import parse_structure
 from tuvl_insight.spec.parse import parse_text

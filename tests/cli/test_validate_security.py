@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import yaml
 
-from tuvl.cli.commands.validate import (
+from tuvl_insight.cli.commands.validate import (
     ValidateResult,
     _validate_model_access,
     _validate_system_config,
@@ -101,7 +101,7 @@ def test_system_config_absent_file_is_clean(tmp_path):
 
 
 def test_unknown_explicit_datasource_warns(tmp_path):
-    from tuvl.cli.commands.validate import _validate_cross_references
+    from tuvl_insight.cli.commands.validate import _validate_cross_references
 
     models = tmp_path / "models"
     models.mkdir()
@@ -122,7 +122,7 @@ def test_unknown_explicit_datasource_warns(tmp_path):
 
 
 def test_implicit_datasource_does_not_warn(tmp_path):
-    from tuvl.cli.commands.validate import _validate_cross_references
+    from tuvl_insight.cli.commands.validate import _validate_cross_references
 
     models = tmp_path / "models"
     models.mkdir()

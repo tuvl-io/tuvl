@@ -168,7 +168,7 @@ def register_cmd(
     """List this project in the public catalogue (shows the payload first)."""
     import httpx
 
-    from tuvl.cli.nest import NestError, ensure_token, forget_token, nest_url
+    from tuvl_insight.cli.nest import NestError, ensure_token, forget_token, nest_url
 
     record = _require(project_dir)
     import importlib.metadata

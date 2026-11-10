@@ -43,12 +43,12 @@ TOOLING_PREFIXES = (
     "tuvl_insight.testing",
     "tuvl_insight.validate",
     "tuvl.lock",
-    "tuvl.cli.nest",
-    "tuvl.cli.laya",
-    "tuvl.cli.agent_run",
-    "tuvl.cli.session",
-    "tuvl.cli.select",
-    "tuvl.cli.json_output",
+    "tuvl_insight.cli.nest",
+    "tuvl_insight.cli.laya",
+    "tuvl_insight.cli.agent_run",
+    "tuvl_insight.cli.session",
+    "tuvl_insight.cli.select",
+    "tuvl_insight.cli.json_output",
     "tuvl.doctor.toolchain_groups",
 )
 

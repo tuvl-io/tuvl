@@ -195,8 +195,8 @@ def _spec_mode(
     review_blocking: str,
     reviewer: str | None,
 ) -> None:
-    from tuvl.cli import agent_run
     from tuvl_insight import taskrun
+    from tuvl_insight.cli import agent_run
     from tuvl_insight.coding_agents import runner
     from tuvl_insight.gitflow import GitFlowError
 

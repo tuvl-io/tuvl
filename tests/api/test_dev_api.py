@@ -15,8 +15,8 @@ import pytest
 from fastapi import FastAPI
 
 from tuvl.api.dev import router
-from tuvl.cli.json_output import COMMANDS
 from tuvl.core.config import use_project
+from tuvl_insight.cli.json_output import COMMANDS
 
 
 @pytest.fixture(scope="module")

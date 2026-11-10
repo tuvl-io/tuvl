@@ -116,7 +116,7 @@ async def test_pii_mask_also_masks_a_json_list(monkeypatch):
 def test_validate_guardrail_artifact_checks(tmp_path):
     import yaml
 
-    from tuvl.cli.commands.validate import ValidateResult, _validate_artifacts
+    from tuvl_insight.cli.commands.validate import ValidateResult, _validate_artifacts
 
     d = tmp_path / "artifacts"
     d.mkdir()

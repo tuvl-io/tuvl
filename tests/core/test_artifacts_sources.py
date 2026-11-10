@@ -291,7 +291,7 @@ async def test_external_never_shadows_project_file(monkeypatch, tmp_path):
 
 
 def test_validate_artifact_sources(tmp_path):
-    from tuvl.cli.commands.validate import ValidateResult, _validate_artifacts
+    from tuvl_insight.cli.commands.validate import ValidateResult, _validate_artifacts
 
     (tmp_path / "config.yaml").write_text(
         yaml.safe_dump(
@@ -313,7 +313,7 @@ def test_validate_artifact_sources(tmp_path):
 
 
 def test_validate_warm_cache_artifacts_known(tmp_path):
-    from tuvl.cli.commands.validate import ValidateResult, _validate_artifacts
+    from tuvl_insight.cli.commands.validate import ValidateResult, _validate_artifacts
 
     sha = "b" * 64
     cache = tmp_path / ".tuvl" / "artifacts" / "cache" / sha

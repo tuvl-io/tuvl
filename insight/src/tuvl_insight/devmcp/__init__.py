@@ -60,7 +60,7 @@ def build_server(project: Path, *, allow_write: bool = False) -> FastMCP:
     @server.tool()
     def validate() -> dict[str, Any]:
         """Validate the project: errors, warnings (with V0xx codes) and per-workflow cost profiles."""
-        from tuvl.cli.commands.validate import run_validation
+        from tuvl_insight.cli.commands.validate import run_validation
 
         result, *_ = run_validation(project, echo=False)
         return {
@@ -195,7 +195,7 @@ def build_server(project: Path, *, allow_write: bool = False) -> FastMCP:
     @server.tool()
     async def test(only: str | None = None, live: bool = False) -> dict[str, Any]:
         """Run the project's Test documents (offline unless live=True)."""
-        from tuvl.cli.commands.test import _run
+        from tuvl_insight.cli.commands.test import _run
 
         use_project(str(project))
         results, warnings = await _run(

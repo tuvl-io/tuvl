@@ -10,10 +10,10 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.testclient import TestClient
 
-from tuvl.cli.commands.validate import ValidateResult, _validate_system_config
 from tuvl.core.config import settings
 from tuvl.core.cors import install_cors
 from tuvl.core.system_config import cors_origins, invalid_cors_origin, load_system_config
+from tuvl_insight.cli.commands.validate import ValidateResult, _validate_system_config
 
 APP = "https://app.example.com"
 

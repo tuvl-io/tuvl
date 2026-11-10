@@ -331,7 +331,7 @@ def _dev_material(proj: Path) -> None:
 def test_ship_image_holds_only_runtime_files(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from tuvl.cli.commands.ship import _ignore_rules, _image_files
+    from tuvl_insight.cli.commands.ship import _ignore_rules, _image_files
     from tuvl_insight.shipgate import GateResult
 
     proj = _project(tmp_path)
