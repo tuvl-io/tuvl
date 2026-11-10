@@ -207,11 +207,11 @@ def main() -> None:
     from tuvl.extras import MissingExtraError
 
     # developer telemetry and the coding-agent usage line belong to the toolchain; a bare install has neither
+    devtelemetry: Any = None
+    usage: Any = None
     if toolchain_installed():
         from tuvl_insight import devtelemetry
         from tuvl_insight.coding_agents.runner import usage
-    else:
-        devtelemetry = usage = None
 
     started, code = time.perf_counter(), 0
     try:
