@@ -50,6 +50,8 @@ _LLM_KIND = "AgentModel"
 _EMBEDDING_KINDS = ("EmbeddingRegistry", "EmbeddingConfig")
 _COLLECTION_KINDS = ("CollectionRegistry", "CollectionConfig")
 _FEDERATION_KIND = "FederationProvider"
+_ROLE_SEED_KIND = "RoleSeed"
+_ENV_CONFIG_KIND = "EnvConfig"
 _STORAGE_KIND = "Storage"
 _V1_TEST_KIND = "test"
 
@@ -669,6 +671,100 @@ def _validate_federation(files: list[Path], project_dir: Path, result: ValidateR
     return known
 
 
+def _validate_role_seeds(files: list[Path], project_dir: Path, result: ValidateResult) -> None:
+    """V044: every ``RoleSeed`` parses, and no role is defined twice across files."""
+    from tuvl.core.auth.seed import parse_role_seed
+
+    seen: dict[str, str] = {}
+    for yf in sorted(files):
+        label = _label(project_dir, yf)
+        data, err = _load_yaml(yf)
+        if err:
+            result.error(label, err)
+            continue
+        if not isinstance(data, dict):
+            result.error(label, "File does not parse to a YAML mapping")
+            continue
+        try:
+            entries = parse_role_seed(data)
+        except ValueError as exc:
+            result.issues.append(Issue("error", label, f"[V044] {exc}", "V044"))
+            continue
+        for entry in entries:
+            if entry.name in seen:
+                result.issues.append(
+                    Issue(
+                        "error",
+                        label,
+                        f"[V044] role '{entry.name}' is also defined in {seen[entry.name]}",
+                        "V044",
+                    )
+                )
+            else:
+                seen[entry.name] = label
+
+
+def _validate_env_config(files: list[Path], project_dir: Path, result: ValidateResult) -> None:
+    """V045-V047: the ``EnvConfig`` documents are well formed, and once a project has any, every
+    ``${VAR}`` it uses is declared and every declaration is used."""
+    from tuvl.core import envconfig
+    from tuvl_insight import envconfig_tools
+
+    if not files:
+        return  # a project that keeps no manifest is not held to one
+    declared: dict[str, str] = {}
+    for yf in sorted(files):
+        label = _label(project_dir, yf)
+        data, err = _load_yaml(yf)
+        if err:
+            result.error(label, err)
+            continue
+        if not isinstance(data, dict):
+            result.error(label, "File does not parse to a YAML mapping")
+            continue
+        try:
+            variables = envconfig.parse_env_config(data)
+        except ValueError as exc:
+            result.issues.append(Issue("error", label, f"[V045] {exc}", "V045"))
+            continue
+        for var in variables:
+            if var.name in declared:
+                result.issues.append(
+                    Issue(
+                        "error",
+                        label,
+                        f"[V045] '{var.name}' is also declared in {declared[var.name]}",
+                        "V045",
+                    )
+                )
+            else:
+                declared[var.name] = label
+
+    refs = envconfig_tools.scan_references(project_dir)
+    for name, ref in sorted(refs.items()):
+        if name in declared or name in envconfig.ENGINE_CATALOG:
+            continue
+        result.issues.append(
+            Issue(
+                "error",
+                ref.files[0],
+                f"[V046] ${{{name}}} is not declared by any EnvConfig (declare it with a "
+                f"description, and `secret: true` if it is one)",
+                "V046",
+            )
+        )
+    for name, label in sorted(declared.items()):
+        if name not in refs and name not in envconfig.ENGINE_CATALOG:
+            result.issues.append(
+                Issue(
+                    "warning",
+                    label,
+                    f"[V047] '{name}' is declared but nothing in the project refers to it",
+                    "V047",
+                )
+            )
+
+
 def _validate_storage(
     files: list[Path], project_dir: Path, result: ValidateResult
 ) -> dict[str, Any]:
@@ -1220,6 +1316,12 @@ def run_validation(
 
             _step("[dim]• Checking federation providers…[/dim]")
             _validate_federation(by_kind.get(_FEDERATION_KIND, []), project_dir, result)
+
+            _step("[dim]• Checking role seeds…[/dim]")
+            _validate_role_seeds(by_kind.get(_ROLE_SEED_KIND, []), project_dir, result)
+
+            _step("[dim]• Checking environment variables…[/dim]")
+            _validate_env_config(by_kind.get(_ENV_CONFIG_KIND, []), project_dir, result)
 
             _step("[dim]• Checking storage…[/dim]")
             stores = _validate_storage(by_kind.get(_STORAGE_KIND, []), project_dir, result)

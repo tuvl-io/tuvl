@@ -9,7 +9,12 @@ import sqlalchemy as sa
 from fastapi import Request
 from sqlalchemy import event, text
 from sqlalchemy.exc import IllegalStateChangeError, OperationalError, SQLAlchemyError
-from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import (
+    AsyncConnection,
+    AsyncEngine,
+    async_sessionmaker,
+    create_async_engine,
+)
 from sqlmodel import SQLModel
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -501,6 +506,21 @@ async def ensure_indexes(engine: AsyncEngine, indexes: tuple[tuple[str, str], ..
             await conn.execute(text("SELECT pg_advisory_unlock(:k)"), {"k": _INDEX_LOCK})
 
 
+async def ensure_iam_columns(conn: AsyncConnection) -> None:
+    """Add the columns IAM tables gained after a database was first booted (``create_all`` never alters).
+
+    Idempotent. Roles can be disabled since 2.1; an older database has no ``is_active`` on its roles.
+    """
+    from tuvl.core.auth.models import IAMRole
+
+    await conn.execute(
+        text(
+            f'ALTER TABLE "{table_of(IAMRole).name}" ADD COLUMN IF NOT EXISTS '
+            "is_active BOOLEAN NOT NULL DEFAULT true"
+        )
+    )
+
+
 async def init_db() -> None:
     _build_engines()
     if not _engines_rw:
@@ -548,6 +568,7 @@ async def init_db() -> None:
                     sync_conn, tables=iam_tables, checkfirst=True
                 )
             )
+            await ensure_iam_columns(conn)
         logger.info("IAM tables ready", datasource=_PRIMARY_DS, pid=pid)
 
     # Create tuvl_system_model_versions tracking table on the primary datasource.

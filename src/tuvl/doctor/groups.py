@@ -118,6 +118,31 @@ def env_group(ctx: Context) -> list[Check]:
             )
         elif (ctx.project / ".git").exists():
             out.append(Check("env", ".env ignored", "ok", "in .gitignore"))
+    from tuvl.core import envconfig
+
+    manifest = envconfig.load_manifest(ctx.project)
+    if manifest:
+        dotenv = envconfig.read_dotenv(ctx.project)
+        absent = [
+            name
+            for name, var in manifest.items()
+            if var.required
+            and var.default is None
+            and not (os.environ.get(name) or dotenv.get(name))
+        ]
+        out.append(
+            Check(
+                "env",
+                "variables",
+                "fail" if absent else "ok",
+                f"required but not set: {', '.join(absent)}"
+                if absent
+                else f"{len(manifest)} declared, every required one is set",
+                "set them in .env (Insight: Settings → Environment); production refuses to start without them"
+                if absent
+                else "",
+            )
+        )
     if toolchain_installed():
         uv = shutil.which("uv")
         out.append(

@@ -14,7 +14,7 @@ ROOT_ORDER = (
     "dev", "run", "serve", "follow", "pin", "replay",
     "list", "show",
     "ship", "deploy",
-    "export", "prune", "help",
+    "export", "prune", "iam", "help",
 )  # fmt: skip
 
 

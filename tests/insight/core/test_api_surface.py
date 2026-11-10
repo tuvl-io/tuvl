@@ -33,7 +33,7 @@ def _project(monkeypatch, tmp_path: Path, api: str = "") -> None:
 def test_the_dev_server_mounts_every_group(monkeypatch, tmp_path):
     _project(monkeypatch, tmp_path, "    expose: [auth]\n")
     monkeypatch.setattr(settings, "tuvl_dev_mode", True)
-    assert exposed_api_groups() == {"auth", "runs", "admin", "artifacts", "system"}
+    assert exposed_api_groups() == {"auth", "runs", "iam", "admin", "artifacts", "system"}
 
 
 def test_production_mounts_only_auth_and_runs_by_default(monkeypatch, tmp_path):
@@ -85,6 +85,8 @@ print(json.dumps({
     "openapi": c.get("/openapi.json").status_code,
     "auth": c.post("/auth/token", json={}).status_code,
     "admin": c.get("/admin/scopes").status_code,
+    "bootstrap": c.post("/auth/bootstrap", json={}).status_code,
+    "iam_users": c.get("/auth/admin/users").status_code,
     "system": c.get("/api/_system/models").status_code,
     "artifacts": c.get("/api/artifacts").status_code,
     "documented": paths,
@@ -121,6 +123,17 @@ def test_a_production_server_serves_no_documentation_and_no_admin_routes(tmp_pat
     assert seen["auth"] != 404
 
 
+def test_production_does_not_mount_iam_administration_or_bootstrap(tmp_path):
+    seen = _probe(tmp_path)
+    assert seen["bootstrap"] == 404 and seen["iam_users"] == 404
+    assert seen["auth"] != 404  # login stays
+
+
+def test_the_iam_group_can_be_exposed_on_purpose(tmp_path):
+    seen = _probe(tmp_path, TUVL_API_EXPOSE="auth,iam")
+    assert seen["bootstrap"] != 404 and seen["iam_users"] != 404
+
+
 def test_the_documentation_lists_no_system_route_when_it_is_on(tmp_path):
     seen = _probe(tmp_path, TUVL_API_DOCS="workflows", TUVL_API_EXPOSE="auth,runs,admin")
     assert seen["docs"] == 200 and seen["openapi"] == 200
@@ -141,7 +154,7 @@ def test_the_dev_server_can_mirror_production(monkeypatch, tmp_path):
     assert exposed_api_groups() == {"auth", "runs"}
     assert api_docs_mode() == "off"
     monkeypatch.setattr(settings, "tuvl_dev_expose_all", True)  # the environment wins
-    assert exposed_api_groups() == {"auth", "runs", "admin", "artifacts", "system"}
+    assert exposed_api_groups() == {"auth", "runs", "iam", "admin", "artifacts", "system"}
     assert api_docs_mode() == "workflows"
 
 

@@ -49,6 +49,8 @@ DOCKERIGNORE = """\
 !llms/
 !storage/
 !federation/
+!iam/
+!config/env.yaml
 !.tuvl/system.yaml
 !.tuvl/telemetry.yaml
 **/__pycache__
@@ -123,7 +125,7 @@ env:
   POSTGRES_PORT: "5432"
   POSTGRES_DB: $name
   POSTGRES_USER: postgres
-
+$extra_env
 # Existing Secret applied via envFrom. Must hold POSTGRES_PASSWORD,
 # TUVL_SIGNING_KEY (tuvl generate key) and the models' variables:
 #   $model_secrets

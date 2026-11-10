@@ -45,6 +45,11 @@ from tuvl.core.logger import logger
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
+#: IAM administration: first-admin bootstrap, user/role CRUD and federation-provider admin.
+#: Mounted as its own API group (``iam``) that a production server leaves out by default;
+#: production IAM is run in the cluster with ``tuvl iam``. Login, refresh and logout stay on ``router``.
+iam_router = APIRouter(prefix="/auth", tags=["iam"])
+
 
 class TokenResponse(BaseModel):
     access_token: str
@@ -108,6 +113,7 @@ class RoleResponse(BaseModel):
     name: str
     description: str | None
     scopes: list[str]
+    is_active: bool = True
 
 
 class BootstrapRequest(BaseModel):
@@ -131,7 +137,7 @@ IamSession = Annotated[AsyncSession, Depends(_get_iam_session)]
 AdminUser = Annotated[TokenUser, Depends(require_scope("iam:admin"))]
 
 
-@router.post(
+@iam_router.post(
     "/bootstrap",
     response_model=TokenResponse,
     summary="Create first superadmin user (one-time setup)",
@@ -276,7 +282,7 @@ async def logout(
     logger.info("Token revoked via logout.")
 
 
-@router.post(
+@iam_router.post(
     "/admin/users",
     response_model=UserResponse,
     status_code=status.HTTP_201_CREATED,
@@ -313,7 +319,7 @@ async def create_user(
     )
 
 
-@router.get(
+@iam_router.get(
     "/admin/users",
     response_model=list[UserResponse],
     summary="List all IAM users",
@@ -334,7 +340,7 @@ async def list_users(session: IamSession, _admin: AdminUser) -> list[UserRespons
     ]
 
 
-@router.get(
+@iam_router.get(
     "/admin/users/{user_id}",
     response_model=UserResponse,
     summary="Get a single IAM user",
@@ -359,7 +365,7 @@ async def get_user(
     )
 
 
-@router.delete(
+@iam_router.delete(
     "/admin/users/{user_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete an IAM user",
@@ -373,9 +379,11 @@ async def delete_user(
         await iam_service.delete_user(session, user_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
-@router.patch(
+@iam_router.patch(
     "/admin/users/{user_id}",
     response_model=UserResponse,
     summary="Update a user's password or active status",
@@ -403,6 +411,8 @@ async def update_user(
         )
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     return UserResponse(
         id=user.id,
         email=user.email,
@@ -414,7 +424,7 @@ async def update_user(
     )
 
 
-@router.post(
+@iam_router.post(
     "/admin/roles",
     response_model=RoleResponse,
     status_code=status.HTTP_201_CREATED,
@@ -437,10 +447,11 @@ async def create_role(
         name=role.name,
         description=role.description,
         scopes=scopes,
+        is_active=role.is_active,
     )
 
 
-@router.get(
+@iam_router.get(
     "/admin/roles",
     response_model=list[RoleResponse],
     summary="List all roles with their scopes",
@@ -448,12 +459,18 @@ async def create_role(
 async def list_roles(session: IamSession, _admin: AdminUser) -> list[RoleResponse]:
     pairs = await iam_service.list_roles(session)
     return [
-        RoleResponse(id=role.id, name=role.name, description=role.description, scopes=scopes)
+        RoleResponse(
+            id=role.id,
+            name=role.name,
+            description=role.description,
+            scopes=scopes,
+            is_active=role.is_active,
+        )
         for role, scopes in pairs
     ]
 
 
-@router.delete(
+@iam_router.delete(
     "/admin/roles/{role_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete a role (and all its scope and user assignments)",
@@ -467,9 +484,11 @@ async def delete_role(
         await iam_service.delete_role(session, role_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
-@router.patch(
+@iam_router.patch(
     "/admin/roles/{role_id}/scopes",
     response_model=RoleResponse,
     summary="Replace all scopes on a role",
@@ -489,15 +508,18 @@ async def update_role_scopes(
         role, scopes = await iam_service.update_role_scopes(session, role_id, req.scopes)
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     return RoleResponse(
         id=role.id,
         name=role.name,
         description=role.description,
         scopes=scopes,
+        is_active=role.is_active,
     )
 
 
-@router.post(
+@iam_router.post(
     "/admin/users/{user_id}/roles/{role_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Assign a role to a user",
@@ -514,7 +536,7 @@ async def assign_role(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
-@router.delete(
+@iam_router.delete(
     "/admin/users/{user_id}/roles/{role_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Revoke a role from a user",
@@ -529,6 +551,8 @@ async def revoke_role(
         await iam_service.revoke_role(session, user_id, role_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 # Built-in URL/scope defaults for well-known providers.
@@ -981,7 +1005,7 @@ async def oauth_device_poll(
 # see iam_service.safe_federation_path / list_federation_providers / etc.
 
 
-@router.get(
+@iam_router.get(
     "/admin/federation",
     response_model=list[str],
     summary="List configured federation providers",
@@ -991,7 +1015,7 @@ async def list_federation_providers(_admin: AdminUser) -> list[str]:
     return await iam_service.list_federation_providers()
 
 
-@router.get(
+@iam_router.get(
     "/admin/federation/{name}",
     summary="Get a federation provider config",
 )
@@ -1006,7 +1030,7 @@ async def get_federation_provider(name: str, _admin: AdminUser) -> dict:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
-@router.put(
+@iam_router.put(
     "/admin/federation/{name}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Save (create or update) a federation provider config",
@@ -1018,7 +1042,7 @@ async def save_federation_provider(name: str, body: dict, _admin: AdminUser) -> 
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@router.delete(
+@iam_router.delete(
     "/admin/federation/{name}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete a federation provider config",

@@ -46,6 +46,8 @@ ENGINE_SURFACE: dict[str, str] = {
     "tuvl.core.models.schemas": "generated request/response schemas (code generation, UI specs)",
     # ── the engine's own vocabulary, so lint rejects exactly what the engine would ──
     "tuvl.core.auth.schemas": "the scope-name pattern, for scope lint",
+    "tuvl.core.auth.seed": "the `kind: RoleSeed` parser, for role-seed lint",
+    "tuvl.core.envconfig": "`kind: EnvConfig`: its parser, the engine variable catalog and the manifest that lint, ship and the env dev API check against",
     "tuvl.core.bootstrap": "the valid deployment modes, for system.yaml lint",
     "tuvl.core.engine.guardrails": "the guardrail checks that exist, for guardrail lint",
     "tuvl.core.engine.hooks": "the hook events and actions that exist, for hook lint",

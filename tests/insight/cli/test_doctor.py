@@ -121,3 +121,21 @@ def test_quiet_prints_only_what_needs_attention(tmp_path: Path) -> None:
     done = _run(tmp_path, "--only", "project,env", "--quiet")
     assert "project.yaml" in done.stdout
     assert "python" not in done.stdout
+
+
+def test_a_required_variable_that_is_not_set_fails_the_env_group(tmp_path: Path) -> None:
+    (tmp_path / "config").mkdir()
+    (tmp_path / "config" / "env.yaml").write_text(
+        "kind: EnvConfig\nspec:\n  variables:\n"
+        "    - {name: DOCTOR_TEST_SECRET_XYZ, secret: true, required: true}\n"
+    )
+    report = _report(tmp_path, "--only", "env")
+    assert _checks(report, "env")["variables"] == "fail"
+    assert "DOCTOR_TEST_SECRET_XYZ" in _detail(report, "env", "variables")
+
+    (tmp_path / ".env").write_text("DOCTOR_TEST_SECRET_XYZ=x\n")
+    assert _checks(_report(tmp_path, "--only", "env"), "env")["variables"] == "ok"
+
+
+def test_a_project_without_an_env_config_gets_no_variables_check(tmp_path: Path) -> None:
+    assert "variables" not in _checks(_report(tmp_path, "--only", "env"), "env")

@@ -18,6 +18,8 @@ Supported kinds
 - ``DataSource``           → :mod:`tuvl.core.datasources.loader`
 - ``RedisConfig``          → :mod:`tuvl.core.datasources.loader`
 - ``FederationProvider``   → :mod:`tuvl.core.auth.federation_loader`
+- ``RoleSeed``             → :mod:`tuvl.core.auth.seed` (first-boot roles, applied once)
+- ``EnvConfig``            → :mod:`tuvl.core.envconfig` (the project's environment variables)
 - ``AgentModel``           → :mod:`tuvl.core.models.agent_models`
 - ``Workflow``             → :mod:`tuvl.contract.registry` when it declares
   ``version: tuvl/v2``, else the 1.x :mod:`tuvl.core.api.manager`
@@ -84,6 +86,8 @@ PROCESS_ORDER: list[str] = [
     "DataSource",
     "RedisConfig",
     "FederationProvider",
+    "RoleSeed",
+    "EnvConfig",
     "Storage",
     "Workflow",
     "Test",
@@ -145,10 +149,12 @@ def load_all_configs(
     # ── 1. Clear all registries ────────────────────────────────────────────
     from tuvl.core.artifacts.registry import ARTIFACT_REGISTRY
     from tuvl.core.auth.federation_loader import FEDERATION_REGISTRY
+    from tuvl.core.auth.seed import ROLE_SEED_REGISTRY
     from tuvl.core.datasources.loader import (
         DATASOURCE_REGISTRY,
         _reset_primary_state,
     )
+    from tuvl.core.envconfig import MANIFEST as ENV_MANIFEST
     from tuvl.core.models.agent_models import AGENT_MODEL_REGISTRY
     from tuvl.core.models.collections_loader import COLLECTION_REGISTRY
     from tuvl.core.models.embeddings_loader import EMBEDDING_REGISTRY
@@ -177,6 +183,8 @@ def load_all_configs(
     DATASOURCE_REGISTRY.clear()
     _reset_primary_state()
     FEDERATION_REGISTRY.clear()
+    ROLE_SEED_REGISTRY.clear()
+    ENV_MANIFEST.clear()
 
     from tuvl.contract import registry as contract_registry
 
@@ -233,10 +241,12 @@ def load_all_configs(
     # ── 3. Dispatch in dependency order ───────────────────────────────────
     from tuvl.core.artifacts.loader import _register_artifact_from_dict
     from tuvl.core.auth.federation_loader import _register_federation_from_dict
+    from tuvl.core.auth.seed import register_role_seed_from_dict
     from tuvl.core.datasources.loader import (
         _finalize_primary_ds,
         _register_datasource_from_dict,
     )
+    from tuvl.core.envconfig import register_env_config_from_dict
     from tuvl.core.models.agent_models import _register_agent_model_from_dict
     from tuvl.core.models.collections_loader import _register_collection_from_dict
     from tuvl.core.models.embeddings_loader import _register_embedding_from_dict
@@ -254,6 +264,8 @@ def load_all_configs(
         "DataSource": _register_datasource_from_dict,
         "RedisConfig": _register_datasource_from_dict,
         "FederationProvider": _register_federation_from_dict,
+        "RoleSeed": register_role_seed_from_dict,
+        "EnvConfig": register_env_config_from_dict,
         "Storage": register_store_from_dict,
         "Workflow": _register_workflow,
         "Test": contract_registry.register_document,
@@ -288,6 +300,8 @@ def load_all_configs(
         collections=len(COLLECTION_REGISTRY),
         datasources=len(DATASOURCE_REGISTRY),
         federation=len(FEDERATION_REGISTRY),
+        role_seeds=len(ROLE_SEED_REGISTRY),
+        env_variables=len(ENV_MANIFEST),
         storage=len(STORE_REGISTRY),
         workflows=len(contract_registry.WORKFLOWS),
         v2_tests=len(contract_registry.TESTS),

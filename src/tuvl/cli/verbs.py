@@ -294,3 +294,7 @@ def register(app: typer.Typer) -> None:
 
     for verb, panel, _ in VERBS:
         app.add_typer(groups[verb].app, name=verb, rich_help_panel=panel)
+
+    from tuvl.cli.commands.iam import iam_app
+
+    app.add_typer(iam_app, name="iam", rich_help_panel="Admin")

@@ -96,6 +96,7 @@ async def iam_db(monkeypatch):
 def rest_app() -> FastAPI:
     app = FastAPI()
     app.include_router(auth_router.router)
+    app.include_router(auth_router.iam_router)
     return app
 
 
@@ -433,6 +434,7 @@ async def test_live_boot_rest_bootstrap_login_authed_logout_rejected(monkeypatch
     try:
         app = FastAPI()
         app.include_router(auth_router.router)
+        app.include_router(auth_router.iam_router)
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             resp = await client.post(
                 "/auth/bootstrap",

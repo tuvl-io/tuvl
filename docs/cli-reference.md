@@ -914,3 +914,136 @@ Delete trace files (prompts, agent output) older than N days. The ledger is kept
 |---|---|---|---|
 | `--project-dir`, `-d` | PATH | `.` | tuvl project directory |
 | `--older-than` | FLOAT | `30` | Days; the trace only, never the ledger |
+
+
+## `tuvl iam`
+
+
+### `tuvl iam check`
+
+Is every scope this project enforces granted by an active role? Exits 1 if not.
+
+
+### `tuvl iam export`
+
+Write the live roles as a RoleSeed document for the next fresh database.
+
+| Option | Value | Default | What it does |
+|---|---|---|---|
+| `--out`, `-o` | PATH |  | Write to this file instead of stdout. |
+
+
+### `tuvl iam reset-admin`
+
+Break-glass: make EMAIL an active administrator with a new password. Asks for no login.
+
+Arguments: `<email>`
+
+
+### `tuvl iam roles add-user`
+
+Give a user a role.
+
+Arguments: `<name>` `<email>`
+
+
+### `tuvl iam roles create`
+
+Create a role.
+
+Arguments: `<name>`
+
+| Option | Value | Default | What it does |
+|---|---|---|---|
+| `--description` | TEXT |  | What the role is for. |
+| `--scope`, `-s` | TEXT (repeatable) |  | A scope to grant (repeatable). |
+
+
+### `tuvl iam roles delete`
+
+Delete a role (refused while it has members unless --force).
+
+Arguments: `<name>`
+
+| Option | Value | Default | What it does |
+|---|---|---|---|
+| `--force` |  |  | Delete even when users still hold the role. |
+| `--yes`, `-y` |  |  | Do not ask to confirm. |
+
+
+### `tuvl iam roles disable`
+
+Disable a role: it keeps its members and scopes but grants nothing until enabled.
+
+Arguments: `<name>`
+
+
+### `tuvl iam roles enable`
+
+Enable a role again.
+
+Arguments: `<name>`
+
+
+### `tuvl iam roles grant`
+
+Grant a scope to a role.
+
+Arguments: `<name>` `<scope>`
+
+
+### `tuvl iam roles list`
+
+List roles with their scopes and member counts.
+
+
+### `tuvl iam roles remove-user`
+
+Take a role away from a user (they are signed out).
+
+Arguments: `<name>` `<email>`
+
+
+### `tuvl iam roles revoke`
+
+Take a scope away from a role (its holders are signed out).
+
+Arguments: `<name>` `<scope>`
+
+
+### `tuvl iam scopes list`
+
+List the scopes this project enforces and what each guards.
+
+
+### `tuvl iam users create`
+
+Create a user. The password is prompted (or TUVL_IAM_NEW_PASSWORD).
+
+Arguments: `<email>`
+
+| Option | Value | Default | What it does |
+|---|---|---|---|
+| `--first-name` | TEXT |  |  |
+| `--last-name` | TEXT |  |  |
+| `--phone` | TEXT |  |  |
+| `--role`, `-r` | TEXT (repeatable) |  | A role to give (repeatable). |
+
+
+### `tuvl iam users disable`
+
+Stop a user signing in (their sessions end).
+
+Arguments: `<email>`
+
+
+### `tuvl iam users enable`
+
+Let a disabled user sign in again.
+
+Arguments: `<email>`
+
+
+### `tuvl iam users list`
+
+List users with their roles.

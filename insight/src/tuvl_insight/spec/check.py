@@ -2,7 +2,7 @@
 
 Zero tokens, deterministic. Rules S001–S021 over the grammar parsed by :mod:`tuvl.spec.grammar`;
 rule conditions are checked with tuvl's own expression checker, and the engine-implied signals
-mirror :func:`tuvl.validate.signals.signals_of`.
+mirror :func:`tuvl_insight.validate.signals.signals_of`.
 """
 
 from __future__ import annotations

@@ -256,6 +256,18 @@ def test_the_runtime_hash_changes_with_content_and_ignores_missing_files(tmp_pat
 
 def test_env_example_lists_each_variable_once() -> None:
     text = shiparchive.env_example(["OPENAI_API_KEY", "POSTGRES_HOST", "OPENAI_API_KEY"])
-    assert (
-        text.count("POSTGRES_HOST=") == 1 and text.count("OPENAI_API_KEY=") == 2
-    )  # the caller dedups; the fixed ones are not repeated
+    assert text.count("POSTGRES_HOST=") == 1 and text.count("OPENAI_API_KEY=") == 1
+
+
+def test_env_example_describes_declared_variables() -> None:
+    from tuvl.core.envconfig import EnvVar
+
+    text = shiparchive.env_example(
+        ["CRM_TOKEN", "THRESHOLD"],
+        {
+            "CRM_TOKEN": EnvVar("CRM_TOKEN", "CRM access token", secret=True),
+            "THRESHOLD": EnvVar("THRESHOLD", "Escalation score", default="0.8"),
+        },
+    )
+    assert "# CRM access token\nCRM_TOKEN=\n" in text
+    assert "# Escalation score\nTHRESHOLD=0.8\n" in text

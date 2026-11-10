@@ -15,7 +15,7 @@ import subprocess
 import tomllib
 from pathlib import Path
 from string import Template
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import typer
 from rich.console import Console
@@ -174,6 +174,37 @@ def _image_files(project_dir: Path, rules: list[tuple[bool, str]]) -> list[str]:
             if included:
                 files.append(rel)
     return sorted(files)
+
+
+_RUNTIME_DOCUMENT = re.compile(r"^kind:\s*(RoleSeed|EnvConfig)\s*$", re.MULTILINE)
+
+
+def _missing_runtime_documents(project_dir: Path) -> list[str]:
+    """``RoleSeed`` and ``EnvConfig`` files the image would leave out.
+
+    Without them production seeds no roles and cannot tell which variables are required, and
+    nothing would say so: an older ``.dockerignore`` allowlist predates both kinds.
+    """
+    dockerignore = project_dir / ".dockerignore"
+    rules = _ignore_rules(dockerignore) if dockerignore.exists() else []
+    in_image = set(_image_files(project_dir, rules)) if rules else set()
+    missing = []
+    for root, dirs, names in os.walk(project_dir):
+        dirs[:] = sorted(
+            d for d in dirs if d not in _WALK_SKIP and (not d.startswith(".") or d == ".tuvl")
+        )
+        for name in sorted(names):
+            if not name.endswith((".yaml", ".yml")):
+                continue
+            path = Path(root, name)
+            try:
+                found = _RUNTIME_DOCUMENT.search(path.read_text(errors="ignore"))
+            except OSError:
+                continue
+            rel = path.relative_to(project_dir).as_posix()
+            if found and rel not in in_image:
+                missing.append(f"{rel} ({found.group(1)})")
+    return missing
 
 
 def _check_image_context(project_dir: Path) -> list[str]:
@@ -413,7 +444,15 @@ def ship_cmd(
     locked_version = _check_lock(project_dir)
     extras = _resolve_extras(project_dir, tuple(extra))
     model_vars = sorted({v for info in result.models.values() for v in info.get("env") or []})
-    secrets = ["TUVL_SIGNING_KEY (tuvl generate key)", "POSTGRES_PASSWORD", *model_vars]
+    from tuvl_insight import envconfig_tools
+
+    secret_entries, plain_entries = envconfig_tools.ship_variables(project_dir)
+    secret_vars = sorted(
+        {e.var.name for e in secret_entries} - {"TUVL_SIGNING_KEY", "POSTGRES_PASSWORD"}
+    )
+    needed_vars = sorted({*model_vars, *secret_vars})
+    secrets = ["TUVL_SIGNING_KEY (tuvl generate key)", "POSTGRES_PASSWORD", *needed_vars]
+    described = {e.var.name: e.var for e in (*secret_entries, *plain_entries)}
 
     console.print("\n[bold]Step 2/3 — deploy artifacts[/bold]")
     deploy = project_dir / "deploy"
@@ -434,7 +473,12 @@ def ship_cmd(
         "laya_memory_note": "One checkpoint (english) resident takes about 2 GiB."
         if laya_en
         else "Both bundled checkpoints resident take about 3.5 GiB.",
-        "model_secrets": ", ".join(model_vars) or "none — no workflow uses a model",
+        "model_secrets": ", ".join(needed_vars) or "none — no workflow uses a model",
+        "extra_env": "".join(
+            f"  {e.var.name}: {json.dumps(e.var.default)}\n"
+            for e in plain_entries
+            if e.var.default is not None
+        ),
     }
     files: dict[Path, str] = {
         deploy / "Dockerfile": tpl.DOCKERFILE.replace("@TUVL_VERSION@", locked_version)
@@ -482,6 +526,16 @@ def ship_cmd(
             " (laya.enabled in values.yaml)"
         )
 
+    left_out = _missing_runtime_documents(project_dir)
+    if left_out:
+        for entry in left_out:
+            console.print(f"  [red]✗[/red] {escape(entry)} would not be in the image")
+        console.print(
+            "[red bold]Ship aborted — add `!<path>` for each to .dockerignore "
+            "(or run `tuvl ship --force` to regenerate it).[/red bold]"
+        )
+        raise typer.Exit(1)
+
     if problems:
         for problem in problems[:20]:
             console.print(f"  [red]✗ V027[/red] {problem}")
@@ -521,7 +575,8 @@ def ship_cmd(
             locked_version=locked_version,
             extras=extras,
             files=image_files,
-            variables=sorted({*model_vars}),
+            variables=sorted({*needed_vars, *(e.var.name for e in plain_entries)}),
+            described=described,
             runtime_hash=runtime_hash,
             commit=commit,
             out_dir=out if out.is_absolute() else project_dir / out,
@@ -602,6 +657,9 @@ def ship_cmd(
             + "\n"
             f"[dim]The secret must include: {', '.join(secrets)}.\n"
             "A production engine refuses to start while a model's variable is missing.\n"
+            "First boot: add TUVL_BOOTSTRAP_ADMIN_EMAIL and TUVL_BOOTSTRAP_ADMIN_PASSWORD to the\n"
+            "secret to create the first administrator; later, manage users and roles with\n"
+            f"kubectl exec -it deploy/{slug} -- tuvl iam roles list\n"
             "The container runs in production mode: no dev routes, no Insight UI,\n"
             "JSON logs, telemetry on.[/dim]",
             title="[green]shipped[/green]",
@@ -663,6 +721,7 @@ def _build_archive(
     extras: list[str],
     files: list[str],
     variables: list[str],
+    described: dict[str, Any],
     runtime_hash: str,
     commit: str,
     out_dir: Path,
@@ -677,7 +736,7 @@ def _build_archive(
             slug=slug, version=version, tuvl_pin=pin, runtime_hash=runtime_hash, commit=commit
         ),
         "run.sh": shiparchive.run_script(tuvl_pin=pin, locked=locked),
-        ".env.example": shiparchive.env_example(variables),
+        ".env.example": shiparchive.env_example(variables, described),
         "BUILD-INFO.json": shiparchive.build_info(
             project=slug,
             version=version,

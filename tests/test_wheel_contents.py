@@ -57,7 +57,17 @@ def test_the_engine_wheel_keeps_only_the_production_commands(wheels: dict[str, l
         for f in wheels["tuvl"]
         if f.startswith("tuvl/cli/commands/") and f.endswith(".py")
     }
-    assert commands == {"__init__", "run", "runs", "db", "doctor", "keys", "memory", "storage"}
+    assert commands == {
+        "__init__",
+        "run",
+        "runs",
+        "db",
+        "doctor",
+        "iam",
+        "keys",
+        "memory",
+        "storage",
+    }
 
 
 def test_the_tooling_wheel_holds_no_engine(wheels: dict[str, list[str]]) -> None:

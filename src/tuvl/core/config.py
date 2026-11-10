@@ -150,6 +150,12 @@ class Settings(BaseSettings):
     # recommended for production).  Default: 24 hours.
     tuvl_token_ttl_seconds: int = 86400
 
+    # First administrator for a fresh production database (see ``tuvl.core.auth.seed``).
+    # Used once: ignored when the IAM tables already hold a user or a role.
+    tuvl_bootstrap_admin_email: str | None = None
+    tuvl_bootstrap_admin_password: str | None = None
+    tuvl_bootstrap_admin_password_file: str | None = None
+
     # ── Multi-tenancy safety net ──────────────────────────────────────────
     # When the deployment mode is multi_tenant (locked via ``tuvl init
     # --multi-tenant``) and this flag is true, any request that reaches

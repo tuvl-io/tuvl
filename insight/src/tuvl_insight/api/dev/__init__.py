@@ -16,11 +16,21 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from tuvl_insight.api.dev import agents, canvas, files, jobs, probe, specs, telemetry, validation
+from tuvl_insight.api.dev import (
+    agents,
+    canvas,
+    env,
+    files,
+    jobs,
+    probe,
+    specs,
+    telemetry,
+    validation,
+)
 
 router = APIRouter(prefix="/dev", tags=["dev"])
 
-for _module in (files, validation, specs, telemetry, jobs, agents, canvas, probe):
+for _module in (files, validation, specs, telemetry, env, jobs, agents, canvas, probe):
     router.include_router(_module.router)
 
 __all__ = ["router"]
