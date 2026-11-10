@@ -4,6 +4,7 @@
 > **Contract:** this manual is the ground truth for tuvl 2.0 documents. Never invent kinds, engines,
 > fields or signals that are not described here. When in doubt, ask tuvl: `tuvl lint project --json`,
 > `tuvl list tasks --json`, or the `tuvl serve mcp` tools.
+> `tuvl lint project`, `tuvl list tasks` and `tuvl serve mcp` are developer tools: they need `tuvl[standard]` ([Core and Insight](core-and-insight.md)).
 > **Deeper references:** [runtime](runtime.md) · [engines](engines.md) · [decide](decide.md) ·
 > [loop and tools](loop-and-tools.md) · [judges](judges.md) · [spec-driven workflow](spec-driven.md) ·
 > [Insight](insight.md) · [API](api.md) · [CLI](cli.md) · [security](auth.md) · [observability](observability.md)

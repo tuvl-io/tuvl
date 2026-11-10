@@ -2,7 +2,7 @@
 
 This repository is the **tuvl 2.0 engine**: typed YAML workflows of agents, run by a durable,
 journaled runtime, with spec-driven tooling and the Insight UI. It is not a tuvl *project* — for the
-rules that apply to projects built with tuvl, see `src/tuvl/skills/AGENTS.md` (scaffolded into every
+rules that apply to projects built with tuvl, see `insight/src/tuvl_insight/skills/AGENTS.md` (scaffolded into every
 project) and `docs/tuvl-agentic-manual.md`.
 
 ## 1. Where things live
@@ -10,18 +10,23 @@ project) and `docs/tuvl-agentic-manual.md`.
 | Path | What |
 |---|---|
 | `src/tuvl/contract/` | The 2.0 document model: `schema.py` (Pydantic for Workflow, Test, TaskPlan, artifacts), `types.py` (type language), `tel.py` (expression language), `registry.py`, `surface.py` (input/end schemas for OpenAPI and MCP) |
-| `src/tuvl/validate/` | `tuvl lint project`: per-engine signals, data flow, types, policy, profiles; rule codes in `codes.py` (V001–V043); workflow rules are the package `workflow/` (one module per area: `engines`, `flow`, `expressions`, `policy`, `profile`, `topology`) |
+| `insight/src/tuvl_insight/validate/` | `tuvl lint project`: per-engine signals, data flow, types, policy, profiles; rule codes in `codes.py` (V001–V043); workflow rules are the package `workflow/` (one module per area: `engines`, `flow`, `expressions`, `policy`, `profile`, `topology`) |
 | `src/tuvl/runtime/` | The durable runner (`runner.py`), queue and leases (`queue.py`), journal (`journal.py`), host (`host.py`), SSE wakeup (`wakeup.py`), MCP session pool (`mcp_pool.py`), engines (`code.py`, `tool.py`, `llm.py`, `decide.py`, `decision.py`, `loop.py`, `human.py`, `map.py`, `parallel.py`), judges, dev controls (`devtools.py`) |
-| `src/tuvl/api/` | REST: triggers, runs/events/approvals (`runs.py`), auth helpers, MCP export (`mcp_export.py`), the dev API for Insight (the package `dev/`, one router module per area; `GET /dev/project/summary` is the project summary, `/dev/project` the record) |
-| `src/tuvl/spec/`, `codegen/`, `lock/`, `testing/`, `devmcp/` | Spec analysis and status, codegen, `tuvl.lock`, the offline test runner, `tuvl serve mcp` |
-| `src/tuvl/cli/` | Typer commands; `--json` shapes in `cli/json_output.py` |
+| `src/tuvl/api/` | REST: triggers, runs/events/approvals (`runs.py`), auth helpers, MCP export (`mcp_export.py`), and the dev routes that read and steer the live engine (`dev/`: schedules, memory, breakpoints, judges, storage). The file-based dev API for Insight is `insight/src/tuvl_insight/api/dev/` (one router module per area; `GET /dev/project/summary` is the project summary, `/dev/project` the record) |
+| `insight/src/tuvl_insight/` | The developer tooling (the `tuvl-insight` package): `spec/`, `codegen/`, `lock/`, `testing/`, `devmcp/`, `validate/`, the toolchain commands (`cli/commands/`), the dev API and the built UI. Spec analysis and status, codegen, `tuvl.lock`, the offline test runner, `tuvl serve mcp` |
+| `src/tuvl/cli/` | The production CLI and the verb tree (`verbs.py`); toolchain commands are registered there and implemented in `tuvl_insight` |
 | `src/tuvl/core/` | Carried-forward platform: config, models/loader, datasources, auth/IAM (Ed25519 JWT), artifacts, telemetry, tenancy |
-| `src/tuvl/skills/` | Package-data skills + `AGENTS.md` scaffolded into projects |
+| `insight/src/tuvl_insight/skills/` | Package-data skills + `AGENTS.md` scaffolded into projects |
 | `ui/` | Insight (React + Vite); `pnpm build:cli` writes `insight/src/tuvl_insight/static/` |
 | `docs/` | Subsystem docs, mirrored to the docs site by `make sync-internals` there |
 | `proposals/` (workspace) | The 2.0 specification and implementation plan |
 
 ## 2. Invariants
+
+- **The engine never needs the tooling.** `tuvl` (the production wheel) must not import `tuvl_insight` except at the
+  listed seams, and `tuvl_insight` may import only the engine modules listed in `tests/test_boundary.py`, each with a
+  reason. Code both sides need goes in `tuvl.contract` (see `contract/facts.py`, `contract/lockfile.py`). The engine
+  tests pass with `tuvl-insight` removed (`requires_insight` marks the ones that need it). See `docs/core-and-insight.md`.
 
 - **Closed sets.** Engines: `pending code tool decide llm loop human map parallel`. Document kinds and artifact
   types are listed in the manual. Never add one without changing the spec, the schema, validate,

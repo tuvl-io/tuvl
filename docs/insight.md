@@ -8,6 +8,7 @@ settings are in one place.
 tuvl dev --auto-login        # Insight at http://localhost:8885/insight (needs tuvl[standard])
 ```
 
+Insight is the `tuvl-insight` package; see [Core and Insight](core-and-insight.md) for what it adds to the engine.
 It is a development tool: a production server (`tuvl serve app`) has no Insight and no dev routes. On a terminal `tuvl dev` also
 starts a [terminal UI](cli.md#servers) that runs the same commands.
 
