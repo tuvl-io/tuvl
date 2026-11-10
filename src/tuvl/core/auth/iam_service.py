@@ -55,6 +55,7 @@ from tuvl.core.logger import logger
 #   NotFoundError          | 404
 #   ConflictError          | 409
 #   AuthenticationError    | 401 (+ headers per call-site, see router.py)
+#   ForbiddenError         | 403
 #   ValidationError        | 400
 #   ParseError             | 422
 #   PersistenceError       | 500 (``.detail``)
@@ -75,6 +76,10 @@ class ConflictError(IamError):
 
 class AuthenticationError(IamError):
     """Credentials or the caller's identity could not be authenticated."""
+
+
+class ForbiddenError(IamError):
+    """The caller is authenticated but may not change this role (HTTP 403)."""
 
 
 class ValidationError(IamError):
@@ -190,6 +195,10 @@ async def revoke_token(raw_token: str) -> None:
 # ── Keeping an administrator ───────────────────────────────────────────────────
 
 ADMIN_SCOPE = "iam:admin"
+#: Lets a caller change who holds a role (the ``roles`` API group); it grants no other administration.
+ROLE_MANAGE_SCOPE = "roles:manage"
+#: Roles carrying either of these change hands only through an administrator (or ``tuvl iam``).
+_PROTECTED_SCOPES = frozenset({ADMIN_SCOPE, ROLE_MANAGE_SCOPE})
 SUPERADMIN_ROLE = "superadmin"
 
 
@@ -649,6 +658,87 @@ async def revoke_role(session: AsyncSession, user_id: uuid.UUID, role_id: uuid.U
     await _keep_an_admin(session, before)
     await session.commit()
     await end_sessions([user_id])
+
+
+# ── Role membership (the ``roles`` API group) ──────────────────────────────────
+
+
+def check_can_manage_role(caller_scopes: list[str], role_name: str, role_scopes: list[str]) -> None:
+    """Refuse a membership change that would let the caller hand out more than they hold.
+
+    An administrator (``iam:admin``) may change any role. Anyone else may change a role only if every
+    scope it grants is one they hold themselves, and never a role that carries ``iam:admin`` or
+    ``roles:manage``; those change hands through an administrator or ``tuvl iam``. Without this a
+    role manager could add themselves to a stronger role.
+    """
+    held = set(caller_scopes)
+    if ADMIN_SCOPE in held:
+        return
+    granted = set(role_scopes)
+    protected = sorted(granted & _PROTECTED_SCOPES)
+    if protected:
+        raise ForbiddenError(
+            f"Role '{role_name}' carries {', '.join(protected)}; only an administrator can change who holds it."
+        )
+    beyond = sorted(granted - held)
+    if beyond:
+        raise ForbiddenError(
+            f"Role '{role_name}' grants scopes you do not hold ({', '.join(beyond)}); "
+            "you can only manage roles within your own access."
+        )
+
+
+async def list_role_summaries(
+    session: AsyncSession, role_id: uuid.UUID | None = None
+) -> list[tuple[IAMRole, list[str], int]]:
+    """Roles with their scopes and member count, ordered by name (one role when *role_id* is given)."""
+    stmt = select(IAMRole).order_by(col(IAMRole.name))
+    if role_id is not None:
+        stmt = stmt.where(IAMRole.id == role_id)
+    roles = (await session.exec(stmt)).all()
+    counts = {
+        rid: int(n)
+        for rid, n in (
+            await session.exec(
+                select(IAMUserRole.role_id, func.count()).group_by(col(IAMUserRole.role_id))
+            )
+        ).all()
+    }
+    return [(r, await load_role_scopes(session, r.id), counts.get(r.id, 0)) for r in roles]
+
+
+async def find_users(
+    session: AsyncSession,
+    *,
+    q: str | None = None,
+    role_id: uuid.UUID | None = None,
+    limit: int = 25,
+    after: str | None = None,
+) -> tuple[list[IAMUser], str | None]:
+    """One page of users ordered by email: the members of *role_id*, or everyone, optionally matching *q*.
+
+    *after* is the cursor a previous page returned (the last email). The second value is the
+    cursor for the next page, ``None`` on the last one.
+    """
+    stmt = select(IAMUser)
+    if role_id is not None:
+        stmt = stmt.join(IAMUserRole, col(IAMUserRole.user_id) == IAMUser.id).where(
+            IAMUserRole.role_id == role_id
+        )
+    if q:
+        stmt = stmt.where(
+            or_(
+                col(IAMUser.email).icontains(q, autoescape=True),
+                col(IAMUser.first_name).icontains(q, autoescape=True),
+                col(IAMUser.last_name).icontains(q, autoescape=True),
+            )
+        )
+    if after:
+        stmt = stmt.where(col(IAMUser.email) > after)
+    rows = list((await session.exec(stmt.order_by(col(IAMUser.email)).limit(limit + 1))).all())
+    more = len(rows) > limit
+    page = rows[:limit]
+    return page, (page[-1].email if more and page else None)
 
 
 async def reset_admin(

@@ -149,7 +149,7 @@ ENGINE_CATALOG: dict[str, EnvVar] = dict(
         ),
         _v(
             "TUVL_API_EXPOSE",
-            "Comma-separated system route groups to mount: auth, iam, admin, artifacts, system. Overrides `spec.api.expose`.",
+            "Comma-separated system route groups to mount: auth, iam, roles, admin, artifacts, system. Overrides `spec.api.expose`.",
         ),
         _v(
             "TUVL_API_DOCS",

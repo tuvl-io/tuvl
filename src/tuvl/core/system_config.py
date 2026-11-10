@@ -31,7 +31,7 @@ SYSTEM_API_KEYS: frozenset[str] = frozenset(
 )
 
 #: the system route groups ``spec.api.expose`` chooses between
-API_GROUPS: tuple[str, ...] = ("auth", "iam", "admin", "artifacts", "system")
+API_GROUPS: tuple[str, ...] = ("auth", "iam", "roles", "admin", "artifacts", "system")
 #: always mounted: starting, following and approving runs, which every client and trigger depends on
 ALWAYS_MOUNTED: frozenset[str] = frozenset({"runs"})
 #: what a production server mounts, besides ``runs``, unless told otherwise

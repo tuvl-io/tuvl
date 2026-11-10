@@ -352,6 +352,40 @@ The service refuses a change that would leave no active administrator (a user ho
 
 To reach the REST admin API in production anyway, add `iam` to `spec.api.expose` / `TUVL_API_EXPOSE`. Nothing in tuvl needs it.
 
+### Role management from your own screen (`roles`)
+
+Most deployments need one runtime IAM task: someone on the team decides who holds which role. The `roles` API group does that and nothing else, so you can build a screen for it without exposing `iam`. It is **not mounted in production** until you ask for it:
+
+```yaml
+# .tuvl/system.yaml
+kind: SystemConfig
+spec:
+  api:
+    expose: [auth, roles]      # the list replaces the default, so keep auth
+```
+
+or `TUVL_API_EXPOSE=auth,roles`. Callers need the scope **`roles:manage`** (`iam:admin` also passes). Give it to the role your administrators use, in the `RoleSeed`:
+
+```yaml
+- name: role-managers
+  scopes: [roles:manage, reports:read, reports:write]
+```
+
+| Route | Does |
+|---|---|
+| `GET /auth/roles` | Every role: name, description, `is_active`, the scopes it grants (read-only), member count |
+| `GET /auth/roles/{id}/members` | A role's members, paged (`limit`, `cursor`) |
+| `GET /auth/roles/candidates?q=` | Find users to add: id, email, names, `is_active`; paged |
+| `PUT /auth/roles/{id}/members/{user_id}` | Add a user to the role (repeating it is harmless) |
+| `DELETE /auth/roles/{id}/members/{user_id}` | Remove a user from the role |
+| `PATCH /auth/roles/{id}` with `{"is_active": false}` | Disable the role: it keeps its members and scopes but grants nothing, and its members' sessions end. `true` enables it again |
+
+**What it does not do.** Creating or deleting roles, changing the scopes a role grants, adding a scope to an endpoint, creating users and federation are development-time work: `RoleSeed`, the endpoint's `scope`, and `tuvl iam`. None of them is reachable over HTTP in production.
+
+**A manager cannot hand out access they do not hold.** Whoever can change membership could otherwise add themselves to a stronger role. So a caller without `iam:admin` may change a role only if every scope the role grants is one they hold themselves, and never a role that carries `iam:admin` or `roles:manage`: those change hands through an administrator or `tuvl iam`. A refused change answers `403` and names the reason. The last-administrator rule above applies here too (`409`). Every change is logged as an `auth.iam.roles` event with the acting user, the role and the user.
+
+From TypeScript, `@tuvl/client` wraps these routes as `client.roles()`.
+
 ---
 
 ## 10. Key Management

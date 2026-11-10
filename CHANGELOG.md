@@ -12,6 +12,14 @@ release below is the current one.
 
 ## [Unreleased]
 
+### Added
+
+- **Role management over HTTP: the `roles` API group.** List roles, find users, add or remove a member, disable or enable a role, from your own
+  screen. It is a separate group from `iam`, **not mounted in production** until `roles` is in `spec.api.expose` / `TUVL_API_EXPOSE`, and needs the
+  new scope `roles:manage` (`iam:admin` also passes). Creating roles, changing what a role grants, creating users and federation stay
+  development-time (`RoleSeed`, `tuvl iam`) and have no route. A caller without `iam:admin` can only change roles within their own scopes, and never a role
+  carrying `iam:admin` or `roles:manage`. See [auth](docs/auth.md#role-management-from-your-own-screen-roles).
+
 ---
 
 ## [2.1.0-beta.1] — 2026-11-10
