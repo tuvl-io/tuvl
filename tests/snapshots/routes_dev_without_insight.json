@@ -3,6 +3,7 @@
  "DELETE /auth/admin/roles/{role_id}": "delete_role",
  "DELETE /auth/admin/users/{user_id}": "delete_user",
  "DELETE /auth/admin/users/{user_id}/roles/{role_id}": "revoke_role",
+ "DELETE /auth/roles/{role_id}/members/{user_id}": "remove_member",
  "DELETE /dev/artifacts/{name}": "delete_artifact",
  "DELETE /dev/memory/{collection}": "memory_forget",
  "DELETE /dev/memory/{collection}/{row_id}": "memory_forget_one",
@@ -34,6 +35,9 @@
  "GET /auth/me": "get_me",
  "GET /auth/oauth/{provider}/callback": "oauth_callback",
  "GET /auth/oauth/{provider}/start": "oauth_start",
+ "GET /auth/roles": "list_roles",
+ "GET /auth/roles/candidates": "find_candidates",
+ "GET /auth/roles/{role_id}/members": "list_members",
  "GET /dev/artifacts": "list_artifacts",
  "GET /dev/artifacts/{name}": "get_artifact",
  "GET /dev/breakpoints/{workflow}": "get_breakpoints",
@@ -54,6 +58,7 @@
  "PATCH /admin/models/{name}/{version}/toggle": "admin_toggle_model",
  "PATCH /auth/admin/roles/{role_id}/scopes": "update_role_scopes",
  "PATCH /auth/admin/users/{user_id}": "update_user",
+ "PATCH /auth/roles/{role_id}": "set_role_state",
  "POST /admin/models/{name}/{version}/fork": "fork_model_version",
  "POST /api/approvals/{approval_id}": "decide_approval",
  "POST /api/artifacts": "upload_artifact",
@@ -80,6 +85,7 @@
  "POST /dev/workflows/{name}/upload": "upload_for_run",
  "PUT /api/_system/vector-datasource": "set_vector_datasource",
  "PUT /auth/admin/federation/{name}": "save_federation_provider",
+ "PUT /auth/roles/{role_id}/members/{user_id}": "add_member",
  "PUT /dev/breakpoints/{workflow}": "put_breakpoints",
  "PUT /dev/runs/{run_id}/context": "edit_run_context"
 }
