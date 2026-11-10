@@ -76,12 +76,7 @@ jobs:
       # unauthenticated pull limit made image pulls fail the job.
       - name: Start PostgreSQL and Redis
         if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq postgresql-16-pgvector redis-server
-          sudo systemctl start postgresql.service redis-server.service
-          sudo -u postgres psql -qc "CREATE USER tuvl WITH SUPERUSER PASSWORD 'tuvl';"
-          sudo -u postgres createdb -O tuvl tuvl_test
+        run: scripts/ci_services.sh tuvl_test
 
       - name: Set up uv (with cache)
         uses: astral-sh/setup-uv@v5
@@ -224,12 +219,7 @@ jobs:
 
       - name: Start PostgreSQL and Redis (runner packages, no image pulls)
         if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq postgresql-16-pgvector redis-server
-          sudo systemctl start postgresql.service redis-server.service
-          sudo -u postgres psql -qc "CREATE USER tuvl WITH SUPERUSER PASSWORD 'tuvl';"
-          sudo -u postgres createdb -O tuvl tuvl_smoke
+        run: scripts/ci_services.sh tuvl_smoke
 
       - name: Set up uv (with cache)
         uses: astral-sh/setup-uv@v5
