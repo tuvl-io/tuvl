@@ -114,3 +114,15 @@ def test_the_tooling_does_not_import_private_engine_names() -> None:
         "make these names public in the engine (they are part of its surface now):\n"
         + "\n".join(f"  {module} imports {name}" for module, name in bad)
     )
+
+
+def test_listing_a_project_in_the_nest_is_developer_toolchain_only() -> None:
+    """The Nest client, the challenge-tag push and the register routes live in `tuvl_insight`; the engine has
+    no code that talks to a Nest or pushes to a project's git remote."""
+    needles = ("/api/register-project", "/api/verify-project", "tuvl-nest-verify", "nest.tuvl.io")
+    leaks = [
+        str(path.relative_to(ROOT))
+        for path in (ROOT / "src" / "tuvl").rglob("*.py")
+        if any(needle in path.read_text() for needle in needles)
+    ]
+    assert not leaks, f"Nest registration code in the engine: {leaks}"

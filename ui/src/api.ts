@@ -267,27 +267,40 @@ export interface ProjectInfo {
   description: string
   license: string
   repo: string
-  registry?: { url?: string; registered_at?: string }
+  registry?: {
+    url?: string
+    registered_at?: string
+    label?: 'listed' | 'push_confirmed' | 'verified'
+    verified_at?: string
+  }
   registration_state?: 'invalid_id' | 'unregistered' | 'id_changed' | 'outdated' | 'current'
 }
 
 export interface RegisterPreview {
   nest: string
   payload: Record<string, string>
+  verification: {
+    remote: string
+    remote_url: string
+    repo: string
+    matches_repo: boolean
+    can_verify: boolean
+    /** why verification cannot run; empty when it can */
+    reason: string
+  }
 }
 
-export type RegisterStep =
-  | { status: 'registered'; project: ProjectInfo }
-  | { status: 'pending'; slow_down?: boolean }
-  | {
-      status: 'login_required'
-      nest: string
-      handle: string
-      user_code: string
-      verification_uri: string
-      interval: number
-      expires_in: number
-    }
+export interface RegisterResult {
+  status: 'registered'
+  /** listed: self-declared; push_confirmed: the tool pushed, the registry could not see it; verified: the registry saw the tag */
+  label: 'listed' | 'push_confirmed' | 'verified'
+  claim: boolean
+  applied: boolean
+  /** null when no push was attempted */
+  pushed: boolean | null
+  notes: string[]
+  project: ProjectInfo
+}
 
 async function postProject<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(`/dev/project/${path}`, {
@@ -308,11 +321,9 @@ async function postProject<T>(path: string, body: unknown): Promise<T> {
 export const previewRegistration = (body: { nest?: string }) =>
   postProject<RegisterPreview>('register/preview', body)
 
-export const registerProject = (body: { nest?: string }) =>
-  postProject<RegisterStep>('register', body)
-
-export const pollRegistration = (body: { nest?: string; handle: string }) =>
-  postProject<RegisterStep>('register/poll', body)
+/** `verify: true` is the developer's consent to push the Nest's one-time tag to the project's git remote. */
+export const registerProject = (body: { nest?: string; verify?: boolean; remote?: string; keep_tag?: boolean }) =>
+  postProject<RegisterResult>('register', body)
 
 export async function fetchProject(): Promise<ProjectInfo | null> {
   const res = await fetch('/dev/project', {

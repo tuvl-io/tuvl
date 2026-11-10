@@ -1,5 +1,5 @@
 import { useAdjustOnChange } from '../hooks/useAdjustOnChange'
-import { useState, useEffect, useCallback } from 'react'
+import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import ReactMarkdown from 'react-markdown'
 import { TopBar } from '../components/TopBar'
@@ -7,8 +7,8 @@ import { YamlPanel } from '../components/YamlPanel'
 import { useResizablePanel } from '../hooks/useResizablePanel'
 import { useDatasource, useSaveFile, useDeleteFile, useTelemetryConfig, useSaveTelemetryConfig, useSystemConfig, useSaveSystemConfig, useProject, useSaveProject } from '../queries'
 import { useUIStore } from '../store'
-import type { ProjectInfo } from '../api'
-import { previewRegistration, registerProject, pollRegistration } from '../api'
+import type { ProjectInfo, RegisterResult } from '../api'
+import { previewRegistration, registerProject } from '../api'
 import { DevTelemetrySettings } from '../settings/DevTelemetrySettings'
 import { EnvironmentSettings } from '../settings/EnvironmentSettings'
 
@@ -864,6 +864,20 @@ const REGISTRY_STATE: Record<string, { label: string; cls: string }> = {
   },
 }
 
+const REGISTRY_LABEL: Record<string, { title: string; why: string; cls: string }> = {
+  listed: { title: 'Listed', why: 'Self-declared; nothing about it was checked.', cls: 'text-slate-300' },
+  push_confirmed: {
+    title: 'Push confirmed',
+    why: 'This tool pushed to your remote, but the registry could not see it (private repository), so it is not independently checked.',
+    cls: 'text-amber-400',
+  },
+  verified: {
+    title: 'Verified',
+    why: 'The registry saw the one-time tag on your public repository. It says nothing about the code.',
+    cls: 'text-emerald-400',
+  },
+}
+
 function RegistryCard({ data, dirty }: { data: ProjectInfo | null; dirty: boolean }) {
   const [open, setOpen] = useState(false)
   const reg = data?.registry
@@ -876,6 +890,12 @@ function RegistryCard({ data, dirty }: { data: ProjectInfo | null; dirty: boolea
         <div className="min-w-0">
           <p className="text-xs font-semibold text-slate-300 mb-1">Catalogue</p>
           <p className={`text-xs leading-relaxed ${state.cls}`}>{state.label}</p>
+          {reg?.label && REGISTRY_LABEL[reg.label] && (
+            <p className="mt-1 text-xs text-slate-400 leading-relaxed">
+              <span className={`font-semibold ${REGISTRY_LABEL[reg.label].cls}`}>{REGISTRY_LABEL[reg.label].title}.</span>{' '}
+              {REGISTRY_LABEL[reg.label].why}
+            </p>
+          )}
           {reg?.registered_at && (
             <p className="mt-1 text-xs text-slate-500 font-mono break-all">
               {reg.url} · {reg.registered_at}
@@ -899,66 +919,31 @@ function RegistryCard({ data, dirty }: { data: ProjectInfo | null; dirty: boolea
 type RegisterPhase =
   | { kind: 'review' }
   | { kind: 'sending' }
-  | { kind: 'login'; handle: string; code: string; uri: string; interval: number }
-  | { kind: 'done' }
+  | { kind: 'done'; result: RegisterResult }
   | { kind: 'error'; message: string }
 
 function RegisterDialog({ onClose }: { onClose: () => void }) {
   const qc = useQueryClient()
   const [phase, setPhase] = useState<RegisterPhase>({ kind: 'review' })
+  const [verify, setVerify] = useState(true)
   const preview = useQuery({
     queryKey: ['project-register-preview'],
     queryFn: () => previewRegistration({}),
   })
 
-  const finish = useCallback(() => {
-    setPhase({ kind: 'done' })
-    void qc.invalidateQueries({ queryKey: ['project'] })
-  }, [qc])
-
   const send = async () => {
     setPhase({ kind: 'sending' })
     try {
-      const step = await registerProject({})
-      if (step.status === 'registered') finish()
-      else if (step.status === 'login_required')
-        setPhase({
-          kind: 'login',
-          handle: step.handle,
-          code: step.user_code,
-          uri: step.verification_uri,
-          interval: Math.max(1, step.interval),
-        })
+      const result = await registerProject({ verify: verify && !!preview.data?.verification.can_verify })
+      setPhase({ kind: 'done', result })
+      void qc.invalidateQueries({ queryKey: ['project'] })
     } catch (e: unknown) {
       setPhase({ kind: 'error', message: e instanceof Error ? e.message : 'Registration failed' })
     }
   }
 
-  const handle = phase.kind === 'login' ? phase.handle : null
-  const interval = phase.kind === 'login' ? phase.interval : 0
-  useEffect(() => {
-    if (!handle) return
-    let stopped = false
-    let wait = interval
-    const tick = async () => {
-      try {
-        const step = await pollRegistration({ handle })
-        if (stopped) return
-        if (step.status === 'registered') return finish()
-        if (step.status === 'pending' && step.slow_down) wait += 5
-        setTimeout(tick, wait * 1000)
-      } catch (e: unknown) {
-        if (!stopped) setPhase({ kind: 'error', message: e instanceof Error ? e.message : 'Login failed' })
-      }
-    }
-    const timer = setTimeout(tick, wait * 1000)
-    return () => {
-      stopped = true
-      clearTimeout(timer)
-    }
-  }, [handle, interval, finish])
-
   const payload = preview.data?.payload
+  const plan = preview.data?.verification
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true">
       <div className="w-full max-w-lg rounded-xl border border-slate-700 bg-slate-950 p-5 flex flex-col gap-4">
@@ -967,15 +952,35 @@ function RegisterDialog({ onClose }: { onClose: () => void }) {
         {(phase.kind === 'review' || phase.kind === 'sending') && (
           <>
             <p className="text-xs text-slate-500 leading-relaxed">
-              This is exactly what is sent to {preview.data?.nest ?? 'the Nest'}. Nothing else leaves this machine.
+              This is exactly what is sent to {preview.data?.nest ?? 'the Nest'}. No account is needed, and nothing else leaves this machine.
             </p>
             <pre className="max-h-56 overflow-auto rounded-lg border border-slate-800 bg-slate-900 p-3 text-[11px] text-slate-300 font-mono">
               {payload ? JSON.stringify(payload, null, 2) : 'Loading…'}
             </pre>
             <p className="text-xs text-slate-500 leading-relaxed">
-              The catalogue lists the name, version, organization, type, licence, description and the optional repository link. The author and email are
-              kept by the Nest for contact and are never shown.
+              The catalogue lists the name, version, organization, type, licence and description; the repository link only once it is verified. The author
+              and email are kept by the Nest for contact and are never shown.
             </p>
+            {plan &&
+              (plan.can_verify ? (
+                <label className="flex items-start gap-2 text-xs text-slate-300 leading-relaxed cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5"
+                    checked={verify}
+                    disabled={phase.kind === 'sending'}
+                    onChange={(e) => setVerify(e.target.checked)}
+                  />
+                  <span>
+                    Check the listing: push a one-time tag to <span className="font-mono">{plan.remote}</span> (
+                    <span className="font-mono break-all">{plan.remote_url}</span>) with your own git credentials, then remove it. A public
+                    repository becomes <strong>Verified</strong>; a private one <strong>Push confirmed</strong>. Without this it is{' '}
+                    <strong>Listed</strong>.
+                  </span>
+                </label>
+              ) : (
+                <p className="text-xs text-amber-400 leading-relaxed">Verification will not run: {plan.reason}</p>
+              ))}
             <div className="flex justify-end gap-2">
               <button type="button" onClick={onClose} className="px-3 py-1.5 rounded-lg text-xs text-slate-400 hover:text-slate-200">
                 Cancel
@@ -992,27 +997,20 @@ function RegisterDialog({ onClose }: { onClose: () => void }) {
           </>
         )}
 
-        {phase.kind === 'login' && (
-          <>
-            <p className="text-xs text-slate-400 leading-relaxed">
-              Sign in with GitHub to claim this project. Open the page below and enter the code.
-            </p>
-            <p className="text-center font-mono text-2xl tracking-widest text-slate-100">{phase.code}</p>
-            <a href={phase.uri} target="_blank" rel="noreferrer" className="text-center text-xs text-sky-400 hover:underline break-all">
-              {phase.uri}
-            </a>
-            <p className="text-center text-[11px] text-slate-500">Waiting for approval…</p>
-            <div className="flex justify-end">
-              <button type="button" onClick={onClose} className="px-3 py-1.5 rounded-lg text-xs text-slate-400 hover:text-slate-200">
-                Cancel
-              </button>
-            </div>
-          </>
-        )}
-
         {phase.kind === 'done' && (
           <>
-            <p className="text-xs text-emerald-400">Registered. Your project is listed in the catalogue.</p>
+            <p className="text-xs text-emerald-400">Registered.</p>
+            <p className="text-xs text-slate-300 leading-relaxed">
+              <span className={`font-semibold ${REGISTRY_LABEL[phase.result.label]?.cls ?? ''}`}>
+                {REGISTRY_LABEL[phase.result.label]?.title ?? phase.result.label}.
+              </span>{' '}
+              {REGISTRY_LABEL[phase.result.label]?.why}
+            </p>
+            {phase.result.notes.map((note) => (
+              <p key={note} className="text-xs text-amber-400 leading-relaxed">
+                {note}
+              </p>
+            ))}
             <div className="flex justify-end">
               <button type="button" onClick={onClose} className="px-4 py-1.5 rounded-lg bg-sky-600 text-xs font-semibold text-white hover:bg-sky-500">
                 Done
@@ -1063,6 +1061,7 @@ const DEFAULT_API_ACCESS: ApiAccessFormState = {
 const PRODUCTION_BASE = ['auth', 'runs']
 const OPTIONAL_GROUPS: { key: string; label: string; hint: string }[] = [
   { key: 'iam', label: 'iam', hint: '/auth/bootstrap, /auth/admin/* — users, roles, federation; production uses `tuvl iam` instead' },
+  { key: 'roles', label: 'roles', hint: '/auth/roles/* — role membership for your own screen (needs roles:manage)' },
   { key: 'admin', label: 'admin', hint: '/admin/* — engine administration' },
   { key: 'artifacts', label: 'artifacts', hint: '/api/artifacts/* — artifact list and upload' },
   { key: 'system', label: 'system', hint: '/api/_system/* — introspection; only Insight uses it' },

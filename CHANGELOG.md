@@ -12,6 +12,16 @@ release below is the current one.
 
 ## [Unreleased]
 
+### Changed
+
+- **Listing a project in the Nest is open and checked by a git tag, not by GitHub sign-in.** `tuvl register project` (and Insight → Settings → Project →
+  Register) needs no account. It registers, then, after a prompt, pushes a one-time tag to the project's git remote with your own credentials and removes it
+  again. The Nest answers with a label: **Verified** (it saw the tag on a public repository), **Push confirmed** (this tool pushed, the Nest could not see it:
+  a private repository) or **Listed** (self-declared). The first registration returns an entry secret, kept in `~/.config/tuvl/nest.json` (`TUVL_NEST_ENTRY_SECRET`
+  for CI), that authorises later updates. `--no-verify` lists without the push, `--remote` and `--keep-tag` adjust it. The device-login dev routes
+  (`/dev/project/register/poll`) are gone. Developer toolchain only: nothing of it is in a production install. Needs the matching Nest (tuvl-io/hub).
+- Insight → Settings → API Access lists the `roles` group.
+
 ### Added
 
 - **Role management over HTTP: the `roles` API group.** List roles, find users, add or remove a member, disable or enable a role, from your own
