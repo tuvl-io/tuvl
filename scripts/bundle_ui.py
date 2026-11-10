@@ -2,12 +2,12 @@
 scripts/bundle_ui.py — Compile and package the Tuvl Insight React SPA.
 
 Runs `pnpm run build` in the ui/ directory, then copies the compiled output
-into src/tuvl_insight/static/ so it is included in the tuvl-insight wheel.
+into insight/src/tuvl_insight/static/ so it is included in the tuvl-insight wheel.
 
 This script is run by maintainers before publishing a new release:
     make build-ui
 
-The compiled output (src/tuvl_insight/static/) is gitignored — it is never
+The compiled output (insight/src/tuvl_insight/static/) is gitignored — it is never
 committed to the repository. It is built fresh by this script at package
 time (locally via `make build`/`make smoke`, or in CI in
 .github/workflows/publish.yml) and only then bundled as static files inside
@@ -24,7 +24,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).parent.parent
 UI_DIR = ROOT / "ui"
-TARGET_DIR = ROOT / "src" / "tuvl_insight" / "static"
+TARGET_DIR = ROOT / "insight" / "src" / "tuvl_insight" / "static"
 
 
 def main() -> None:

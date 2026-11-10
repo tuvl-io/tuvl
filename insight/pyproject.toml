@@ -1,0 +1,33 @@
+[project]
+name = "tuvl-insight"
+version = "2.0.3"
+description = "The browser UI for tuvl 2.0: write specs, design workflows on a canvas, run them step by step with approvals, and see what every run did."
+readme = "README.md"
+requires-python = ">=3.13,<3.15"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE", "THIRD_PARTY_LICENSES.txt"]
+authors = [{ name = "tuvl.io", email = "developer@tuvl.io" }]
+
+dependencies = [
+    "tuvl==2.0.3",
+    "libcst>=1.4",  # tuvl generate code, init --sample
+    "aiosqlite>=0.20.0",  # tuvl run tests runs workflows against in-memory SQLite
+    "textual>=1.0",  # the terminal UI that `tuvl dev` starts on a terminal
+    "ruff>=0.8",  # tuvl review code lints the Python of code agents
+    "pypdf>=6.21.4",  # tuvl import idea reads the text of PDF ideas (Word files need nothing extra)
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+# ── Wheel build ──────────────────────────────────────────────────────────────
+# src layout: the package is insight/src/tuvl_insight. static/ holds the compiled UI (`make build-ui`);
+# those files are gitignored build output, which hatchling would leave out of the wheel, so `artifacts`
+# names them (the tracked favicons and fonts come with the package either way).
+[tool.hatch.build.targets.wheel]
+packages = ["src/tuvl_insight"]
+artifacts = ["src/tuvl_insight/static/**"]
+
+[tool.hatch.build.targets.sdist]
+exclude = [".github", "tests"]

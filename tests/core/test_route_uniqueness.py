@@ -7,6 +7,8 @@ import os
 import subprocess
 import sys
 
+import pytest
+
 SCRIPT = """
 import json
 from collections import Counter
@@ -17,6 +19,7 @@ print(json.dumps({"total": len(seen), "dupes": [list(k) for k, n in seen.items()
 """
 
 
+@pytest.mark.requires_insight
 def test_every_method_and_path_is_served_by_one_route() -> None:
     env = {
         **os.environ,

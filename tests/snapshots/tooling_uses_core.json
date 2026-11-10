@@ -1,10 +1,5 @@
 [
  "tuvl",
- "tuvl.api.dev.breakpoints",
- "tuvl.api.dev.judges",
- "tuvl.api.dev.memory",
- "tuvl.api.dev.schedules",
- "tuvl.api.dev.storage",
  "tuvl.api.triggers",
  "tuvl.api.uploads",
  "tuvl.cli.logo",

@@ -68,7 +68,7 @@ def _register_groups() -> bool:
 
     installed = toolchain_installed()
     if installed:
-        from . import toolchain_groups as _toolchain_groups  # noqa: F401
+        from tuvl_insight import doctor_groups as _toolchain_groups  # noqa: F401
     return installed
 
 

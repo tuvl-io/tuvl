@@ -54,7 +54,10 @@ def _tree(toolchain: str) -> list[dict[str, object]]:
     return json.loads(done.stdout.strip().splitlines()[-1])
 
 
-@pytest.mark.parametrize(("name", "toolchain"), [("full", "1"), ("bare", "0")])
+@pytest.mark.parametrize(
+    ("name", "toolchain"),
+    [pytest.param("full", "1", marks=pytest.mark.requires_insight), ("bare", "0")],
+)
 def test_the_command_tree_is_unchanged(name: str, toolchain: str) -> None:
     snapshot = SNAPSHOTS / f"command_tree_{name}.json"
     current = _tree(toolchain)

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 import tomllib
@@ -36,17 +37,38 @@ def test_the_optional_packages_are_extras_not_base_dependencies() -> None:
     assert f"tuvl[{','.join(EXTRAS)}]" in meta["optional-dependencies"]["standard"]
 
 
+@pytest.mark.requires_insight
 def test_the_app_and_cli_import_without_the_extras() -> None:
     code = BLOCK.format(mods={e.module for e in EXTRAS.values()}) + (
         "import tuvl.core.app, tuvl.main, tuvl.cli\n"
-        "from tuvl.cli.commands import ship, validate, lock\n"
+        "from tuvl_insight.cli.commands import ship, validate, lock\n"
         "import tuvl.runtime.runner, tuvl.runtime.host, tuvl.api.runs, tuvl.api.triggers\n"
     )
     done = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
     assert done.returncode == 0, done.stderr[-800:]
 
 
-@pytest.mark.parametrize("extra", ["mcp", "codegen", "test"])
+def test_the_engine_imports_without_the_tooling_package() -> None:
+    """A bare `pip install tuvl` has no tuvl_insight and none of its dependencies."""
+    tooling = {"tuvl_insight", "libcst", "aiosqlite", "textual", "ruff", "pypdf"}
+    # `sys.modules[name] = None` is how an absent package looks: `import` fails and `find_spec` says None
+    code = (
+        "import sys\n"
+        f"for name in {sorted(tooling | {e.module for e in EXTRAS.values()})!r}:\n"
+        "    sys.modules[name] = None\n"
+        "import tuvl.core.app, tuvl.main, tuvl.cli, tuvl.cli.verbs\n"
+        "import tuvl.runtime.runner, tuvl.runtime.host, tuvl.api.runs, tuvl.api.triggers, tuvl.doctor\n"
+        "from tuvl.doctor import available_groups\n"
+        "assert 'git' not in available_groups(), 'toolchain groups need tuvl_insight'\n"
+        "from tuvl.extras import toolchain_installed\n"
+        "assert not toolchain_installed()\n"
+    )
+    env = {k: v for k, v in os.environ.items() if k != "TUVL_TOOLCHAIN"}
+    done = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, env=env)
+    assert done.returncode == 0, done.stderr[-800:]
+
+
+@pytest.mark.parametrize("extra", ["mcp", "redis", "vector"])
 def test_a_feature_without_its_extra_names_the_extra(extra: str, monkeypatch) -> None:
     monkeypatch.setattr("tuvl.extras.available", lambda name: False)
     with pytest.raises(MissingExtraError, match=rf"tuvl\[{extra}\]"):

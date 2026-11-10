@@ -13,7 +13,7 @@ from fastapi.testclient import TestClient
 
 def _insight_from_source() -> ModuleType:
     """This repo's tuvl_insight (an installed wheel may be older)."""
-    path = Path(__file__).resolve().parents[2] / "src" / "tuvl_insight" / "__init__.py"
+    path = Path(__file__).resolve().parents[2] / "insight" / "src" / "tuvl_insight" / "__init__.py"
     spec = importlib.util.spec_from_file_location("tuvl_insight_under_test", path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)

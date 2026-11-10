@@ -1,11 +1,10 @@
-"""Measure the core / developer-tooling split: sizes, and every import from the core side into the tooling side.
+"""Measure the core / developer-tooling split: sizes, and every import from the core into the tooling.
 
     python scripts/split_report.py            # print the report
     python scripts/split_report.py --check    # exit 1 if the core imports the tooling anywhere but a listed seam
 
-Before the move the tooling still lives inside `tuvl`, so it is told apart by the prefix list below (the table in
-PLAN_2.1: "Moves to tuvl_insight"). After the move the tooling is the `tuvl_insight` package and the same check
-runs with no list at all. The edges are read from the source with `ast`, so nothing is imported or executed.
+The core is the `tuvl` package (src/tuvl), the tooling is `tuvl_insight` (insight/src/tuvl_insight). The
+edges are read from the source with `ast`, so nothing is imported or executed.
 """
 
 from __future__ import annotations
@@ -15,69 +14,17 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
-SRC = Path(__file__).resolve().parent.parent / "src"
-
-# Command modules that stay in the core (production CLI).
-CORE_COMMANDS = {"run", "runs", "db", "doctor", "keys", "memory", "storage", "iam"}
-
-TOOLING_PREFIXES = (
-    "tuvl.api.dev",
-    "tuvl.api.code_assist",
-    "tuvl.core.dev",
-    "tuvl.codegen",
-    "tuvl.coding_agents",
-    "tuvl.review",
-    "tuvl.spec",
-    "tuvl.specgen",
-    "tuvl.taskrun",
-    "tuvl.tui",
-    "tuvl.uispec",
-    "tuvl.audit",
-    "tuvl.devmcp",
-    "tuvl.devtelemetry",
-    "tuvl.gitflow",
-    "tuvl.gitutil",
-    "tuvl.shipgate",
-    "tuvl.shiparchive",
-    "tuvl.skills",
-    "tuvl.testing",
-    "tuvl.validate",
-    "tuvl.lock",
-    "tuvl.cli.nest",
-    "tuvl.cli.laya",
-    "tuvl.cli.agent_run",
-    "tuvl.cli.session",
-    "tuvl.cli.select",
-    "tuvl.cli.json_output",
-    "tuvl.doctor.toolchain_groups",
-)
-
-# Stay in the core even though they sit under a tooling prefix: the dev-key gate and the live-state routes.
-CORE_EXCEPTIONS = (
-    "tuvl.core.dev.middleware",
-    "tuvl.core.dev.project",
-    "tuvl.core.dev.artifacts",
-    "tuvl.core.dev.extensions",
-    "tuvl.api.dev.breakpoints",
-    "tuvl.api.dev.memory",
-    "tuvl.api.dev.schedules",
-    "tuvl.api.dev.storage",
-    "tuvl.api.dev.judges",
-)
+ROOT = Path(__file__).resolve().parent.parent
+ROOTS = (ROOT / "src", ROOT / "insight" / "src")
 
 
 def is_tooling(module: str) -> bool:
-    if any(module == p or module.startswith(p + ".") for p in CORE_EXCEPTIONS):
-        return False
-    if module.startswith("tuvl.cli.commands."):
-        return module.split(".")[3] not in CORE_COMMANDS
-    if module.startswith("tuvl.cli.") and module.rsplit(".", 1)[-1].startswith("ship_"):
-        return True
-    return any(module == p or module.startswith(p + ".") for p in TOOLING_PREFIXES)
+    return module == "tuvl_insight" or module.startswith("tuvl_insight.")
 
 
 def module_name(path: Path) -> str:
-    parts = list(path.relative_to(SRC).with_suffix("").parts)
+    root = next(r for r in ROOTS if path.is_relative_to(r))
+    parts = list(path.relative_to(root).with_suffix("").parts)
     if parts[-1] == "__init__":
         parts.pop()
     return ".".join(parts)
@@ -96,7 +43,7 @@ def scan() -> tuple[dict[str, int], dict[str, dict[str, bool]]]:
     """Return {module: line count} and {module: {imported module: only imported lazily}}."""
     sizes: dict[str, int] = {}
     files: dict[str, Path] = {}
-    for path in sorted((SRC / "tuvl").rglob("*.py")):
+    for path in sorted(p for r in ROOTS for p in r.rglob("*.py") if "__pycache__" not in p.parts):
         sizes[module_name(path)] = len(path.read_text().splitlines())
         files[module_name(path)] = path
     edges: dict[str, dict[str, bool]] = {}
@@ -111,13 +58,15 @@ def scan() -> tuple[dict[str, int], dict[str, dict[str, bool]]]:
             targets: list[str] = []
             if isinstance(node, ast.ImportFrom):
                 base = absolute(module, files[module], node)
-                if base and base.split(".")[0] == "tuvl":
+                if base and base.split(".")[0] in ("tuvl", "tuvl_insight"):
                     targets = [
                         f"{base}.{a.name}" if f"{base}.{a.name}" in sizes else base
                         for a in node.names
                     ]
             elif isinstance(node, ast.Import):
-                targets = [a.name for a in node.names if a.name.split(".")[0] == "tuvl"]
+                targets = [
+                    a.name for a in node.names if a.name.split(".")[0] in ("tuvl", "tuvl_insight")
+                ]
             for target in targets:
                 if target in sizes and target != module:
                     lazy = id(node) in inside_function
@@ -132,6 +81,7 @@ SEAMS = {
     "tuvl.cli.verbs": "registers the verb tree; each toolchain action is imported when it runs",
     "tuvl.core.dev.extensions": "mounts the tooling's /dev routes in dev mode",
     "tuvl.doctor": "registers the toolchain's check groups",
+    "tuvl.main": "mounts the Insight UI in dev mode",
 }
 
 

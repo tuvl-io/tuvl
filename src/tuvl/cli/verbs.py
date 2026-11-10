@@ -111,7 +111,7 @@ def verify_lock(
     ] = True,
 ) -> None:
     """Is tuvl.lock up to date? Exits 1 if it is missing or stale."""
-    from tuvl.cli.commands.lock import lock_cmd
+    from tuvl_insight.cli.commands.lock import lock_cmd
 
     lock_cmd(project_dir=project_dir, check=True, mcp=mcp)
 
@@ -127,7 +127,7 @@ def verify_ui_spec(
     as_json: Annotated[bool, typer.Option("--json", help="Machine-readable result")] = False,
 ) -> None:
     """Is ui/specs/ what `tuvl generate ui-spec` would write now? Exits 1 if not."""
-    from tuvl.cli.commands.ui import DEFAULT_BASE, spec_cmd
+    from tuvl_insight.cli.commands.ui import DEFAULT_BASE, spec_cmd
 
     spec_cmd(
         project_dir=project_dir,
@@ -184,7 +184,7 @@ def register(app: typer.Typer) -> None:
     if toolchain:
         import types
 
-        from tuvl.cli.commands import (
+        from tuvl_insight.cli.commands import (
             agent,
             audit,
             codegen,

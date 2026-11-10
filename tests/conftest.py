@@ -6,6 +6,7 @@ from __future__ import annotations
 # In dev mode the key manager creates an ephemeral keypair instead of
 # requiring TUVL_SIGNING_KEY, so the test suite runs without
 # production credentials.
+import importlib.util
 import os
 
 os.environ.setdefault("TUVL_DEV_MODE", "true")
@@ -117,3 +118,19 @@ def agent_bin(tmp_path: Path) -> Callable[..., Path]:
     add.dir = str(directory)  # type: ignore[attr-defined]
     add.path = str(directory) + os.pathsep + "/usr/bin" + os.pathsep + "/bin"  # type: ignore[attr-defined]
     return add
+
+
+# ── tuvl-insight (the developer toolchain) is optional ──────────────────────────
+# A bare install has no tuvl_insight: tests/insight/ is not collected and tests marked
+# `requires_insight` are skipped, so the rest of the suite proves the engine runs without it.
+INSIGHT_INSTALLED = importlib.util.find_spec("tuvl_insight") is not None
+collect_ignore_glob = [] if INSIGHT_INSTALLED else ["insight/*"]
+
+
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    if INSIGHT_INSTALLED:
+        return
+    skip = pytest.mark.skip(reason="needs tuvl-insight (the developer toolchain)")
+    for item in items:
+        if "requires_insight" in item.keywords:
+            item.add_marker(skip)
