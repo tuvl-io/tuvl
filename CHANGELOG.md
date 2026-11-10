@@ -12,7 +12,15 @@ release below is the current one.
 
 ## [Unreleased]
 
-Production IAM, the environment manifest, and the tooling split.
+---
+
+## [2.1.0-beta.1] — 2026-11-10
+
+**Production IAM, an environment manifest, and a thinner engine.** `tuvl` and `tuvl-insight` release together as `2.1.0b1`. This is a
+beta: install it with `uv tool install --prerelease allow "tuvl[standard]"` (or pin `tuvl[standard]==2.1.0b1`).
+
+Upgrading from 2.0.x: nothing in your YAML or in the CLI changes. Check the three items under *Breaking* below if you run a production
+server that calls the REST IAM admin API, import tuvl's Python modules, or install `tuvl[codegen]`, `[test]`, `[tui]`, `[review]` or `[pdf]`.
 
 ### Added
 
@@ -47,7 +55,7 @@ Production IAM, the environment manifest, and the tooling split.
 
 ### Breaking
 
-- **Breaking for production setups that call the REST IAM API.** `/auth/bootstrap` and `/auth/admin/*` move to a new `iam` API group that a
+- **The REST IAM admin API is off in production by default.** `/auth/bootstrap` and `/auth/admin/*` move to a new `iam` API group that a
   production server does not mount by default. Login, refresh, logout, `me` and OAuth stay in `auth`. Use `tuvl iam`, or add `iam` to
   `spec.api.expose` / `TUVL_API_EXPOSE`. The dev server still mounts every group.
 - Python imports of tooling modules moved from `tuvl.<name>` to `tuvl_insight.<name>`: `spec`, `specgen`, `taskrun`,
