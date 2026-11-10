@@ -205,8 +205,13 @@ def main() -> None:
     import time
 
     from tuvl.extras import MissingExtraError
-    from tuvl_insight import devtelemetry
-    from tuvl_insight.coding_agents.runner import usage
+
+    # developer telemetry and the coding-agent usage line belong to the toolchain; a bare install has neither
+    if toolchain_installed():
+        from tuvl_insight import devtelemetry
+        from tuvl_insight.coding_agents.runner import usage
+    else:
+        devtelemetry = usage = None
 
     started, code = time.perf_counter(), 0
     try:
@@ -219,13 +224,14 @@ def main() -> None:
         code = exc.code if isinstance(exc.code, int) else (0 if exc.code is None else 1)
         raise
     finally:
-        argv = sys.argv[1:]
-        devtelemetry.record_command(
-            _project_of(argv),
-            _command_words(argv),
-            exit_code=code,
-            seconds=time.perf_counter() - started,
-        )
-        devtelemetry.shutdown()
-        if usage.calls:
-            Console(stderr=True).print(f"[dim]{escape(usage.line())}[/dim]")
+        if devtelemetry is not None and usage is not None:
+            argv = sys.argv[1:]
+            devtelemetry.record_command(
+                _project_of(argv),
+                _command_words(argv),
+                exit_code=code,
+                seconds=time.perf_counter() - started,
+            )
+            devtelemetry.shutdown()
+            if usage.calls:
+                Console(stderr=True).print(f"[dim]{escape(usage.line())}[/dim]")

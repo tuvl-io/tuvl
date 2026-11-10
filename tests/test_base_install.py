@@ -37,6 +37,7 @@ def test_the_optional_packages_are_extras_not_base_dependencies() -> None:
     assert f"tuvl[{','.join(EXTRAS)}]" in meta["optional-dependencies"]["standard"]
 
 
+@pytest.mark.requires_insight
 def test_the_app_and_cli_import_without_the_extras() -> None:
     code = BLOCK.format(mods={e.module for e in EXTRAS.values()}) + (
         "import tuvl.core.app, tuvl.main, tuvl.cli\n"

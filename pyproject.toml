@@ -60,7 +60,7 @@ dependencies = [
 # engine, spec and code generation) plus the production extras.
 # Install with: pip install tuvl[standard]
 standard = [
-    "tuvl-insight>=2.0.3",
+    "tuvl-insight==2.0.3",
     "tuvl[mcp,redis,vector,otel-grpc]",
 ]
 
@@ -79,6 +79,7 @@ dev = [
     "pytest>=9.0.0",
     "pytest-asyncio>=1.0.0",
     "pytest-timeout>=2.3.0",
+    "aiosqlite>=0.20.0",  # core tests run the engine against in-memory SQLite
 ]
 
 [project.scripts]
@@ -178,3 +179,4 @@ asyncio_mode = "auto"
 testpaths = ["tests"]
 # A hung test fails and is named, instead of stalling the run (TD-60).
 timeout = 180
+markers = ["requires_insight: needs the tuvl-insight package (the developer toolchain); skipped on a bare install"]

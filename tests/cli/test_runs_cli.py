@@ -44,6 +44,7 @@ def test_render_failures_and_ends() -> None:
     assert "END.default (200)" in done and "40 tok" in done
 
 
+@pytest.mark.requires_insight
 def test_replay_checks_a_pinned_journal(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     from tuvl.cli import app
 

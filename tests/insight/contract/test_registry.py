@@ -12,7 +12,7 @@ from tuvl.contract import registry
 from tuvl.contract.registry import DocumentLoadError, parse_document, yaml_error_hint
 from tuvl.core.config_loader import load_all_configs
 
-FIXTURE = Path(__file__).parent / "fixtures" / "refund_flow.yaml"
+FIXTURE = Path(__file__).parents[2] / "contract" / "fixtures" / "refund_flow.yaml"
 
 V1_WORKFLOW = """\
 kind: Workflow

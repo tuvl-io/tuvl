@@ -18,7 +18,12 @@ SNAPSHOTS = Path(__file__).parent / "snapshots"
 
 PROBE = """
 import json
+import os
 import re
+import sys
+
+if os.environ.get("TUVL_TEST_HIDE_INSIGHT"):
+    sys.modules["tuvl_insight"] = None  # what an install without tuvl-insight looks like
 
 from starlette.routing import Match
 
@@ -59,6 +64,7 @@ DEV = {
     "TUVL_ALLOW_DEV_AUTH": "true",
     "TUVL_DEV_API_KEY": "route-table-key",
 }
+DEV_WITHOUT_INSIGHT = {**DEV, "TUVL_TEST_HIDE_INSIGHT": "1"}
 PRODUCTION = {"TUVL_ENV": "production", "TUVL_SIGNING_KEY": "k" * 40}
 
 
@@ -73,7 +79,14 @@ def _routes(mode: dict[str, str], cwd: Path) -> dict[str, str | None]:
     return json.loads(done.stdout.strip().splitlines()[-1])
 
 
-@pytest.mark.parametrize(("name", "mode"), [("dev", DEV), ("production", PRODUCTION)])
+@pytest.mark.parametrize(
+    ("name", "mode"),
+    [
+        pytest.param("dev", DEV, marks=pytest.mark.requires_insight),
+        ("dev_without_insight", DEV_WITHOUT_INSIGHT),
+        ("production", PRODUCTION),
+    ],
+)
 def test_the_route_table_is_unchanged(name: str, mode: dict[str, str], tmp_path: Path) -> None:
     snapshot = SNAPSHOTS / f"routes_{name}.json"
     current = _routes(mode, tmp_path)

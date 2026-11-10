@@ -9,7 +9,6 @@ import time
 import uuid
 from collections.abc import AsyncIterator
 from datetime import timedelta
-from pathlib import Path
 from typing import Any
 
 import httpx
@@ -633,30 +632,6 @@ async def test_list_runs_is_scoped_to_the_caller(client: httpx.AsyncClient) -> N
         await client.get("/api/runs", headers=token("nobody"))
     ).json() == []  # signed in, no runs
     assert (await client.get("/api/runs")).status_code == 401
-
-
-async def test_dev_pin_writes_a_replayable_fixture(
-    host: RuntimeHost, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    from tests.dev_app import router as dev_router
-
-    monkeypatch.setattr(settings, "tuvl_project_dir", str(tmp_path))
-    app = FastAPI()
-    app.include_router(router)
-    app.include_router(dev_router)
-    mount_triggers(app, WORKFLOWS)
-    async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=app), base_url="http://test"
-    ) as c:
-        run_id = (await c.post("/t/greet", json={"name": "ada"}, headers=ALICE)).headers[
-            "x-tuvl-run-id"
-        ]
-        pinned = (await c.post(f"/dev/runs/{run_id}/pin", json={"name": "ada-hello"})).json()
-        assert pinned == {"pinned": "tests/fixtures/greet/ada-hello.journal.json"}
-        document = json.loads((tmp_path / pinned["pinned"]).read_text())
-        assert document["run"]["workflow"] == "greet" and document["checkpoints"]
-        assert (await c.post(f"/dev/runs/{run_id}/pin", json={"name": "../x"})).status_code == 400
-        assert (await c.post(f"/dev/runs/{uuid.uuid4()}/pin", json={})).status_code == 404
 
 
 def test_a_disabled_api_trigger_is_not_mounted() -> None:

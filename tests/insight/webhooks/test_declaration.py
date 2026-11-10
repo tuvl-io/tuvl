@@ -7,7 +7,7 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from tests.validate.test_workflow_rules import found, run
+from tests.insight.validate.test_workflow_rules import found, run
 from tuvl.contract.schema import Webhook
 
 GOOD: dict[str, Any] = {

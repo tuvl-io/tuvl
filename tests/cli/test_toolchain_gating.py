@@ -87,6 +87,7 @@ def test_bare_install_answers_a_toolchain_command_with_the_install_hint(name: st
     assert "tuvl[standard]" in out.stderr
 
 
+@pytest.mark.requires_insight
 def test_toolchain_install_lists_every_command() -> None:
     out = _tuvl("--help", toolchain="1")
     assert out.returncode == 0

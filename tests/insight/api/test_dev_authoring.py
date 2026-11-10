@@ -9,7 +9,7 @@ import httpx
 import pytest
 from fastapi import FastAPI
 
-from tests.dev_app import router
+from tests.insight.dev_app import router
 from tuvl.core.config import use_project
 from tuvl_insight.audit import ledger
 from tuvl_insight.spec import ids, lifecycle

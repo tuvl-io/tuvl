@@ -143,10 +143,9 @@ jobs:
           echo "Stamping version: $TAG_VERSION"
           sed -i.bak "s/^version = .*/version = \"$TAG_VERSION\"/" pyproject.toml
           sed -i.bak "s/^version = .*/version = \"$TAG_VERSION\"/" insight/pyproject.toml
-          sed -i.bak "s/\"tuvl>=[^\"]*\"/\"tuvl>=$TAG_VERSION\"/" insight/pyproject.toml
-          # the [standard] extra pins tuvl-insight to the same release (a beta needs
-          # tuvl-insight>=2.0.0b1 — 2.0.0b1 does not satisfy >=2.0.0)
-          sed -i.bak "s/\"tuvl-insight>=[^\"]*\"/\"tuvl-insight>=$TAG_VERSION\"/" pyproject.toml
+          sed -i.bak "s/\"tuvl==[^\"]*\"/\"tuvl==$TAG_VERSION\"/" insight/pyproject.toml
+          # tuvl and tuvl-insight release in lockstep: each pins the other to exactly this version
+          sed -i.bak "s/\"tuvl-insight==[^\"]*\"/\"tuvl-insight==$TAG_VERSION\"/" pyproject.toml
           find . -name '*.bak' -not -path './ui/node_modules/*' -delete
 
       - name: Set up uv
@@ -215,10 +214,9 @@ jobs:
           echo "Stamping version: $TAG_VERSION"
           sed -i.bak "s/^version = .*/version = \"$TAG_VERSION\"/" pyproject.toml
           sed -i.bak "s/^version = .*/version = \"$TAG_VERSION\"/" insight/pyproject.toml
-          sed -i.bak "s/\"tuvl>=[^\"]*\"/\"tuvl>=$TAG_VERSION\"/" insight/pyproject.toml
-          # the [standard] extra pins tuvl-insight to the same release (a beta needs
-          # tuvl-insight>=2.0.0b1 — 2.0.0b1 does not satisfy >=2.0.0)
-          sed -i.bak "s/\"tuvl-insight>=[^\"]*\"/\"tuvl-insight>=$TAG_VERSION\"/" pyproject.toml
+          sed -i.bak "s/\"tuvl==[^\"]*\"/\"tuvl==$TAG_VERSION\"/" insight/pyproject.toml
+          # tuvl and tuvl-insight release in lockstep: each pins the other to exactly this version
+          sed -i.bak "s/\"tuvl-insight==[^\"]*\"/\"tuvl-insight==$TAG_VERSION\"/" pyproject.toml
           find . -name '*.bak' -not -path './ui/node_modules/*' -delete
 
       - name: Set up uv

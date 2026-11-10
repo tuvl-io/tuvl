@@ -1714,6 +1714,7 @@ vector = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "aiosqlite" },
     { name = "mypy" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
@@ -1758,6 +1759,7 @@ provides-extras = ["standard", "mcp", "redis", "vector", "otel-grpc"]
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "aiosqlite", specifier = ">=0.20.0" },
     { name = "mypy", specifier = ">=2.0.0" },
     { name = "pytest", specifier = ">=9.0.0" },
     { name = "pytest-asyncio", specifier = ">=1.0.0" },

@@ -99,12 +99,20 @@ jobs:
       - name: Lint (ruff + format check)
         run: make check
 
-      - name: Typecheck (mypy, all of src/)
+      - name: Typecheck (mypy, src/ and insight/)
         run: make typecheck
 
       - name: Run tests
         # No -q so failure context is captured in the CI log.
         run: uv run pytest tests/
+
+      # The engine is the production wheel: its tests must pass with no tuvl-insight installed.
+      # (tests/insight/ is then not collected and tests marked requires_insight are skipped.)
+      - name: Run the engine tests without tuvl-insight
+        run: |
+          uv sync --python ${{ matrix.python }} --group dev --extra mcp --extra redis --extra vector --extra otel-grpc
+          uv run python -c "import importlib.util as u; assert u.find_spec('tuvl_insight') is None"
+          uv run pytest tests/
 
   fresh-install:
     # Installs the built wheel without uv.lock, the way `uv tool install tuvl` does: catches a
@@ -115,12 +123,16 @@ jobs:
       - uses: actions/checkout@v4
       - name: Set up uv
         uses: astral-sh/setup-uv@v5
-      - name: Build the wheel
-        run: uv build --package tuvl --no-sources
-      - name: Install it fresh and import every module
+      - name: Build the wheels
+        run: |
+          uv build --package tuvl --no-sources
+          uv build --package tuvl-insight --no-sources
+      - name: Install them fresh and import every module
         run: |
           uv venv --clear --python 3.14 $RUNNER_TEMP/fresh
           uv pip install --python $RUNNER_TEMP/fresh/bin/python dist/tuvl-*.whl
+          # the production wheel alone: no tuvl_insight, and the engine imports
+          ! $RUNNER_TEMP/fresh/bin/python -c "import tuvl_insight" 2> /dev/null
           $RUNNER_TEMP/fresh/bin/python scripts/import_sweep.py
           # a bare install is the production CLI: toolchain commands answer with the install hint
           $RUNNER_TEMP/fresh/bin/tuvl --version
@@ -128,8 +140,8 @@ jobs:
           $RUNNER_TEMP/fresh/bin/tuvl generate rls --help > /dev/null
           set +e; $RUNNER_TEMP/fresh/bin/tuvl init demo -y 2> $RUNNER_TEMP/hint.txt; code=$?; set -e
           test "$code" = 2 && grep -q "tuvl\[standard\]" $RUNNER_TEMP/hint.txt
-          # the bare install may skip only the modules that need an extra; with every extra, none
-          uv pip install --python $RUNNER_TEMP/fresh/bin/python "$(ls dist/tuvl-*.whl)[mcp,redis,vector,otel-grpc,codegen,test,pdf,review,tui]"
+          # the bare install may skip only the modules that need an extra; with every extra and tuvl-insight, none
+          uv pip install --python $RUNNER_TEMP/fresh/bin/python "$(ls dist/tuvl-*.whl)[mcp,redis,vector,otel-grpc]" dist/tuvl_insight-*.whl
           $RUNNER_TEMP/fresh/bin/python scripts/import_sweep.py | tee $RUNNER_TEMP/sweep.txt
           ! grep -q "needs an extra" $RUNNER_TEMP/sweep.txt
       - name: A sample project passes validation
@@ -145,18 +157,20 @@ jobs:
       - uses: actions/checkout@v4
       - name: Set up uv
         uses: astral-sh/setup-uv@v5
-      - name: Build the wheel
-        run: uv build --package tuvl --no-sources
-      - name: Install it and import every module
+      - name: Build the wheels
+        run: |
+          uv build --package tuvl --no-sources
+          uv build --package tuvl-insight --no-sources
+      - name: Install them and import every module
         shell: bash
         run: |
           uv venv --clear --python 3.13 "$RUNNER_TEMP/win"
-          uv pip install --python "$RUNNER_TEMP/win/Scripts/python.exe" dist/tuvl-*.whl
+          uv pip install --python "$RUNNER_TEMP/win/Scripts/python.exe" dist/tuvl-*.whl dist/tuvl_insight-*.whl
           "$RUNNER_TEMP/win/Scripts/python.exe" scripts/import_sweep.py
           "$RUNNER_TEMP/win/Scripts/tuvl.exe" --version
           "$RUNNER_TEMP/win/Scripts/tuvl.exe" dev --help > /dev/null
       - name: Insight's command jobs run without a POSIX shell
-        run: uv run --frozen pytest -q tests/api/test_dev_jobs_process.py
+        run: uv run --frozen pytest -q tests/insight/api/test_dev_jobs_process.py
 
   ui:
     name: UI (typecheck, lint, test)

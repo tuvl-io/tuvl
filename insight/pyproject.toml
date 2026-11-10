@@ -9,7 +9,7 @@ license-files = ["LICENSE", "NOTICE", "THIRD_PARTY_LICENSES.txt"]
 authors = [{ name = "tuvl.io", email = "developer@tuvl.io" }]
 
 dependencies = [
-    "tuvl>=2.0.3",
+    "tuvl==2.0.3",
     "libcst>=1.4",  # tuvl generate code, init --sample
     "aiosqlite>=0.20.0",  # tuvl run tests runs workflows against in-memory SQLite
     "textual>=1.0",  # the terminal UI that `tuvl dev` starts on a terminal

@@ -35,7 +35,7 @@ SITES: tuple[Site, ...] = (
     Site(
         "tuvl-insight pin (standard extra)",
         "pyproject.toml",
-        re.compile(r'"tuvl-insight>=([0-9][^"]*)"'),
+        re.compile(r'"tuvl-insight==([0-9][^"]*)"'),
     ),
     Site(
         "tuvl-insight version",
@@ -45,7 +45,7 @@ SITES: tuple[Site, ...] = (
     Site(
         "tuvl pin (tuvl-insight)",
         "insight/pyproject.toml",
-        re.compile(r'"tuvl>=([0-9][^"]*)"'),
+        re.compile(r'"tuvl==([0-9][^"]*)"'),
     ),
     Site(
         "tuvl init fallback pin",
