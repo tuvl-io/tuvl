@@ -1775,7 +1775,7 @@ requires-dist = [
     { name = "structlog", specifier = ">=24.0.0" },
     { name = "textual", marker = "extra == 'tui'", specifier = ">=1.0" },
     { name = "tuvl", extras = ["mcp", "redis", "vector", "otel-grpc", "codegen", "test", "pdf", "review", "tui"], marker = "extra == 'standard'", editable = "." },
-    { name = "tuvl-insight", marker = "extra == 'standard'", editable = "src/tuvl_insight" },
+    { name = "tuvl-insight", marker = "extra == 'standard'", editable = "insight" },
     { name = "typer", specifier = ">=0.26.5,<0.27" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.44.0" },
 ]
@@ -1793,7 +1793,7 @@ dev = [
 [[package]]
 name = "tuvl-insight"
 version = "2.0.3"
-source = { editable = "src/tuvl_insight" }
+source = { editable = "insight" }
 dependencies = [
     { name = "tuvl" },
 ]

@@ -99,7 +99,7 @@ Changelog = "https://github.com/tuvl-io/tuvl/blob/main/CHANGELOG.md"
 Issues = "https://github.com/tuvl-io/tuvl/issues"
 
 [tool.uv.workspace]
-members = ["src/tuvl_insight"]
+members = ["insight"]
 
 [tool.uv.sources]
 tuvl-insight = { workspace = true }
@@ -116,6 +116,7 @@ exclude = ["src/tuvl/cli/ui"]
 
 [tool.hatch.build.targets.sdist]
 exclude = [
+    "insight",
     "ui/node_modules",
     "ui/src",
     ".github",
@@ -149,7 +150,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.isort]
-known-first-party = ["tuvl"]
+known-first-party = ["tuvl", "tuvl_insight"]
 
 [tool.ruff.format]
 quote-style = "double"

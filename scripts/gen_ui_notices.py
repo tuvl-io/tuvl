@@ -1,4 +1,4 @@
-"""Write src/tuvl_insight/THIRD_PARTY_LICENSES.txt from the UI's production dependencies.
+"""Write insight/THIRD_PARTY_LICENSES.txt from the UI's production dependencies.
 
 The Insight bundle compiles these packages into its JavaScript, and their licenses require the
 copyright notice and license text to travel with it. Run after changing ui/package.json:
@@ -14,7 +14,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-OUT = ROOT / "src" / "tuvl_insight" / "THIRD_PARTY_LICENSES.txt"
+OUT = ROOT / "insight" / "THIRD_PARTY_LICENSES.txt"
 NAMES = ("LICENSE", "LICENCE", "COPYING", "LICENSE.md", "LICENSE.txt", "LICENSE-MIT", "license")
 
 

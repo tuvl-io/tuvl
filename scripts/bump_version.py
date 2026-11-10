@@ -39,12 +39,12 @@ SITES: tuple[Site, ...] = (
     ),
     Site(
         "tuvl-insight version",
-        "src/tuvl_insight/pyproject.toml",
+        "insight/pyproject.toml",
         re.compile(r'^version = "([^"]+)"', re.M),
     ),
     Site(
         "tuvl pin (tuvl-insight)",
-        "src/tuvl_insight/pyproject.toml",
+        "insight/pyproject.toml",
         re.compile(r'"tuvl>=([0-9][^"]*)"'),
     ),
     Site(

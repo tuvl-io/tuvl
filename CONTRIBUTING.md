@@ -71,7 +71,7 @@ pnpm lint
 ```
 
 UI changes must be bundled to reach the wheel: `make build-ui` copies the built
-assets into `src/tuvl_insight/static/`.
+assets into `insight/src/tuvl_insight/static/`.
 
 ## Testing
 
@@ -144,7 +144,7 @@ tuvl/
 │   ├── spec/ codegen/ lock/ testing/ devmcp/   # Spec tooling, codegen, tuvl.lock, offline tests, dev MCP
 │   ├── llm/ storage/ webhooks/                 # Model client, blob stores, outbound webhooks
 │   └── core/             # Config, datasources, auth/IAM, artifacts, telemetry
-├── src/tuvl_insight/     # Insight wheel (serves the built UI)
+├── insight/              # the tuvl-insight package (src/tuvl_insight, serves the built UI)
 ├── ui/                   # Insight React/Vite source
 ├── tests/                # pytest suite, mirroring src/tuvl/
 └── docs/                 # Agentic manual + subsystem deep-dives

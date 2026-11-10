@@ -261,10 +261,6 @@ jobs:
           pnpm exec playwright install --with-deps chromium
 
       - name: Smoke test every page
-        # The editable workspace install of tuvl-insight puts src/tuvl_insight
-        # itself on sys.path, so `import tuvl_insight` needs src/ explicitly.
-        env:
-          PYTHONPATH: ${{ github.workspace }}/src
         run: scripts/insight-smoke.sh
 
       - name: Upload Playwright report
