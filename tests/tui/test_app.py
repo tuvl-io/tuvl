@@ -414,16 +414,6 @@ def test_the_ui_starts_only_on_a_terminal_unless_declined() -> None:
     )  # CI, a pipe, ssh without a tty: as before
 
 
-def test_a_toolchain_without_textual_says_how_to_get_the_ui(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from tuvl_insight.cli.commands.dev import tui_unavailable
-
-    monkeypatch.setattr("tuvl.extras.available", lambda name: name != "tui")
-    why = tui_unavailable(no_tui=False, tty=True)
-    assert why and "tuvl[standard]" in why and "running the engine here" in why
-
-
 async def test_project_actions_are_offered_whatever_is_selected(project: Path) -> None:
     app = TuvlDevApp(project, poll=60)
     async with app.run_test(size=(150, 45)) as pilot:

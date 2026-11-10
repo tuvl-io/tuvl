@@ -143,10 +143,6 @@ def extract_text(path: Path) -> tuple[str | None, str | None]:
 
 
 def _pdf_text(path: Path) -> tuple[str | None, str | None]:
-    from tuvl.extras import available
-
-    if not available("pdf"):
-        return None, "PDF text needs the 'pdf' extra: pip install 'tuvl[pdf]'"
     from pypdf import PdfReader
     from pypdf.errors import PyPdfError
 

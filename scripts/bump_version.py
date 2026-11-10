@@ -49,7 +49,7 @@ SITES: tuple[Site, ...] = (
     ),
     Site(
         "tuvl init fallback pin",
-        "src/tuvl/cli/commands/init.py",
+        "insight/src/tuvl_insight/cli/commands/init.py",
         re.compile(r'"tuvl\[standard\]>=([0-9][^"]*)"'),
     ),
 )

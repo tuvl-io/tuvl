@@ -96,9 +96,6 @@ def codegen_cmd(
     ] = None,
 ) -> None:
     """Generate schemas, stubs, prompts and tests (zero tokens); with --spec, build a spec's models and workflows."""
-    from tuvl.extras import require
-
-    require("codegen")
     if spec is not None:
         if check or workflow is not None:
             console.print("[red]--spec cannot be combined with --check or a workflow name.[/red]")

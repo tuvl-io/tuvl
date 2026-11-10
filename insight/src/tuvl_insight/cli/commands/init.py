@@ -125,10 +125,6 @@ def init_cmd(
 
         console.print(agents_table())
         raise typer.Exit()
-    if sample:
-        from tuvl.extras import require
-
-        require("codegen")  # before anything is written
     project_dir = _resolve_target(name, project_dir_opt)
     initials, agent = _check_options(
         preset=preset,

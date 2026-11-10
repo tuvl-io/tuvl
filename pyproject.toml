@@ -56,13 +56,12 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Activates Tuvl Insight — a full browser-based developer portal for designing models
-# and workflows, configuring datasources and LLM providers, managing IAM and federation,
-# and testing runs with breakpoints, step mode and approvals.
+# The developer toolchain: the tuvl-insight package (the browser UI, `tuvl init`, `tuvl dev`, `tuvl ship`, the lint
+# engine, spec and code generation) plus the production extras.
 # Install with: pip install tuvl[standard]
 standard = [
     "tuvl-insight>=2.0.3",
-    "tuvl[mcp,redis,vector,otel-grpc,codegen,test,pdf,review,tui]",
+    "tuvl[mcp,redis,vector,otel-grpc]",
 ]
 
 # Features a production image installs only when the project uses them: `tuvl ship` reads the
@@ -71,12 +70,6 @@ mcp = ["mcp>=1.30.0,<2"]  # `use: mcp` tools, MCP export, `tuvl serve mcp` (2.x 
 redis = ["redis>=5.0.0"]  # a `redis` datasource
 vector = ["pgvector>=0.3.0"]  # vector search (pulls in numpy)
 otel-grpc = ["opentelemetry-exporter-otlp-proto-grpc>=1.42.0"]  # TUVL_OTLP_PROTOCOL=grpc
-# Development tooling, never shipped
-codegen = ["libcst>=1.4"]  # tuvl generate code, init --sample
-test = ["aiosqlite>=0.20.0"]  # tuvl run tests runs workflows against in-memory SQLite
-tui = ["textual>=1.0"]  # the terminal UI that `tuvl dev` starts on a terminal
-review = ["ruff>=0.8"]  # tuvl review code lints the Python of code agents
-pdf = ["pypdf>=6.21.4"]  # tuvl import idea reads the text of PDF ideas (Word files need nothing extra)
 
 # Dev tooling is a PEP 735 dependency group (uv-native), not a published extra.
 [dependency-groups]

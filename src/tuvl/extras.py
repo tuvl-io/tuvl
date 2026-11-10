@@ -26,7 +26,7 @@ class Extra:
     module: str  # the top-level import the extra provides
     package: str  # the distribution that provides it
     feature: str
-    shipped: bool  # False: development tooling, never part of a production image
+    shipped: bool  # whether `tuvl ship` may install it into a production image
 
 
 EXTRAS: dict[str, Extra] = {
@@ -36,11 +36,6 @@ EXTRAS: dict[str, Extra] = {
     "otel-grpc": Extra(
         "grpc", "opentelemetry-exporter-otlp-proto-grpc", "OTLP export over gRPC", shipped=True
     ),
-    "codegen": Extra("libcst", "libcst", "tuvl generate code", shipped=False),
-    "test": Extra("aiosqlite", "aiosqlite", "tuvl run tests", shipped=False),
-    "pdf": Extra("pypdf", "pypdf", "reading PDF ideas (tuvl import idea)", shipped=False),
-    "review": Extra("ruff", "ruff", "linting Python in tuvl review code", shipped=False),
-    "tui": Extra("textual", "textual", "the terminal UI of tuvl dev", shipped=False),
 }
 
 
@@ -56,15 +51,12 @@ def require(extra: str) -> None:
         raise MissingExtraError(extra, EXTRAS[extra].feature)
 
 
-TOOLCHAIN_EXTRAS = ("codegen", "test")
-
-
 def toolchain_installed() -> bool:
-    """Whether the developer toolchain (``tuvl[standard]``) is installed.
+    """Whether the developer toolchain is installed: the ``tuvl-insight`` package (``tuvl[standard]``).
 
     ``TUVL_TOOLCHAIN=1`` / ``0`` forces the answer (tests, CI).
     """
     forced = os.environ.get("TUVL_TOOLCHAIN")
     if forced in {"0", "1"}:
         return forced == "1"
-    return all(available(extra) for extra in TOOLCHAIN_EXTRAS)
+    return importlib.util.find_spec("tuvl_insight") is not None

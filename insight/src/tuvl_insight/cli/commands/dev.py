@@ -173,10 +173,6 @@ def tui_unavailable(*, no_tui: bool, tty: bool) -> str | None:
     """``None`` when the terminal UI should start; otherwise why not (``""`` for the silent cases)."""
     if no_tui or not tty:
         return ""
-    from tuvl.extras import available
-
-    if not available("tui"):
-        return "No terminal UI: install it with `uv tool install 'tuvl[standard]'` (or tuvl[tui]); running the engine here."
     return None
 
 

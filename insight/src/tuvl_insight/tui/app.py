@@ -13,12 +13,6 @@ from pathlib import Path
 from typing import Any
 
 from rich.markup import escape
-
-from tuvl.extras import MissingExtraError, available
-
-if not available("tui"):
-    raise MissingExtraError("tui", "the terminal UI of tuvl dev")
-
 from textual import on
 from textual.actions import SkipAction
 from textual.app import App, ComposeResult

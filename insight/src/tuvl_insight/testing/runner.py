@@ -37,7 +37,6 @@ from sqlmodel import SQLModel
 from tuvl.contract.schema import TestDocument, WorkflowDocument
 from tuvl.contract.signals import is_reserved
 from tuvl.contract.tel import TELError, compile_expr, compile_template
-from tuvl.extras import require
 from tuvl.runtime import decision, journal, queue
 from tuvl.runtime.engines import AgentResult
 from tuvl.runtime.models import RUNTIME_TABLES, SystemRun
@@ -294,7 +293,6 @@ async def _database(models: Mapping[str, type[SQLModel]]) -> AsyncEngine:
     journal entry. Autocommit makes every statement final on its own; rollbacks and savepoints
     become no-ops, so an agent's writes are kept even when prod would discard them.
     """
-    require("test")
     engine = create_async_engine(
         "sqlite+aiosqlite:///:memory:",
         connect_args={"check_same_thread": False},

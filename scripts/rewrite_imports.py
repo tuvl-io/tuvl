@@ -61,7 +61,7 @@ GROUPS: dict[str, list[tuple[str, str]]] = {
         ],
         ("tuvl_insight.api.dev_core_router", "tuvl_insight.api.dev_core_router"),
     ],
-    "doctor": [("tuvl.doctor.toolchain_groups", "tuvl_insight.doctor_groups")],
+    "doctor": [("tuvl_insight.doctor_groups", "tuvl_insight.doctor_groups")],
 }  # fmt: skip
 
 

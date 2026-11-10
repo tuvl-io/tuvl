@@ -10,11 +10,7 @@ from __future__ import annotations
 import textwrap
 from collections.abc import Sequence
 
-from tuvl.extras import require
-
-require("codegen")
-
-import libcst as cst  # noqa: E402
+import libcst as cst
 
 from tuvl_insight.codegen.schemas import AgentNames  # noqa: E402
 

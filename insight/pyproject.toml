@@ -10,6 +10,11 @@ authors = [{ name = "tuvl.io", email = "developer@tuvl.io" }]
 
 dependencies = [
     "tuvl>=2.0.3",
+    "libcst>=1.4",  # tuvl generate code, init --sample
+    "aiosqlite>=0.20.0",  # tuvl run tests runs workflows against in-memory SQLite
+    "textual>=1.0",  # the terminal UI that `tuvl dev` starts on a terminal
+    "ruff>=0.8",  # tuvl review code lints the Python of code agents
+    "pypdf>=6.21.4",  # tuvl import idea reads the text of PDF ideas (Word files need nothing extra)
 ]
 
 [build-system]
