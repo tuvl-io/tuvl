@@ -137,16 +137,15 @@ refactor: simplify the journal writer
 tuvl/
 ├── src/tuvl/             # Engine + CLI (one package)
 │   ├── contract/         # The document model: schema, types, TEL expressions, registry
-│   ├── validate/         # `tuvl lint project`: rules and their codes (codes.py); workflow rules in workflow/
 │   ├── runtime/          # Durable runner, queue, journal, and one module per engine
-│   ├── api/              # REST: triggers, runs, approvals, MCP export; dev/ is the Insight dev API
-│   ├── cli/              # Typer commands (verb-first: lint, run, serve, generate, …)
-│   ├── spec/ codegen/ lock/ testing/ devmcp/   # Spec tooling, codegen, tuvl.lock, offline tests, dev MCP
+│   ├── api/              # REST: triggers, runs, approvals, MCP export; dev/ is the live-state part of the dev API
+│   ├── cli/              # The production CLI and the verb tree (verb-first: lint, run, serve, generate, …)
 │   ├── llm/ storage/ webhooks/                 # Model client, blob stores, outbound webhooks
 │   └── core/             # Config, datasources, auth/IAM, artifacts, telemetry
-├── insight/              # the tuvl-insight package (src/tuvl_insight, serves the built UI)
+├── insight/              # the tuvl-insight package: the developer tooling and the built UI
+│   └── src/tuvl_insight/ # validate/ (tuvl lint project), spec/ codegen/ lock/ testing/ devmcp/, cli/commands/, api/dev/
 ├── ui/                   # Insight React/Vite source
-├── tests/                # pytest suite, mirroring src/tuvl/
+├── tests/                # pytest suite, mirroring src/tuvl/; tests/insight/ is the tooling's (needs tuvl-insight)
 └── docs/                 # Agentic manual + subsystem deep-dives
 ```
 
