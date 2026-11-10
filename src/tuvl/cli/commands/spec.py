@@ -67,7 +67,7 @@ def status_cmd(
         one = _refs(project, spec_file)
         _watch_status(project, one[0] if one else None, no_tests, interval)
         return
-    from tuvl.spec.tasks import (
+    from tuvl_insight.spec.tasks import (
         TaskPlanError,
         derived_plans,
         open_count,
@@ -138,7 +138,7 @@ def task_cmd(
     as_json: Annotated[bool, typer.Option("--json", help="Machine-readable record")] = False,
 ) -> None:
     """Show one task in full: what it builds, what it waits for and the spec section it came from."""
-    from tuvl.spec.tasks import task_detail, task_text
+    from tuvl_insight.spec.tasks import task_detail, task_text
 
     project = project_dir.resolve()
     found = _refs(project, Path(spec)) if spec else None
@@ -163,7 +163,7 @@ def branches_cmd(
     as_json: Annotated[bool, typer.Option("--json", help="Machine-readable report")] = False,
 ) -> None:
     """Where the branches of each spec's work stand: spec, scaffold and one per task, and what to merge next."""
-    from tuvl.spec.branches import report
+    from tuvl_insight.spec.branches import report
 
     project = project_dir.resolve()
     found = _refs(project, spec_file) if spec_file else None
@@ -246,11 +246,11 @@ def diff_cmd(
     as_json: Annotated[bool, typer.Option("--json", help="Machine-readable diff")] = False,
 ) -> None:
     """Show how each spec moved since its plan: stale tasks, uncovered sections."""
-    from tuvl.spec.tasks import spec_diff
+    from tuvl_insight.spec.tasks import spec_diff
 
     project = project_dir.resolve()
     results = []
-    from tuvl.spec.tasks import selected_plans
+    from tuvl_insight.spec.tasks import selected_plans
 
     found = _refs(project, spec_file)
     for _, plan, spec in selected_plans(project, found[0] if found else None):
@@ -278,7 +278,7 @@ def diff_cmd(
             )
 
 
-from tuvl.spec.template import SPEC_TEMPLATE  # noqa: E402 — also imported by tuvl.api.dev.specs
+from tuvl_insight.spec.template import SPEC_TEMPLATE  # noqa: E402 — also imported by the dev API
 
 
 @spec_app.command("check")
@@ -293,8 +293,8 @@ def check_cmd(
     as_json: Annotated[bool, typer.Option("--json", help="Machine-readable report")] = False,
 ) -> None:
     """Is the spec complete and consistent? Deterministic, zero tokens (S001–S021)."""
-    from tuvl.spec.check import check_project
-    from tuvl.spec.parse import SpecError
+    from tuvl_insight.spec.check import check_project
+    from tuvl_insight.spec.parse import SpecError
 
     project = project_dir.resolve()
     _load(project)
@@ -344,8 +344,8 @@ def verify_cmd(
     """Does the implementation match the spec, step by step? Zero tokens (R001–R010)."""
     from tuvl.core.config import settings
     from tuvl.runtime.code import load_agents
-    from tuvl.spec.parse import SpecError
-    from tuvl.spec.verify import verify_project
+    from tuvl_insight.spec.parse import SpecError
+    from tuvl_insight.spec.verify import verify_project
 
     project = project_dir.resolve()
     _load(project)
@@ -417,8 +417,8 @@ def new_cmd(
     ] = None,
 ) -> None:
     """Write specs/<name>.md from the template (numbered and linked to its idea with --idea)."""
-    from tuvl.spec import ids, lifecycle
-    from tuvl.spec.parse import slug
+    from tuvl_insight.spec import ids, lifecycle
+    from tuvl_insight.spec.parse import slug
 
     project = project_dir.resolve()
     stem = slug(name)
@@ -444,7 +444,7 @@ def new_cmd(
     target.write_text(text)
     if idea:
         lifecycle.sync_idea_links(project)
-        from tuvl import audit
+        from tuvl_insight import audit
 
         audit.emit(
             project, "spec.created", command="create spec", entities=[spec_id, *idea], detail=stem
@@ -460,7 +460,7 @@ def new_cmd(
 
 
 def _initials(project: Path, given: str | None) -> str:
-    from tuvl.coding_agents import Settings, read_settings, valid_initials, write_settings
+    from tuvl_insight.coding_agents import Settings, read_settings, valid_initials, write_settings
 
     settings = read_settings(project)
     if given is not None:
@@ -484,7 +484,7 @@ def _initials(project: Path, given: str | None) -> str:
 
 def _commit_idea(project: Path, idea: str, title: str) -> str:
     """Commit one idea's folder and the index; ``""`` (with a note) when git cannot."""
-    from tuvl import gitflow, gitutil
+    from tuvl_insight import gitflow, gitutil
 
     if not gitutil.inside_work_tree(project):
         console.print("[yellow]--commit: this is not a git repository, nothing committed.[/yellow]")
@@ -541,8 +541,8 @@ def import_cmd(
     """Copy an idea (files, a folder, or a snapshot of a URL) into idea/IDEA-<initials>-NNNN/ as a numbered, immutable record."""
     import tempfile
 
-    from tuvl.spec.fetch import FetchError, fetch_into, safe_url
-    from tuvl.spec.ideas import IdeaError, plan_import
+    from tuvl_insight.spec.fetch import FetchError, fetch_into, safe_url
+    from tuvl_insight.spec.ideas import IdeaError, plan_import
 
     urls = [u.strip() for u in url or [] if u.strip()]
     if not (paths or urls):
@@ -591,9 +591,9 @@ def _import_idea(
     commit: bool,
     as_json: bool,
 ) -> None:
-    from tuvl import gitutil
-    from tuvl.spec import ids
-    from tuvl.spec.ideas import IdeaError, ImportPlan, import_idea
+    from tuvl_insight import gitutil
+    from tuvl_insight.spec import ids
+    from tuvl_insight.spec.ideas import IdeaError, ImportPlan, import_idea
 
     who = _initials(project, initials)
     plan = plan or ImportPlan()
@@ -625,7 +625,7 @@ def _import_idea(
         done = import_idea(
             project, plan, initials=who, title=title, supersedes=supersedes, imported_by=by
         )
-        from tuvl import audit
+        from tuvl_insight import audit
 
         audit.emit(
             project,
@@ -680,7 +680,7 @@ def ideas_cmd(
     """List the project's ideas and the specs generated from each."""
     import json
 
-    from tuvl.spec import ids
+    from tuvl_insight.spec import ids
 
     rows = ids.read_index(project_dir.resolve())
     if as_json:
@@ -707,7 +707,7 @@ def idea_cmd(
     """Show one idea: its files, their hashes and the specs generated from it."""
     import json
 
-    from tuvl.spec.ideas import IdeaError, read_idea
+    from tuvl_insight.spec.ideas import IdeaError, read_idea
 
     try:
         record = read_idea(project_dir.resolve(), idea)
@@ -742,14 +742,14 @@ def renumber_cmd(
     ] = Path("."),
 ) -> None:
     """Give an idea a new number (after a duplicate) and rewrite every spec and task id derived from it."""
-    from tuvl.spec.renumber import RenumberError, renumber_idea
+    from tuvl_insight.spec.renumber import RenumberError, renumber_idea
 
     try:
         done = renumber_idea(project_dir.resolve(), idea, to)
     except RenumberError as exc:
         console.print(f"[red]{escape(str(exc))}[/red]")
         raise typer.Exit(1) from None
-    from tuvl import audit
+    from tuvl_insight import audit
 
     audit.emit(
         project_dir.resolve(),
@@ -767,8 +767,8 @@ def renumber_cmd(
 
 
 def _who(project: Path) -> str:
-    from tuvl import gitutil
-    from tuvl.coding_agents import read_settings
+    from tuvl_insight import gitutil
+    from tuvl_insight.coding_agents import read_settings
 
     name, email = (
         gitutil.config_get(project, "user.name"),
@@ -796,8 +796,8 @@ def _record(
     detail: str = "",
     **refs: object,
 ) -> None:
-    from tuvl import audit
-    from tuvl.spec import lifecycle
+    from tuvl_insight import audit
+    from tuvl_insight.spec import lifecycle
 
     state = lifecycle.state_of(file.read_text())
     shown = str(file.relative_to(project)) if file.is_relative_to(project) else str(file)
@@ -813,7 +813,7 @@ def _record(
 
 
 def _resolve(project: Path, ref: str) -> Path:
-    from tuvl.spec.lifecycle import LifecycleError, resolve_spec
+    from tuvl_insight.spec.lifecycle import LifecycleError, resolve_spec
 
     try:
         return resolve_spec(project, ref)
@@ -840,8 +840,8 @@ def approve_cmd(
     ] = False,
 ) -> None:
     """Approve a spec: record who, when and a hash of the body. Any later edit makes it a draft again."""
-    from tuvl.spec import lifecycle
-    from tuvl.spec.check import check_project
+    from tuvl_insight.spec import lifecycle
+    from tuvl_insight.spec.check import check_project
 
     project = project_dir.resolve()
     file = _resolve(project, spec)
@@ -901,7 +901,7 @@ def reject_cmd(
     ] = Path("."),
 ) -> None:
     """Send a spec back to draft with a reason (clears any approval)."""
-    from tuvl.spec import lifecycle
+    from tuvl_insight.spec import lifecycle
 
     project = project_dir.resolve()
     file = _resolve(project, spec)
@@ -924,7 +924,7 @@ def reopen_cmd(
     ] = Path("."),
 ) -> None:
     """Withdraw an approval so the spec can be edited."""
-    from tuvl.spec import lifecycle
+    from tuvl_insight.spec import lifecycle
 
     project = project_dir.resolve()
     file = _resolve(project, spec)
@@ -953,10 +953,10 @@ def tasks_cmd(
     """Derive the task list from an approved spec: one task per new model, step and example. Zero tokens."""
     import yaml
 
-    from tuvl.spec import derive, lifecycle
-    from tuvl.spec.grammar import parse_structure
-    from tuvl.spec.parse import SpecError, parse_text
-    from tuvl.spec.tasks import plan_for
+    from tuvl_insight.spec import derive, lifecycle
+    from tuvl_insight.spec.grammar import parse_structure
+    from tuvl_insight.spec.parse import SpecError, parse_text
+    from tuvl_insight.spec.tasks import plan_for
 
     project = project_dir.resolve()
     file = _resolve(project, spec)
@@ -1022,7 +1022,7 @@ def list_cmd(
     as_json: Annotated[bool, typer.Option("--json", help="Machine-readable list")] = False,
 ) -> None:
     """List the specs with their id, status (approved / draft / stale) and approver."""
-    from tuvl.spec import lifecycle
+    from tuvl_insight.spec import lifecycle
 
     project = project_dir.resolve()
     rows: list[dict[str, Any]] = []
@@ -1079,7 +1079,7 @@ def _fingerprint(project: Path) -> tuple[tuple[str, int], ...]:
 
 def _status_view(project: Path, spec_file: Path | None, no_tests: bool):  # noqa: ANN202
     """``(plans, state)`` — derived statuses, recomputed only when a project file changed."""
-    from tuvl.spec.tasks import derived_plans, project_state
+    from tuvl_insight.spec.tasks import derived_plans, project_state
 
     use_project(str(project))
     state = asyncio.run(project_state(project, run_tests=not no_tests))
@@ -1096,8 +1096,8 @@ def _watch_status(project: Path, spec_file: Path | None, no_tests: bool, interva
     from rich.live import Live
     from rich.text import Text
 
-    from tuvl.audit import live as live_state
-    from tuvl.spec.tasks import open_count
+    from tuvl_insight.audit import live as live_state
+    from tuvl_insight.spec.tasks import open_count
 
     seen: tuple | None = None
     view: tuple | None = None
@@ -1209,10 +1209,10 @@ def gen_cmd(
     ] = False,
 ) -> None:
     """A coding agent writes a draft spec from an idea, on a spec/<id> branch with a pull request."""
-    from tuvl import audit, gitflow, specgen
     from tuvl.cli import agent_run
-    from tuvl.coding_agents import runner
-    from tuvl.spec import ids
+    from tuvl_insight import audit, gitflow, specgen
+    from tuvl_insight.coding_agents import runner
+    from tuvl_insight.spec import ids
 
     project = project_dir.resolve()
     chosen = agent_run.choose_agent(project, agent)
@@ -1226,7 +1226,7 @@ def gen_cmd(
                 "[red]--dry-run cannot be combined with --from: import the idea first.[/red]"
             )
             raise typer.Exit(2)
-        from tuvl.spec.ideas import IdeaError, import_idea, plan_import
+        from tuvl_insight.spec.ideas import IdeaError, import_idea, plan_import
 
         try:
             who = _initials(project, None)
@@ -1334,14 +1334,14 @@ def gen_cmd(
     )
     for w in [*idea_warnings, *done.warnings]:
         console.print(f"  [yellow]{escape(w)}[/yellow]")
-    from tuvl.spec import lifecycle as _lifecycle
+    from tuvl_insight.spec import lifecycle as _lifecycle
 
     heading = str(_lifecycle.split_front(text)[0].get("title") or done.spec_id)
     final_title = title or heading
     if not (yes or here) and not typer.confirm(
         f"Commit this draft to branch {done.branch}?", default=True
     ):
-        from tuvl import gitflow as _g
+        from tuvl_insight import gitflow as _g
 
         _g.remove_worktree(project, done.worktree)
         _g.delete_branch(project, done.branch)

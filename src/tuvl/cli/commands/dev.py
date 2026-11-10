@@ -175,8 +175,8 @@ def tui_unavailable(*, no_tui: bool, tty: bool) -> str | None:
 
 
 def _run_with_tui(argv: list[str], env: dict, resolved: Path, port: int, no_browser: bool) -> None:
-    from tuvl.tui.app import TuvlDevApp
-    from tuvl.tui.engine import Engine
+    from tuvl_insight.tui.app import TuvlDevApp
+    from tuvl_insight.tui.engine import Engine
 
     url = f"http://127.0.0.1:{port}/insight/"
     if not no_browser:

@@ -1,4 +1,4 @@
-from tuvl.coding_agents import Settings, read_settings, write_settings
+from tuvl_insight.coding_agents import Settings, read_settings, write_settings
 
 
 def test_round_trip(tmp_path) -> None:

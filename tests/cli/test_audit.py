@@ -9,11 +9,11 @@ import pytest
 import yaml
 from typer.testing import CliRunner
 
-from tuvl.audit import ledger as lg
-from tuvl.audit import live, read_events, verify
 from tuvl.cli import app
 from tuvl.cli.commands.init import _SAMPLE_TRIAGE_SPEC
-from tuvl.coding_agents import Settings, write_settings
+from tuvl_insight.audit import ledger as lg
+from tuvl_insight.audit import live, read_events, verify
+from tuvl_insight.coding_agents import Settings, write_settings
 
 runner = CliRunner()
 
@@ -24,7 +24,7 @@ def project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     (p / "specs").mkdir(parents=True)
     write_settings(p, Settings("SK", "none"))
     monkeypatch.setattr(
-        "tuvl.gitutil.config_get",
+        "tuvl_insight.gitutil.config_get",
         lambda _p, key: {"user.name": "Ada", "user.email": "a@b.c"}.get(key, ""),
     )
     (p / "specs" / "triage.md").write_text(_SAMPLE_TRIAGE_SPEC)
@@ -89,7 +89,7 @@ def test_agent_use_is_recorded(project: Path) -> None:
 
 
 def test_init_is_recorded(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("tuvl.coding_agents.detect", lambda *a, **k: [])
+    monkeypatch.setattr("tuvl_insight.coding_agents.detect", lambda *a, **k: [])
     done = runner.invoke(app, ["init", str(tmp_path / "new"), "-y", "--no-git"])
     assert done.exit_code == 0, done.output
     events = read_events(tmp_path / "new")
@@ -165,7 +165,7 @@ def test_prune_touches_the_trace_only(project: Path) -> None:
     import os
     import time
 
-    from tuvl.audit import trace
+    from tuvl_insight.audit import trace
 
     digest = trace.store(project, "prompt")
     os.utime(trace.blob_dir(project) / digest, (time.time() - 90 * 86400,) * 2)

@@ -4,8 +4,8 @@ from pathlib import Path
 import pytest
 import yaml
 
-from tuvl import gitflow, specgen
-from tuvl.spec import ids, lifecycle
+from tuvl_insight import gitflow, specgen
+from tuvl_insight.spec import ids, lifecycle
 
 
 def git(cwd: Path, *args: str) -> str:

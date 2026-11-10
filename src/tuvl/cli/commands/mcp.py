@@ -28,6 +28,6 @@ def mcp_cmd(
     from tuvl.extras import require
 
     require("mcp")
-    from tuvl.devmcp import build_server
+    from tuvl_insight.devmcp import build_server
 
     build_server(project_dir, allow_write=allow_write).run("stdio")

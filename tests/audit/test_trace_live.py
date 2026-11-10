@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from tuvl.audit import live, trace
+from tuvl_insight.audit import live, trace
 
 
 def test_trace_blobs_are_stored_once_by_hash(tmp_path: Path) -> None:

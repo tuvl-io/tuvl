@@ -1,4 +1,4 @@
-from tuvl.spec.html_md import html_to_markdown
+from tuvl_insight.spec.html_md import html_to_markdown
 
 
 def md(html: str, **kw: bool) -> str:

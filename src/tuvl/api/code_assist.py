@@ -69,10 +69,10 @@ def contract_of(run: str) -> list[dict[str, Any]]:
 
 def stub_for(run: str, description: str) -> str:
     """codegen's stub for *run*: typed when one saved workflow agent uses it, else untyped."""
-    from tuvl.codegen.schemas import render_schemas
-    from tuvl.codegen.stubs import new_stub
     from tuvl.contract.registry import WORKFLOWS
     from tuvl.core.models.schemas import SCHEMA_REGISTRY
+    from tuvl_insight.codegen.schemas import render_schemas
+    from tuvl_insight.codegen.stubs import new_stub
 
     users = [
         (wf, a)
@@ -142,10 +142,10 @@ def assist_models() -> list[dict[str, Any]]:
 
 def normalize(run: str, text: str) -> str:
     """The file as codegen would keep it: decorator, signature and docstring from the contract."""
-    from tuvl.codegen.schemas import render_schemas
-    from tuvl.codegen.stubs import merge_stub
     from tuvl.contract.registry import WORKFLOWS
     from tuvl.core.models.schemas import SCHEMA_REGISTRY
+    from tuvl_insight.codegen.schemas import render_schemas
+    from tuvl_insight.codegen.stubs import merge_stub
 
     users = [
         (wf, a)

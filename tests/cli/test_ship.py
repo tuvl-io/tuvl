@@ -332,13 +332,13 @@ def test_ship_image_holds_only_runtime_files(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from tuvl.cli.commands.ship import _ignore_rules, _image_files
-    from tuvl.shipgate import GateResult
+    from tuvl_insight.shipgate import GateResult
 
     proj = _project(tmp_path)
     _dev_material(proj)
     # the junk specs are there to prove they stay out of the image, not to pass the spec gate
-    monkeypatch.setattr("tuvl.shipgate.spec_gate", lambda *a, **k: GateResult())
-    monkeypatch.setattr("tuvl.shipgate.codegen_current", lambda *a, **k: [])
+    monkeypatch.setattr("tuvl_insight.shipgate.spec_gate", lambda *a, **k: GateResult())
+    monkeypatch.setattr("tuvl_insight.shipgate.codegen_current", lambda *a, **k: [])
     res = runner.invoke(app, ["ship", "-d", str(proj), "--no-build"])
     assert res.exit_code == 0, res.output
     files = _image_files(proj, _ignore_rules(proj / ".dockerignore"))

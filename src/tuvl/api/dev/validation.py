@@ -91,7 +91,7 @@ class CodegenRequest(BaseModel):
 
 @router.post("/codegen", summary="tuvl generate code (dry run unless write)")
 async def codegen(request: CodegenRequest) -> dict[str, Any]:
-    from tuvl import codegen as generator
+    from tuvl_insight import codegen as generator
 
     return generator.run(project_dir(), write=request.write)
 

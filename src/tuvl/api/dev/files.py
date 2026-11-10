@@ -52,7 +52,7 @@ async def project_summary() -> dict[str, Any]:
     from tuvl.contract.registry import TESTS, WORKFLOWS
     from tuvl.core.models.loader import MODEL_REGISTRY
     from tuvl.runtime.host import unavailable_reasons
-    from tuvl.spec import load_specs
+    from tuvl_insight.spec import load_specs
 
     project = project_dir()
     specs = []

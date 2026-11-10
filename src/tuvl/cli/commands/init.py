@@ -140,7 +140,7 @@ def init_cmd(
     )
 
     if dev_telemetry:
-        from tuvl import devtelemetry
+        from tuvl_insight import devtelemetry
 
         try:
             devtelemetry.check_server(dev_telemetry)
@@ -183,7 +183,7 @@ def init_cmd(
         ci=ci,
     )
     if telemetry_url:
-        from tuvl import devtelemetry
+        from tuvl_insight import devtelemetry
 
         devtelemetry.save(
             project_dir,
@@ -236,7 +236,7 @@ def _check_options(
     project_dir: Path,
 ) -> tuple[str | None, str | None]:
     """Refuse what cannot work, before anything is asked or written; returns (initials, agent)."""
-    from tuvl import coding_agents
+    from tuvl_insight import coding_agents
 
     if preset is not None and preset not in PRESETS:
         raise _refuse(f"[red]Unknown preset '{preset}'.[/red] Choose: {', '.join(PRESETS)}.")
@@ -349,7 +349,7 @@ def _ask_dev_telemetry(*, yes: bool) -> str | None:
     """Optional: a server that receives what developers do on this project (also: tuvl set dev-telemetry)."""
     if yes:
         return None
-    from tuvl import devtelemetry
+    from tuvl_insight import devtelemetry
 
     console.print("[bold]Developer telemetry[/bold] [dim](optional)[/dim]")
     while True:
@@ -371,7 +371,7 @@ def _ask_dev_telemetry(*, yes: bool) -> str | None:
 
 def _ask_identity(initials: str | None, agent: str | None, *, yes: bool) -> dict[str, str]:
     """Your initials (they stamp idea and spec ids) and the coding agent tuvl may run."""
-    from tuvl import coding_agents, gitutil
+    from tuvl_insight import coding_agents, gitutil
 
     console.print()
     console.print("[bold]You and your coding agent[/bold]")
@@ -393,7 +393,7 @@ def _ask_identity(initials: str | None, agent: str | None, *, yes: bool) -> dict
 
 
 def _ask_agent(detected: list[Any], *, yes: bool) -> str:
-    from tuvl import coding_agents
+    from tuvl_insight import coding_agents
 
     if not detected:
         console.print(
@@ -497,8 +497,8 @@ def _scaffold(
     ci: str,
 ) -> Summary:
     """Write the project, in the order its parts depend on each other."""
-    from tuvl import audit, coding_agents
     from tuvl.core.project_info import create_project, default_identity
+    from tuvl_insight import audit, coding_agents
 
     summary = Summary()
     for subdir in _SUBDIRS:
@@ -690,7 +690,7 @@ def _write_sample_files(project_dir: Path) -> None:
 def _sample_task_plan() -> str:
     import yaml
 
-    from tuvl.spec import parse_text
+    from tuvl_insight.spec import parse_text
 
     spec = parse_text(_SAMPLE_TRIAGE_SPEC, path="specs/triage-ticket.md")
 
@@ -750,12 +750,13 @@ def _finish_sample(project_dir: Path) -> None:
     """Run codegen and lock so the sample passes the CI gate as created."""
     from dotenv import load_dotenv
 
-    from tuvl import codegen, lock
+    from tuvl import lock
     from tuvl.contract.registry import TESTS, WORKFLOWS
     from tuvl.core.artifacts.registry import ARTIFACT_REGISTRY
     from tuvl.core.config_loader import load_all_configs
     from tuvl.core.models.schemas import SCHEMA_REGISTRY
-    from tuvl.spec import load_specs
+    from tuvl_insight import codegen
+    from tuvl_insight.spec import load_specs
 
     use_project(str(project_dir))
     load_dotenv(project_dir / ".env", override=False)  # datasources reference its variables
@@ -920,7 +921,7 @@ def _write_agent_yaml(
 
 def _write_ui_specs(project_dir: Path) -> str:
     """``ui/specs/``: the index, plus a file for each workflow that is already implemented (the sample)."""
-    from tuvl import uispec
+    from tuvl_insight import uispec
 
     try:
         uispec.generate(project_dir, run_tests=False)
@@ -946,7 +947,7 @@ def _write_ci(project_dir: Path, kind: str) -> str:
 
 def _init_git(project_dir: Path, *, enabled: bool, branch: str, commit: bool) -> str:
     """``git init`` the new project; the returned text is for the summary panel."""
-    from tuvl import gitutil
+    from tuvl_insight import gitutil
 
     if not enabled:
         return ""
@@ -1137,6 +1138,6 @@ def _write_readme(path: Path, *, name: str) -> None:
 
 def _write_agent_skills(project_dir: Path) -> None:
     """AGENTS.md and the coding-agent skills (.agents/skills, .claude/skills, CLAUDE.md)."""
-    from tuvl import skills
+    from tuvl_insight import skills
 
     skills.install(project_dir)

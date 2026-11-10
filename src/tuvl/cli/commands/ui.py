@@ -10,8 +10,8 @@ import typer
 from rich.console import Console
 from rich.markup import escape
 
-from tuvl import audit
-from tuvl.uispec import DEFAULT_BASE, SPECS_DIR, check, collect, generate
+from tuvl_insight import audit
+from tuvl_insight.uispec import DEFAULT_BASE, SPECS_DIR, check, collect, generate
 
 console = Console()
 ui_app = typer.Typer(

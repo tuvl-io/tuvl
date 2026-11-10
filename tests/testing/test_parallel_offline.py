@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from tuvl.contract.schema import TestDocument, WorkflowDocument
-from tuvl.testing import run_test
+from tuvl_insight.testing import run_test
 
 
 def get(name: str) -> dict[str, Any]:

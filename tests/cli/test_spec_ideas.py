@@ -12,9 +12,9 @@ import yaml
 from typer.testing import CliRunner
 
 from tuvl.cli import app
-from tuvl.coding_agents import Settings, read_settings, write_settings
-from tuvl.spec import ids
-from tuvl.spec.parse import content_hash
+from tuvl_insight.coding_agents import Settings, read_settings, write_settings
+from tuvl_insight.spec import ids
+from tuvl_insight.spec.parse import content_hash
 
 runner = CliRunner()
 

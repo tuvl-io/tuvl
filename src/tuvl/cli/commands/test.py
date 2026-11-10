@@ -29,7 +29,7 @@ async def _run(
     from tuvl.core.config_loader import load_all_configs
     from tuvl.runtime import judges
     from tuvl.runtime.code import load_agents
-    from tuvl.testing import run_test
+    from tuvl_insight.testing import run_test
 
     load_all_configs(project)
     load_agents(settings.dir_for("agents"))

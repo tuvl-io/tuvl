@@ -10,10 +10,10 @@ from urllib.parse import parse_qs, urlparse
 import pytest
 from typer.testing import CliRunner
 
-from tuvl import devtelemetry as dt
-from tuvl.audit import ledger as lg
 from tuvl.cli import app
-from tuvl.coding_agents import Settings, write_settings
+from tuvl_insight import devtelemetry as dt
+from tuvl_insight.audit import ledger as lg
+from tuvl_insight.coding_agents import Settings, write_settings
 
 runner = CliRunner()
 TOKEN = "tdev_s3cret"
@@ -103,7 +103,7 @@ def project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     (p / ".tuvl").mkdir(parents=True)
     write_settings(p, Settings("SK", "none"))
     monkeypatch.setattr(
-        "tuvl.gitutil.config_get",
+        "tuvl_insight.gitutil.config_get",
         lambda _p, key: {"user.name": "Ada", "user.email": "ada@example.org"}.get(key, ""),
     )
     monkeypatch.setenv("TUVL_HOME", str(tmp_path / "home"))  # the developer's own config folder

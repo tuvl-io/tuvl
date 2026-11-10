@@ -5,9 +5,9 @@ from __future__ import annotations
 import pytest
 
 from tuvl.contract.schema import WorkflowDocument
-from tuvl.spec import parse_text
-from tuvl.spec.check import check_spec
-from tuvl.spec.verify import verify_spec
+from tuvl_insight.spec import parse_text
+from tuvl_insight.spec.check import check_spec
+from tuvl_insight.spec.verify import verify_spec
 
 FLOW = """# Flows
 ## Flow: x

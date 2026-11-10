@@ -4,9 +4,9 @@ from pathlib import Path
 
 import pytest
 
-from tuvl.coding_agents import runner
-from tuvl.review import agent as ar
-from tuvl.review.rules import Finding
+from tuvl_insight.coding_agents import runner
+from tuvl_insight.review import agent as ar
+from tuvl_insight.review.rules import Finding
 
 GOOD = {
     "verdict": "concerns",

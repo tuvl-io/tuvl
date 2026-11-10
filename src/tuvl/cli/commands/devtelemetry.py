@@ -11,7 +11,7 @@ import typer
 from rich.console import Console
 from rich.markup import escape
 
-from tuvl import devtelemetry
+from tuvl_insight import devtelemetry
 
 console = Console()
 _DirOpt = Annotated[Path, typer.Option("--project-dir", "-d", help="tuvl project directory")]
@@ -128,7 +128,7 @@ def register_cmd(
     project_dir: _DirOpt = Path("."),
 ) -> None:
     """Register yourself at the team's collector and keep your token (it sends and reads for you)."""
-    from tuvl import gitutil
+    from tuvl_insight import gitutil
 
     project = project_dir.resolve()
     config = devtelemetry.load(project)

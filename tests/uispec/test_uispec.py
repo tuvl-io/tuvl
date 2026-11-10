@@ -11,15 +11,15 @@ from typer.testing import CliRunner
 
 from tuvl.cli import app
 from tuvl.core.system_config import load_system_config
-from tuvl.uispec import SPECS_DIR, check, collect, generate
-from tuvl.uispec.facts import describe, fields_of, sample
+from tuvl_insight.uispec import SPECS_DIR, check, collect, generate
+from tuvl_insight.uispec.facts import describe, fields_of, sample
 
 runner = CliRunner()
 
 
 @pytest.fixture
 def sample_project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    monkeypatch.setattr("tuvl.coding_agents.detect", lambda *a, **k: [])
+    monkeypatch.setattr("tuvl_insight.coding_agents.detect", lambda *a, **k: [])
     res = runner.invoke(
         app, ["init", str(tmp_path / "demo"), "--sample", "--preset", "ollama", "-y", "--no-git"]
     )
@@ -169,7 +169,7 @@ def test_a_workflow_with_a_pending_step_is_not_documented_until_it_is_built(
 def test_a_blank_project_gets_an_index_and_no_workflow_files(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr("tuvl.coding_agents.detect", lambda *a, **k: [])
+    monkeypatch.setattr("tuvl_insight.coding_agents.detect", lambda *a, **k: [])
     res = runner.invoke(app, ["init", str(tmp_path / "blank"), "-y", "--no-git"])
     assert res.exit_code == 0, res.output
     out = tmp_path / "blank" / SPECS_DIR
@@ -223,7 +223,7 @@ def test_secure_fields_are_flagged_and_unexposed_models_left_out(sample_project:
 
 
 def test_the_audit_ledger_records_the_generation(sample_project: Path) -> None:
-    from tuvl.audit import read_events
+    from tuvl_insight.audit import read_events
 
     assert ui(sample_project).exit_code == 0
     events = [e for e in read_events(sample_project) if e["kind"] == "ui.spec.generated"]
@@ -256,7 +256,7 @@ def test_schema_helpers() -> None:
 
 
 def test_an_upload_trigger_is_documented_as_multipart() -> None:
-    from tuvl.uispec.render import _upload_md
+    from tuvl_insight.uispec.render import _upload_md
 
     text = _upload_md(
         {

@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from tuvl.coding_agents import runner
+from tuvl_insight.coding_agents import runner
 
 LIM = runner.Limits(timeout=30)
 RO = runner.Limits(timeout=30, read_only=True, model="m1")

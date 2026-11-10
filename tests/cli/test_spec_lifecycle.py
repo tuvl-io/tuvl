@@ -9,8 +9,8 @@ from typer.testing import CliRunner
 
 from tuvl.cli import app
 from tuvl.cli.commands.init import _SAMPLE_TRIAGE_SPEC
-from tuvl.coding_agents import Settings, write_settings
-from tuvl.spec import ids, lifecycle
+from tuvl_insight.coding_agents import Settings, write_settings
+from tuvl_insight.spec import ids, lifecycle
 
 runner = CliRunner()
 
@@ -21,7 +21,7 @@ def project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     (p / "specs").mkdir(parents=True)
     write_settings(p, Settings("SK", "none"))
     monkeypatch.setattr(
-        "tuvl.gitutil.config_get",
+        "tuvl_insight.gitutil.config_get",
         lambda _p, key: {"user.name": "Ada", "user.email": "a@b.c"}.get(key, ""),
     )
     (p / "specs" / "triage.md").write_text(_SAMPLE_TRIAGE_SPEC)
@@ -142,7 +142,7 @@ def test_re_running_tasks_keeps_ids_and_the_plan_hash_follows_the_front_matter(
     first = yaml.safe_load(plan.read_text())
     run(project, "reopen", "spec", "triage")  # a front-matter-only change
     after = yaml.safe_load(plan.read_text())
-    from tuvl.spec.parse import parse_spec
+    from tuvl_insight.spec.parse import parse_spec
 
     assert after["metadata"]["spec_hash"] == parse_spec(spec_file(project)).hash
     run(project, "approve", "spec", "triage")
@@ -152,7 +152,7 @@ def test_re_running_tasks_keeps_ids_and_the_plan_hash_follows_the_front_matter(
 
 
 def test_actions_need_to_know_who_you_are(project: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("tuvl.gitutil.config_get", lambda _p, _k: "")
+    monkeypatch.setattr("tuvl_insight.gitutil.config_get", lambda _p, _k: "")
     (project / ".tuvl" / "agent.yaml").unlink()
     done = run(project, "approve", "spec", "triage")
     assert done.exit_code == 1 and "who you are" in done.output

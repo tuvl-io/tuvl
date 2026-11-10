@@ -8,9 +8,9 @@ from typing import Any
 import httpx
 import pytest
 
-from tuvl.spec import fetch as fetch_mod
-from tuvl.spec.fetch import FetchError, fetch, fetch_into, safe_url
 from tuvl.webhooks.guard import BlockedAddress
+from tuvl_insight.spec import fetch as fetch_mod
+from tuvl_insight.spec.fetch import FetchError, fetch, fetch_into, safe_url
 
 PUBLIC = "93.184.216.34"
 Route = Callable[[httpx.Request], httpx.Response] | httpx.Response

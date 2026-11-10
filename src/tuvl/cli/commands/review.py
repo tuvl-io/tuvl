@@ -10,9 +10,9 @@ import typer
 from rich.console import Console
 from rich.markup import escape
 
-from tuvl import gitutil
-from tuvl.review import Report, review_project
-from tuvl.review.rules import RULES
+from tuvl_insight import gitutil
+from tuvl_insight.review import Report, review_project
+from tuvl_insight.review.rules import RULES
 
 console = Console()
 _MARK = {"error": "[red]✗[/red]", "warning": "[yellow]![/yellow]", "info": "[dim]·[/dim]"}
@@ -119,7 +119,7 @@ def review_cmd(
     elif base:
         files = changed_python(project, base)
     elif spec or task:
-        from tuvl.review.scope import ScopeError, files_for
+        from tuvl_insight.review.scope import ScopeError, files_for
 
         try:
             files = files_for(project, spec, task or [])
@@ -226,12 +226,12 @@ def _agent_review(
     budget: float,
     timeout: float,
 ) -> _Opinion:
-    from tuvl import audit, gitflow
-    from tuvl.audit import trace
     from tuvl.cli import agent_run
-    from tuvl.coding_agents import read_settings, runner
-    from tuvl.review import agent as agent_review
-    from tuvl.review.static import python_files
+    from tuvl_insight import audit, gitflow
+    from tuvl_insight.audit import trace
+    from tuvl_insight.coding_agents import read_settings, runner
+    from tuvl_insight.review import agent as agent_review
+    from tuvl_insight.review.static import python_files
 
     settings = read_settings(project)
     author = settings.agent if settings else "none"
@@ -251,7 +251,7 @@ def _agent_review(
     diff = gitutil.out(project, "diff", f"{base}...HEAD", "--", *sources) if base else ""
     spec_text = ""
     if spec:
-        from tuvl.spec.lifecycle import LifecycleError, resolve_spec
+        from tuvl_insight.spec.lifecycle import LifecycleError, resolve_spec
 
         try:
             spec_text = resolve_spec(project, spec).read_text()

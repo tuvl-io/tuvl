@@ -11,14 +11,14 @@ import pytest
 import yaml
 from textual.widgets import Button, Tree
 
-from tuvl.audit import ledger, live
-from tuvl.coding_agents import Settings, write_settings
-from tuvl.spec import lifecycle
-from tuvl.spec.ideas import import_idea, plan_import
-from tuvl.tui import clipboard, commands
-from tuvl.tui.app import ConfirmScreen, PromptScreen, TuvlDevApp
-from tuvl.tui.engine import Engine
-from tuvl.tui.model import Node, build_tree
+from tuvl_insight.audit import ledger, live
+from tuvl_insight.coding_agents import Settings, write_settings
+from tuvl_insight.spec import lifecycle
+from tuvl_insight.spec.ideas import import_idea, plan_import
+from tuvl_insight.tui import clipboard, commands
+from tuvl_insight.tui.app import ConfirmScreen, PromptScreen, TuvlDevApp
+from tuvl_insight.tui.engine import Engine
+from tuvl_insight.tui.model import Node, build_tree
 
 
 @pytest.fixture
@@ -393,7 +393,7 @@ def test_the_model_groups_specs_under_their_idea(project: Path) -> None:
 
 def test_every_action_is_a_real_tuvl_command(project: Path) -> None:
     from tuvl.cli import app as cli
-    from tuvl.tui.actions import actions_for
+    from tuvl_insight.tui.actions import actions_for
 
     known = {c.name for c in cli.registered_commands} | {g.name for g in cli.registered_groups}
     root = build_tree(project)

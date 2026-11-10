@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from tuvl.audit import AuditError, append, emit, read_events, select, verify
-from tuvl.audit import ledger as lg
+from tuvl_insight.audit import AuditError, append, emit, read_events, select, verify
+from tuvl_insight.audit import ledger as lg
 
 WHO = {"initials": "SK", "git": "Ada <a@b.c>"}
 

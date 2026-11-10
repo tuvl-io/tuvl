@@ -10,10 +10,10 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from tuvl.audit import read_events, verify
 from tuvl.cli import app
-from tuvl.coding_agents import Settings, read_settings, write_settings
-from tuvl.spec import lifecycle
+from tuvl_insight.audit import read_events, verify
+from tuvl_insight.coding_agents import Settings, read_settings, write_settings
+from tuvl_insight.spec import lifecycle
 
 runner = CliRunner()
 FAKE = Path(__file__).resolve().parent.parent / "specgen" / "fake_agent.py"
@@ -30,7 +30,7 @@ def project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     (tmp_path / "gitconfig").write_text(
         "[user]\n\tname = Ada Lovelace\n\temail = ada@example.org\n"
     )
-    monkeypatch.setattr("tuvl.coding_agents.detect", lambda *a, **k: [])
+    monkeypatch.setattr("tuvl_insight.coding_agents.detect", lambda *a, **k: [])
     p = tmp_path / "proj"
     p.mkdir()
     for d in ("models", "workflows"):
@@ -137,7 +137,7 @@ def test_the_ledger_records_the_run_and_the_prompt_is_in_the_trace(project: Path
     assert (
         generated["entities"] == ["SPEC-AL-0001-01", "IDEA-AL-0001"] and generated["result"] == "ok"
     )
-    from tuvl.audit import trace
+    from tuvl_insight.audit import trace
 
     prompt = trace.load(project, generated["refs"]["prompt_sha256"])
     assert prompt and b"Customers get refunds within two days." in prompt
@@ -308,12 +308,12 @@ def remote(project: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Pa
     gh.write_text(f'#!/bin/sh\necho "$@" >> {log}\necho https://github.com/acme/app/pull/7\n')
     gh.chmod(gh.stat().st_mode | stat.S_IXUSR)
     monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
-    monkeypatch.setattr("tuvl.gitflow.gitutil.out", _fake_out(git))
+    monkeypatch.setattr("tuvl_insight.gitflow.gitutil.out", _fake_out(git))
     return bare
 
 
 def _fake_out(real):
-    from tuvl import gitutil
+    from tuvl_insight import gitutil
 
     original = gitutil.out
 

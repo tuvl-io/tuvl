@@ -10,10 +10,10 @@ import pytest
 from fastapi import FastAPI
 
 from tuvl.api.dev import router
-from tuvl.audit import ledger
 from tuvl.core.config import use_project
-from tuvl.spec import ids, lifecycle
-from tuvl.spec.ideas import import_idea, plan_import
+from tuvl_insight.audit import ledger
+from tuvl_insight.spec import ids, lifecycle
+from tuvl_insight.spec.ideas import import_idea, plan_import
 
 
 @pytest.fixture
@@ -224,8 +224,8 @@ async def test_a_spec_can_be_reopened_sent_back_and_approved_from_insight(
 async def test_a_task_shows_its_plan_entry_and_the_spec_section_it_comes_from(
     client: httpx.AsyncClient, project: Path
 ) -> None:
-    from tuvl.spec import tasks as plans
-    from tuvl.spec.parse import parse_spec
+    from tuvl_insight.spec import tasks as plans
+    from tuvl_insight.spec.parse import parse_spec
 
     name = "SPEC-SK-0001-01.md"
     spec_path = project / "specs" / name
@@ -314,7 +314,7 @@ async def test_a_blocked_task_says_why_and_is_not_built(
 async def test_a_failed_run_is_reported_with_every_attempt(
     client: httpx.AsyncClient, project: Path
 ) -> None:
-    from tuvl.audit import live
+    from tuvl_insight.audit import live
 
     name = "SPEC-SK-0001-01.md"
     (project / "specs" / "SPEC-SK-0001-01.tasks.yaml").write_text(
@@ -559,7 +559,7 @@ async def test_developer_telemetry_is_set_registered_and_read_from_insight(
 async def test_the_ideas_list_says_who_you_are_and_which_agent_you_use(
     client: httpx.AsyncClient, project: Path
 ) -> None:
-    from tuvl.coding_agents import Settings, write_settings
+    from tuvl_insight.coding_agents import Settings, write_settings
 
     assert (await client.get("/dev/ideas")).json()["me"] == {
         "initials": "",
@@ -684,7 +684,7 @@ async def test_a_spec_is_generated_with_the_agent_only_when_one_is_chosen_and_co
     import sys
 
     from tuvl.api.dev import jobs as dev
-    from tuvl.coding_agents import Settings, write_settings
+    from tuvl_insight.coding_agents import Settings, write_settings
 
     monkeypatch.setattr(
         dev,

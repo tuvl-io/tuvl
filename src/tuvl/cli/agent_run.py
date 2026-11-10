@@ -10,9 +10,9 @@ import typer
 from rich.console import Console
 from rich.markup import escape
 
-from tuvl import audit, gitutil
-from tuvl.coding_agents import detect, grant_consent, read_settings, runner
-from tuvl.spec import lifecycle
+from tuvl_insight import audit, gitutil
+from tuvl_insight.coding_agents import detect, grant_consent, read_settings, runner
+from tuvl_insight.spec import lifecycle
 
 console = Console()
 

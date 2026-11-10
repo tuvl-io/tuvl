@@ -27,7 +27,7 @@ def update_cmd(
     ] = False,
 ) -> None:
     """Refresh AGENTS.md and the skills to this tuvl version (removes the retired skills)."""
-    from tuvl import skills
+    from tuvl_insight import skills
 
     project = project_dir.resolve()
     changes = skills.plan(project)

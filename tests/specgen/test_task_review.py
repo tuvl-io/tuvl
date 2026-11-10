@@ -6,10 +6,10 @@ from pathlib import Path
 
 import pytest
 
-from tuvl import taskrun
-from tuvl.audit import read_events
-from tuvl.coding_agents import runner
-from tuvl.taskrun import Job, ReviewPlan
+from tuvl_insight import taskrun
+from tuvl_insight.audit import read_events
+from tuvl_insight.coding_agents import runner
+from tuvl_insight.taskrun import Job, ReviewPlan
 
 JOB = Job("TASK-SK-0004-01-002", "score", "agent", {"workflow": "w", "agent": "score"}, "flow-w")
 GOOD = 'from tuvl import agent\n\n\n@agent("score")\nasync def score(inp, ctx):\n    """d"""\n    return {"y": 1}, "ok"\n'

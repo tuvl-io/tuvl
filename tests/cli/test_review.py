@@ -10,9 +10,9 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from tuvl.audit import read_events
 from tuvl.cli import app
-from tuvl.coding_agents import Settings, write_settings
+from tuvl_insight.audit import read_events
+from tuvl_insight.coding_agents import Settings, write_settings
 
 runner = CliRunner()
 FAKE = Path(__file__).resolve().parent.parent / "specgen" / "fake_agent.py"
@@ -56,7 +56,7 @@ def git(cwd: Path, *args: str) -> str:
 def project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(tmp_path / "gc"))
     (tmp_path / "gc").write_text("[user]\n\tname = Ada\n\temail = a@b.c\n")
-    monkeypatch.setattr("tuvl.coding_agents.detect", lambda *a, **k: [])
+    monkeypatch.setattr("tuvl_insight.coding_agents.detect", lambda *a, **k: [])
     monkeypatch.setattr("tuvl.cli.agent_run.detect", lambda *a, **k: [])
     p = tmp_path / "p"
     (p / "agents").mkdir(parents=True)
@@ -183,7 +183,7 @@ def test_the_review_goes_to_json(project: Path) -> None:
 def test_the_review_can_be_posted_on_the_pull_request(
     project: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from tuvl import gitutil
+    from tuvl_insight import gitutil
 
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()

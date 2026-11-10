@@ -2,7 +2,7 @@ import pytest
 import yaml
 
 from tuvl.contract.schema import Task
-from tuvl.spec import ids
+from tuvl_insight.spec import ids
 
 
 def test_formats_and_derivation() -> None:

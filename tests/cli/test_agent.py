@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from tuvl.coding_agents import Settings, read_settings, write_settings
+from tuvl_insight.coding_agents import Settings, read_settings, write_settings
 
 ENTRY = "from tuvl.cli import main; main()"
 
@@ -328,10 +328,10 @@ def test_choosing_a_review_only_agent_says_so_and_it_cannot_write(
     import typer
 
     from tuvl.cli import agent_run
-    from tuvl.coding_agents import Detected, get
+    from tuvl_insight.coding_agents import Detected, get
 
     fake = [Detected(get("cursor"), "/x/agent", "1.0")]  # type: ignore[arg-type]
-    monkeypatch.setattr("tuvl.coding_agents.detect", lambda *a, **k: fake)
+    monkeypatch.setattr("tuvl_insight.coding_agents.detect", lambda *a, **k: fake)
     with pytest.raises(typer.Exit):  # the refusal is printed and nothing runs
         agent_run.choose_agent(project, "cursor")
     assert agent_run.choose_reviewer(project, "cursor", "claude").id == "cursor"

@@ -184,7 +184,7 @@ def test_pyproject_allows_prereleases_only_for_a_prerelease_tuvl(tmp_path, monke
 @pytest.fixture(autouse=True)
 def _no_agents(monkeypatch: pytest.MonkeyPatch) -> None:
     """Interactive init asks which agent to use only when one is installed; keep that out of these tests."""
-    monkeypatch.setattr("tuvl.coding_agents.detect", lambda *a, **k: [])
+    monkeypatch.setattr("tuvl_insight.coding_agents.detect", lambda *a, **k: [])
 
 
 # ── the pieces init is made of ───────────────────────────────────────────────

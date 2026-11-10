@@ -102,7 +102,7 @@ async def change_check(request: ChangeCheckRequest) -> dict[str, Any]:
     from tuvl.cli.commands.replay import replay_test
     from tuvl.contract.registry import WORKFLOWS
     from tuvl.contract.schema import WorkflowDocument
-    from tuvl.testing import run_test
+    from tuvl_insight.testing import run_test
 
     project = project_dir()
     try:

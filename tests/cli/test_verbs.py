@@ -119,7 +119,7 @@ def test_a_toolchain_command_without_the_toolchain_says_how_to_install_it() -> N
 def sample(tmp_path_factory: pytest.TempPathFactory) -> Path:
     from unittest import mock
 
-    with mock.patch("tuvl.coding_agents.detect", lambda *a, **k: []):
+    with mock.patch("tuvl_insight.coding_agents.detect", lambda *a, **k: []):
         root = tmp_path_factory.mktemp("verbs")
         res = runner.invoke(
             app, ["init", str(root / "demo"), "--sample", "--preset", "ollama", "-y", "--no-git"]

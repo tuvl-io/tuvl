@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from tuvl.spec import parse_text
-from tuvl.spec.check import check_spec
-from tuvl.spec.grammar import parse_structure
+from tuvl_insight.spec import parse_text
+from tuvl_insight.spec.check import check_spec
+from tuvl_insight.spec.grammar import parse_structure
 
 HERE = Path(__file__).parent / "grammar"
 EXISTING = {
@@ -143,7 +143,7 @@ def test_an_existing_model_resolves_to_the_project_schema(monkeypatch: pytest.Mo
     monkeypatch.setattr(
         types, "registry_resolver", lambda name, variant: project_post if name == "Post" else None
     )
-    monkeypatch.setattr("tuvl.spec.check.registry_resolver", types.registry_resolver)
+    monkeypatch.setattr("tuvl_insight.spec.check.registry_resolver", types.registry_resolver)
     text = """# Data
 - **Post** (existing)
 

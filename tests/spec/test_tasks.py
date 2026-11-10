@@ -10,8 +10,8 @@ import yaml
 from typer.testing import CliRunner
 
 from tuvl.contract.schema import TaskPlanDocument, TestDocument, WorkflowDocument
-from tuvl.spec import parse_text
-from tuvl.spec.tasks import ProjectState, TestOutcome, derive, spec_diff
+from tuvl_insight.spec import parse_text
+from tuvl_insight.spec.tasks import ProjectState, TestOutcome, derive, spec_diff
 
 SPEC = "# Flows\nRefund it.\n\n# Data\nRefund model.\n\n# Intent\nWhy.\n"
 
@@ -280,8 +280,8 @@ def test_a_loop_tool_is_covered_through_its_loop() -> None:
 
 
 def _plan_project(tmp_path: Path, tasks: list[dict[str, Any]]) -> tuple[Path, Any, Any]:
-    from tuvl.spec import parse_text
-    from tuvl.spec.grammar import parse_structure
+    from tuvl_insight.spec import parse_text
+    from tuvl_insight.spec.grammar import parse_structure
 
     text = (Path(__file__).parent / "grammar" / "refund-request.md").read_text()
     (tmp_path / "specs").mkdir()
@@ -307,9 +307,9 @@ def _codes(findings: list[Any]) -> dict[str, list[str]]:
 
 
 def test_no_task_list_is_a_coverage_warning(tmp_path: Path) -> None:
-    from tuvl.spec import parse_text
-    from tuvl.spec.grammar import parse_structure
-    from tuvl.spec.tasks import plan_findings
+    from tuvl_insight.spec import parse_text
+    from tuvl_insight.spec.grammar import parse_structure
+    from tuvl_insight.spec.tasks import plan_findings
 
     text = (Path(__file__).parent / "grammar" / "refund-request.md").read_text()
     findings = plan_findings(
@@ -319,7 +319,7 @@ def test_no_task_list_is_a_coverage_warning(tmp_path: Path) -> None:
 
 
 def test_task_list_findings(tmp_path: Path) -> None:
-    from tuvl.spec.tasks import plan_findings
+    from tuvl_insight.spec.tasks import plan_findings
 
     project, spec, structure = _plan_project(
         tmp_path,
@@ -369,7 +369,7 @@ def test_task_list_findings(tmp_path: Path) -> None:
 
 
 def test_findings_carry_the_task_list_file_and_line(tmp_path: Path) -> None:
-    from tuvl.spec.tasks import plan_findings
+    from tuvl_insight.spec.tasks import plan_findings
 
     project, spec, structure = _plan_project(
         tmp_path, [{"id": "T1", "title": "x", "type": "model", "target": {"model": "Nope"}}]

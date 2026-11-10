@@ -9,7 +9,7 @@ import pytest
 
 from tuvl.contract.schema import TestDocument, WorkflowDocument
 from tuvl.runtime.code import AGENT_REGISTRY
-from tuvl.testing import run_test
+from tuvl_insight.testing import run_test
 
 
 async def _double(inp: Any, ctx: Any) -> dict[str, Any]:

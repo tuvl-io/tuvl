@@ -20,15 +20,15 @@ router = APIRouter()
 
 @router.get("/specs/lifecycle", summary="Each spec's id, approval state and ideas (read-only)")
 async def spec_lifecycle() -> dict[str, Any]:
-    from tuvl.spec.views import lifecycle_view
+    from tuvl_insight.spec.views import lifecycle_view
 
     return {"specs": lifecycle_view(project_dir())}
 
 
 @router.get("/ideas", summary="The project's ideas and the specs drawn from them, and who you are")
 async def ideas() -> dict[str, Any]:
-    from tuvl.coding_agents import read_settings
-    from tuvl.spec.views import ideas_view
+    from tuvl_insight.coding_agents import read_settings
+    from tuvl_insight.spec.views import ideas_view
 
     saved = read_settings(project_dir())
     return {
@@ -45,8 +45,8 @@ async def ideas() -> dict[str, Any]:
 
 @router.get("/ideas/{idea_id}", summary="One idea: record, file previews, linked specs (read-only)")
 async def idea(idea_id: str) -> dict[str, Any]:
-    from tuvl.spec import ids
-    from tuvl.spec.views import idea_view
+    from tuvl_insight.spec import ids
+    from tuvl_insight.spec.views import idea_view
 
     if not ids.IDEA_ID.match(idea_id):
         raise HTTPException(400, "not an idea id")
@@ -86,8 +86,8 @@ async def upload_idea(
     """
     import tempfile
 
-    from tuvl.spec import ids
-    from tuvl.spec.views import idea_view
+    from tuvl_insight.spec import ids
+    from tuvl_insight.spec.views import idea_view
 
     project = project_dir()
     links = [u.strip() for u in urls if u.strip()]
@@ -151,8 +151,8 @@ class GenerateSpec(BaseModel):
 
 @router.post("/ideas/{idea_id}/spec", summary="tuvl generate spec --idea (your coding agent)")
 async def generate_spec_from_idea(idea_id: str, request: GenerateSpec) -> dict[str, str]:
-    from tuvl.coding_agents import read_settings
-    from tuvl.spec import ids
+    from tuvl_insight.coding_agents import read_settings
+    from tuvl_insight.spec import ids
 
     project = project_dir()
     if not ids.IDEA_ID.match(idea_id) or idea_id not in ids.idea_ids(project):
@@ -196,7 +196,7 @@ async def audit(
     limit: int = Query(200, ge=0, le=2000),
     after: str | None = Query(None, pattern=r"^[0-9A-Z]{26}$"),
 ) -> dict[str, Any]:
-    from tuvl.spec.views import audit_view
+    from tuvl_insight.spec.views import audit_view
 
     return audit_view(
         project_dir(), entity=entity, kind=kind, actor=actor, limit=limit, after=after
@@ -205,8 +205,8 @@ async def audit(
 
 @router.get("/specs/check", summary="tuvl lint spec --json")
 async def spec_check(spec: str | None = None) -> dict[str, Any]:
-    from tuvl.spec.check import check_report
-    from tuvl.spec.parse import SpecError
+    from tuvl_insight.spec.check import check_report
+    from tuvl_insight.spec.parse import SpecError
 
     try:
         return check_report(project_dir(), spec)
@@ -218,8 +218,8 @@ async def spec_check(spec: str | None = None) -> dict[str, Any]:
 async def spec_verify(
     spec: str | None = None, run_tests: bool = Query(True, alias="tests")
 ) -> dict[str, Any]:
-    from tuvl.spec.parse import SpecError
-    from tuvl.spec.verify import verify_report
+    from tuvl_insight.spec.parse import SpecError
+    from tuvl_insight.spec.verify import verify_report
 
     try:
         return await verify_report(project_dir(), spec, run_tests=run_tests)
@@ -231,7 +231,7 @@ async def spec_verify(
 async def spec_status(
     spec: str | None = None, run_tests: bool = Query(True, alias="tests")
 ) -> dict[str, Any]:
-    from tuvl.spec.tasks import TaskPlanError, status_report
+    from tuvl_insight.spec.tasks import TaskPlanError, status_report
 
     try:
         return await status_report(project_dir(), spec, run_tests=run_tests)
@@ -241,14 +241,14 @@ async def spec_status(
 
 @router.get("/specs/branches", summary="tuvl list branches --json")
 async def spec_branches(spec: str | None = None) -> dict[str, Any]:
-    from tuvl.spec.branches import report
+    from tuvl_insight.spec.branches import report
 
     return await asyncio.to_thread(report, project_dir(), Path(spec) if spec else None)
 
 
 @router.get("/specs/{name}/tasks/{task_id}", summary="One task and the spec section it comes from")
 async def spec_task(name: str, task_id: str) -> dict[str, Any]:
-    from tuvl.spec.tasks import task_detail
+    from tuvl_insight.spec.tasks import task_detail
 
     found = task_detail(project_dir(), task_id, Path(_spec_arg(name)))
     if found is None:
@@ -258,7 +258,7 @@ async def spec_task(name: str, task_id: str) -> dict[str, Any]:
 
 @router.get("/specs/diff", summary="tuvl show drift --json")
 async def spec_diff(spec: str | None = None) -> dict[str, Any]:
-    from tuvl.spec.tasks import TaskPlanError, diff_report
+    from tuvl_insight.spec.tasks import TaskPlanError, diff_report
 
     try:
         return diff_report(project_dir(), spec)
@@ -275,8 +275,8 @@ class BuildTask(BaseModel):
     "/specs/{name}/tasks/{task_id}/build", summary="tuvl generate code --task (your coding agent)"
 )
 async def build_task(name: str, task_id: str, request: BuildTask) -> dict[str, str]:
-    from tuvl.coding_agents import read_settings
-    from tuvl.spec.tasks import TaskPlanError, status_report
+    from tuvl_insight.coding_agents import read_settings
+    from tuvl_insight.spec.tasks import TaskPlanError, status_report
 
     try:
         report = await status_report(project_dir(), _spec_arg(name), run_tests=False)
@@ -367,7 +367,7 @@ class NewSpec(BaseModel):
 @router.post("/specs/new", summary="tuvl create spec")
 async def new_spec(request: NewSpec) -> dict[str, str]:
     from tuvl.cli.commands.spec import SPEC_TEMPLATE
-    from tuvl.spec.parse import slug
+    from tuvl_insight.spec.parse import slug
 
     stem = slug(request.name)
     target = project_dir() / "specs" / f"{stem}.md"

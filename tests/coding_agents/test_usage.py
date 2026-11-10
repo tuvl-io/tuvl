@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from tuvl.coding_agents.runner import ClaudeAdapter, RunResult, Usage
+from tuvl_insight.coding_agents.runner import ClaudeAdapter, RunResult, Usage
 
 
 def test_claude_reports_its_tokens() -> None:

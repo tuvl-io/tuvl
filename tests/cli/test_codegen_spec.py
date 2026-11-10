@@ -11,9 +11,9 @@ import pytest
 import yaml
 from typer.testing import CliRunner
 
-from tuvl.audit import live, read_events
 from tuvl.cli import app
-from tuvl.coding_agents import Settings, write_settings
+from tuvl_insight.audit import live, read_events
+from tuvl_insight.coding_agents import Settings, write_settings
 
 runner = CliRunner()
 FAKE = Path(__file__).resolve().parent.parent / "specgen" / "fake_agent.py"
@@ -46,7 +46,7 @@ def project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     (tmp_path / "gitconfig").write_text(
         "[user]\n\tname = Ada Lovelace\n\temail = ada@example.org\n"
     )
-    monkeypatch.setattr("tuvl.coding_agents.detect", lambda *a, **k: [])
+    monkeypatch.setattr("tuvl_insight.coding_agents.detect", lambda *a, **k: [])
     p = tmp_path / "proj"
     p.mkdir()
     for d in ("models", "workflows", "agents", "artifacts", "llms", "datasources"):
@@ -329,7 +329,7 @@ def remote(project: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Pa
     )
     gh.chmod(gh.stat().st_mode | stat.S_IXUSR)
     monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
-    from tuvl import gitutil
+    from tuvl_insight import gitutil
 
     real = gitutil.out
     monkeypatch.setattr(

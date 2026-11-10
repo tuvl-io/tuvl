@@ -3,7 +3,7 @@ import datetime as dt
 import pytest
 import yaml
 
-from tuvl.spec import lifecycle as lc
+from tuvl_insight.spec import lifecycle as lc
 
 SPEC = "---\nname: refunds\nowner: ops\n---\n# Intent\nRefund customers.\n"
 NOW = dt.datetime(2026, 10, 19, 12, 0, tzinfo=dt.UTC)
@@ -102,7 +102,7 @@ def test_resolve_by_id_stem_name_and_path(tmp_path) -> None:
 
 
 def test_idea_links_follow_the_specs_front_matter(tmp_path) -> None:
-    from tuvl.spec import ids
+    from tuvl_insight.spec import ids
 
     ids.write_index(
         tmp_path, [{"id": "IDEA-SK-0004", "specs": []}, {"id": "IDEA-SK-0005", "specs": []}]

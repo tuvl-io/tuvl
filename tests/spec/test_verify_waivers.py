@@ -1,10 +1,10 @@
 """A signal the spec waives is not the spec's to constrain: the workflow still has to route it."""
 
-from tuvl.codegen import scaffold
 from tuvl.contract.schema import WorkflowDocument
-from tuvl.spec.grammar import parse_structure
-from tuvl.spec.parse import parse_text
-from tuvl.spec.verify import verify_spec
+from tuvl_insight.codegen import scaffold
+from tuvl_insight.spec.grammar import parse_structure
+from tuvl_insight.spec.parse import parse_text
+from tuvl_insight.spec.verify import verify_spec
 
 SPEC = """---
 name: items

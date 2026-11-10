@@ -137,7 +137,7 @@ def test_the_steps_worst_case_is_the_sum_of_its_branches() -> None:
 
 
 def test_codegen_sees_the_code_branches() -> None:
-    from tuvl.codegen.schemas import class_base
+    from tuvl_insight.codegen.schemas import class_base
 
     code = {
         "id": "crm",

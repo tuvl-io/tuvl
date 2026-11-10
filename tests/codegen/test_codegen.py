@@ -12,11 +12,11 @@ import yaml
 from pydantic import BaseModel, ValidationError
 from typer.testing import CliRunner
 
-from tuvl import codegen
-from tuvl.codegen.schemas import CodegenError, render_schemas
-from tuvl.codegen.stubs import merge_stub, new_stub
 from tuvl.contract.schema import WorkflowDocument
-from tuvl.spec import parse_text
+from tuvl_insight import codegen
+from tuvl_insight.codegen.schemas import CodegenError, render_schemas
+from tuvl_insight.codegen.stubs import merge_stub, new_stub
+from tuvl_insight.spec import parse_text
 
 
 class Order(BaseModel):

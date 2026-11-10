@@ -1,11 +1,11 @@
 import yaml
 
 from tuvl.cli.commands.init import _SAMPLE_TRIAGE_SPEC
-from tuvl.codegen import scaffold
 from tuvl.contract.schema import WorkflowDocument
-from tuvl.spec.grammar import parse_structure
-from tuvl.spec.parse import parse_text
-from tuvl.spec.verify import verify_spec
+from tuvl_insight.codegen import scaffold
+from tuvl_insight.spec.grammar import parse_structure
+from tuvl_insight.spec.parse import parse_text
+from tuvl_insight.spec.verify import verify_spec
 
 SPEC = """---
 name: refunds

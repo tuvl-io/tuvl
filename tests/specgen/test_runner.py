@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from tuvl.coding_agents import runner
+from tuvl_insight.coding_agents import runner
 
 # what `claude -p --output-format json` printed in a real run (trimmed)
 CLAUDE_OK = json.dumps(

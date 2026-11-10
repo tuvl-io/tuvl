@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from tuvl.spec.grammar import parse_structure
-from tuvl.spec.verify import _family
+from tuvl_insight.spec.grammar import parse_structure
+from tuvl_insight.spec.verify import _family
 
 SPEC = """---
 name: gather

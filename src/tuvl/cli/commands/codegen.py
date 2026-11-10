@@ -128,12 +128,12 @@ def codegen_cmd(
     if task or all_tasks or no_agent:
         console.print("[red]--task, --all and --no-agent belong with --spec.[/red]")
         raise typer.Exit(2)
-    from tuvl import codegen
     from tuvl.contract.registry import WORKFLOWS
     from tuvl.core.artifacts.registry import ARTIFACT_REGISTRY
     from tuvl.core.config_loader import load_all_configs
     from tuvl.core.models.schemas import SCHEMA_REGISTRY
-    from tuvl.spec import SpecError, load_specs
+    from tuvl_insight import codegen
+    from tuvl_insight.spec import SpecError, load_specs
 
     project = project_dir.resolve()
     use_project(str(project))
@@ -195,10 +195,10 @@ def _spec_mode(
     review_blocking: str,
     reviewer: str | None,
 ) -> None:
-    from tuvl import taskrun
     from tuvl.cli import agent_run
-    from tuvl.coding_agents import runner
-    from tuvl.gitflow import GitFlowError
+    from tuvl_insight import taskrun
+    from tuvl_insight.coding_agents import runner
+    from tuvl_insight.gitflow import GitFlowError
 
     agent_run.need_git(project, "codegen --spec")
     if not no_agent and not tasks and not all_tasks:

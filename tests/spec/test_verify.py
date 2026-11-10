@@ -12,8 +12,8 @@ import pytest
 import yaml
 
 from tuvl.contract.schema import WorkflowDocument
-from tuvl.spec import parse_text
-from tuvl.spec.verify import model_definitions, verify_spec
+from tuvl_insight.spec import parse_text
+from tuvl_insight.spec.verify import model_definitions, verify_spec
 
 
 @pytest.fixture(scope="module")
@@ -142,7 +142,7 @@ async def test_task_status_follows_spec_check_and_verify(project: Path, tmp_path
     import shutil
 
     from tuvl.core.config import use_project
-    from tuvl.spec.tasks import status_report
+    from tuvl_insight.spec.tasks import status_report
 
     copy = tmp_path / "demo"
     shutil.copytree(project, copy)
@@ -164,7 +164,7 @@ async def test_task_status_follows_spec_check_and_verify(project: Path, tmp_path
 
 
 def test_boolean_defaults_match_their_yaml_value() -> None:
-    from tuvl.spec.verify import _same_default
+    from tuvl_insight.spec.verify import _same_default
 
     assert _same_default("false", False) and _same_default("1", "1") and _same_default("0", 0)
     assert not _same_default("true", False)

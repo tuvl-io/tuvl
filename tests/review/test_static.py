@@ -2,7 +2,7 @@ import textwrap
 
 import pytest
 
-from tuvl.review.static import AgentInfo, review_source
+from tuvl_insight.review.static import AgentInfo, review_source
 
 HEAD = "from tuvl import Ctx, agent\n"
 

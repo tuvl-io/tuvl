@@ -79,4 +79,4 @@ def test_code_agent_must_be_registered(tmp_path: Path) -> None:
 
 @pytest.fixture(autouse=True)
 def _no_agents(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("tuvl.coding_agents.detect", lambda *a, **k: [])
+    monkeypatch.setattr("tuvl_insight.coding_agents.detect", lambda *a, **k: [])

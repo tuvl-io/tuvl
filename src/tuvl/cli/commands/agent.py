@@ -11,7 +11,7 @@ from rich.console import Console
 from rich.markup import escape
 from rich.table import Table
 
-from tuvl.coding_agents import (
+from tuvl_insight.coding_agents import (
     AGENTS,
     VERIFIED_ON,
     Settings,
@@ -143,7 +143,7 @@ def use_cmd(
             )
     current = read_settings(project) or Settings()
     write_settings(project, Settings(current.initials, choice, current.consent, argv))
-    from tuvl import audit
+    from tuvl_insight import audit
 
     audit.emit(
         project, "agent.selected", command="use agent", detail=choice, refs={"agent": choice}

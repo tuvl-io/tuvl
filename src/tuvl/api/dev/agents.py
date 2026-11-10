@@ -52,7 +52,7 @@ def _agent_function(directory: Path, run: str) -> tuple[Path, int, str] | None:
 
 @router.get("/agents/{run}/source", summary="The Python function behind a code agent's code.run")
 async def agent_source(run: str, description: str = "") -> dict[str, Any]:
-    from tuvl.codegen.stubs import function_name
+    from tuvl_insight.codegen.stubs import function_name
 
     if not re.fullmatch(r"[A-Za-z_][\w.]*", run):
         raise HTTPException(400, "invalid code.run name")
@@ -108,8 +108,8 @@ async def save_agent_source(run: str, request: SourceWrite) -> dict[str, Any]:
     import ast
 
     from tuvl.api.code_assist import normalize
-    from tuvl.codegen.stubs import function_name
     from tuvl.runtime.code import load_agents
+    from tuvl_insight.codegen.stubs import function_name
 
     if not re.fullmatch(r"[A-Za-z_]\w*", run):
         raise HTTPException(400, "invalid code.run name (built-ins have no Python)")
@@ -175,7 +175,7 @@ class AssistRequest(BaseModel):
 )
 async def code_assist(run: str, request: AssistRequest) -> dict[str, Any]:
     from tuvl.api.code_assist import assist, assist_models
-    from tuvl.skills import skill_text
+    from tuvl_insight.skills import skill_text
 
     if not request.prompt.strip():
         raise HTTPException(422, "empty prompt")

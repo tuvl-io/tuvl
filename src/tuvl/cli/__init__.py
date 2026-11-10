@@ -204,9 +204,9 @@ def _project_of(argv: list[str]) -> Path:
 def main() -> None:
     import time
 
-    from tuvl import devtelemetry
-    from tuvl.coding_agents.runner import usage
     from tuvl.extras import MissingExtraError
+    from tuvl_insight import devtelemetry
+    from tuvl_insight.coding_agents.runner import usage
 
     started, code = time.perf_counter(), 0
     try:

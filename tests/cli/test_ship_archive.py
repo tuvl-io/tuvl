@@ -10,9 +10,9 @@ import pytest
 import yaml
 from typer.testing import CliRunner
 
-from tuvl import shiparchive, shipgate
 from tuvl.cli import app
-from tuvl.spec import lifecycle
+from tuvl_insight import shiparchive, shipgate
+from tuvl_insight.spec import lifecycle
 
 runner = CliRunner()
 
@@ -28,8 +28,8 @@ def tar_members(path: Path) -> dict[str, tarfile.TarInfo]:
 
 @pytest.fixture(autouse=True)
 def _offline(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("tuvl.coding_agents.detect", lambda *a, **k: [])
-    monkeypatch.setattr("tuvl.shipgate.uv_lock_current", lambda project: None)
+    monkeypatch.setattr("tuvl_insight.coding_agents.detect", lambda *a, **k: [])
+    monkeypatch.setattr("tuvl_insight.shipgate.uv_lock_current", lambda project: None)
 
 
 @pytest.fixture
@@ -143,7 +143,8 @@ def test_both_formats_and_a_chosen_output_folder(
 
 def test_the_archive_needs_a_current_uv_lock(demo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
-        "tuvl.shipgate.uv_lock_current", lambda project: "uv.lock is out of date: run `uv lock`"
+        "tuvl_insight.shipgate.uv_lock_current",
+        lambda project: "uv.lock is out of date: run `uv lock`",
     )
     refused = ship(demo, "--format", "archive")
     assert refused.exit_code == 1 and "uv.lock is out of date" in " ".join(refused.output.split())
@@ -234,7 +235,7 @@ def test_uncommitted_changes_stop_the_ship_in_a_repository(
 
 
 def test_packaging_is_recorded_in_the_ledger(demo: Path) -> None:
-    from tuvl.audit import read_events
+    from tuvl_insight.audit import read_events
 
     ship(demo, "--format", "archive")
     event = read_events(demo)[-1]

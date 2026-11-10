@@ -5,8 +5,8 @@ from pathlib import Path
 import pytest
 import yaml
 
-from tuvl.spec import ids
-from tuvl.spec.ideas import IdeaError, extract_text, import_idea, plan_import
+from tuvl_insight.spec import ids
+from tuvl_insight.spec.ideas import IdeaError, extract_text, import_idea, plan_import
 
 W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 
@@ -188,7 +188,7 @@ def test_extracted_text_lands_next_to_the_source(tmp_path: Path) -> None:
 
 
 def test_a_failed_import_leaves_nothing_behind(brief: Path, tmp_path: Path, monkeypatch) -> None:
-    import tuvl.spec.ideas as module
+    import tuvl_insight.spec.ideas as module
 
     def boom(_path: Path) -> tuple[None, None]:
         raise RuntimeError("disk full")

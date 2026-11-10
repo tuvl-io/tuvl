@@ -1,7 +1,7 @@
 import pytest
 
-from tuvl import taskrun
-from tuvl.taskrun import Job
+from tuvl_insight import taskrun
+from tuvl_insight.taskrun import Job
 
 
 def jobs() -> list[Job]:

@@ -17,7 +17,7 @@ from tuvl.core.artifacts import registry as artifacts
 from tuvl.core.artifacts.registry import ArtifactEntry, ArtifactVersion
 from tuvl.runtime import judges
 from tuvl.runtime.code import AGENT_REGISTRY
-from tuvl.testing import run_test
+from tuvl_insight.testing import run_test
 
 
 async def _score(inp: Any, ctx: Any) -> tuple[dict[str, Any], str]:

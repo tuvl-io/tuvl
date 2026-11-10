@@ -1,4 +1,4 @@
-from tuvl.coding_agents import AGENTS, detect, get, initials_from, valid_initials
+from tuvl_insight.coding_agents import AGENTS, detect, get, initials_from, valid_initials
 
 
 def test_every_agent_has_a_unique_id_and_a_documented_invocation() -> None:

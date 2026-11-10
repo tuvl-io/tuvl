@@ -5,8 +5,8 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
-from tuvl import gitutil
 from tuvl.doctor import Check, Context, Fix, group
+from tuvl_insight import gitutil
 
 
 @group("git", toolchain=True)
@@ -70,7 +70,7 @@ def skills_group(ctx: Context) -> list[Check]:
 
 @group("agent", toolchain=True)
 def agent_group(ctx: Context) -> list[Check]:
-    from tuvl.coding_agents import detect, get, read_settings, runner
+    from tuvl_insight.coding_agents import detect, get, read_settings, runner
 
     settings = read_settings(ctx.project)
     if settings is None:
@@ -145,7 +145,7 @@ def agent_group(ctx: Context) -> list[Check]:
 
 @group("ideas", toolchain=True)
 def ideas_group(ctx: Context) -> list[Check]:
-    from tuvl.spec import ids
+    from tuvl_insight.spec import ids
 
     root = ids.idea_dir(ctx.project)
     if not root.is_dir():
@@ -207,7 +207,7 @@ def _base_conflicts(project: Path, on_disk: set[str]) -> list[Check]:
 
 @group("audit", toolchain=True)
 def audit_group(ctx: Context) -> list[Check]:
-    from tuvl.audit import ledger
+    from tuvl_insight.audit import ledger
 
     if not ledger.files(ctx.project):
         return [Check("audit", "ledger", "ok", "no events recorded yet")]

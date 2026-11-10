@@ -29,7 +29,7 @@ from tuvl.cli.commands.validate import _print_report, run_validation
 from tuvl.extras import EXTRAS
 
 if TYPE_CHECKING:
-    from tuvl import shiparchive
+    from tuvl_insight import shiparchive
 
 console = Console()
 
@@ -499,7 +499,7 @@ def ship_cmd(
         strict_lock=want_archive,
     )
 
-    from tuvl import shipgate
+    from tuvl_insight import shipgate
 
     image_files = _image_files(
         project_dir,
@@ -567,7 +567,7 @@ def ship_cmd(
         if built_archive
         else ""
     )
-    from tuvl import audit
+    from tuvl_insight import audit
 
     audit.emit(
         project_dir,
@@ -614,8 +614,8 @@ def _run_gate(
     project_dir: Path, *, allow_incomplete: bool, allow_dirty: bool, strict_lock: bool
 ) -> str:
     """The deterministic gate before anything is packaged; returns the git commit being shipped."""
-    from tuvl import shipgate
-    from tuvl.review import review_project
+    from tuvl_insight import shipgate
+    from tuvl_insight.review import review_project
 
     errors: list[str] = []
     gate = shipgate.spec_gate(project_dir, allow_incomplete=allow_incomplete)
@@ -668,7 +668,7 @@ def _build_archive(
     out_dir: Path,
     fmt: str,
 ) -> shiparchive.Built:
-    from tuvl import shiparchive
+    from tuvl_insight import shiparchive
 
     pin = f"tuvl[{','.join(extras)}]=={locked_version}" if extras else f"tuvl=={locked_version}"
     locked = "uv.lock" in files

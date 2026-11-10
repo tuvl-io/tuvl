@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from tuvl.spec import SpecError, example_to_test, load_specs, parse_text
+from tuvl_insight.spec import SpecError, example_to_test, load_specs, parse_text
 
 SPEC = """---
 name: refund-automation

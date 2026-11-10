@@ -56,7 +56,7 @@ def replay_cmd(
     from tuvl.core.config import settings
     from tuvl.core.config_loader import load_all_configs
     from tuvl.runtime.code import load_agents
-    from tuvl.testing import run_test
+    from tuvl_insight.testing import run_test
 
     project = project_dir.resolve()
     use_project(str(project))

@@ -12,7 +12,7 @@ from typing import Any
 import pytest
 from typer.testing import CliRunner
 
-from tuvl.devmcp import build_server
+from tuvl_insight.devmcp import build_server
 
 
 @pytest.fixture(scope="module")

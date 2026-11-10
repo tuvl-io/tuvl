@@ -15,8 +15,8 @@ from tuvl.core.models.loader import MODEL_REGISTRY
 from tuvl.runtime import journal, queue
 from tuvl.runtime.code import AGENT_REGISTRY
 from tuvl.runtime.models import SystemRunEvent
-from tuvl.testing import run_test
-from tuvl.testing.runner import _database
+from tuvl_insight.testing import run_test
+from tuvl_insight.testing.runner import _database
 
 
 async def test_a_rollback_in_one_session_does_not_undo_a_seq_another_allocated() -> None:

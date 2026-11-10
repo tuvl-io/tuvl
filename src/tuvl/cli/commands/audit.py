@@ -15,7 +15,7 @@ import typer
 from rich.console import Console
 from rich.markup import escape
 
-from tuvl.audit import ledger, trace
+from tuvl_insight.audit import ledger, trace
 
 console = Console()
 audit_app = typer.Typer(

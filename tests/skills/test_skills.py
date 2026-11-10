@@ -9,9 +9,9 @@ from typing import get_args
 import yaml
 from typer.testing import CliRunner
 
-from tuvl import skills
 from tuvl.cli import app
 from tuvl.contract.schema import Effect
+from tuvl_insight import skills
 
 EXPECTED = {
     "tuvl-spec",

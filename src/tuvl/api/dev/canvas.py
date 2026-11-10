@@ -77,7 +77,7 @@ class ReplayRequest(BaseModel):
 async def replay(request: ReplayRequest) -> dict[str, Any]:
     from tuvl.cli.commands.replay import replay_test
     from tuvl.contract.registry import WORKFLOWS
-    from tuvl.testing import run_test
+    from tuvl_insight.testing import run_test
 
     project = project_dir()
     results = []
