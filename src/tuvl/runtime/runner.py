@@ -68,7 +68,7 @@ def workflow_hash(doc: WorkflowDocument) -> str:
 
 
 @dataclass
-class _State:
+class RunState:
     run: SystemRun
     doc: WorkflowDocument
     context: dict[str, Any]
@@ -117,7 +117,7 @@ class Runner:
                 if state.data is not None:
                     await state.data.close()
 
-    async def walk(self, state: _State, lease: Lease) -> None:
+    async def walk(self, state: RunState, lease: Lease) -> None:
         by_id = {a.id: a for a in state.doc.spec.agents}
         while True:
             if lease.lost.is_set():
@@ -150,7 +150,7 @@ class Runner:
 
         return WORKFLOWS
 
-    async def load(self, run_id: uuid.UUID, lease: Lease) -> _State | None:
+    async def load(self, run_id: uuid.UUID, lease: Lease) -> RunState | None:
         async with AsyncSession(self.engine, expire_on_commit=False) as s:
             run = await s.get(SystemRun, run_id)
             if run is None:
@@ -184,10 +184,10 @@ class Runner:
             )
             await s.commit()
         if cp is None:
-            return _State(
+            return RunState(
                 run, doc, dict(run.input), [], doc.spec.entry, 0, run.workflow_hash, depth
             )
-        return _State(
+        return RunState(
             run,
             doc,
             dict(cp.context),
@@ -201,7 +201,7 @@ class Runner:
 
     # ── one agent ────────────────────────────────────────────────────────────
 
-    def model(self, state: _State, agent: Any, which: str) -> type[BaseModel]:
+    def model(self, state: RunState, agent: Any, which: str) -> type[BaseModel]:
         key = (state.workflow_hash, agent.id, which)
         if key not in self._models:
             fields = agent.inputs if which == "inputs" else agent.outputs_for(which)
@@ -210,7 +210,7 @@ class Runner:
             )
         return self._models[key]
 
-    async def step(self, state: _State, lease: Lease, agent: Any) -> str:
+    async def step(self, state: RunState, lease: Lease, agent: Any) -> str:
         """One agent invocation, in its own span and between its hooks. ``"control"``
         means an operator request is pending and nothing ran."""
         if not await self.start_agent(state, agent):
@@ -247,7 +247,7 @@ class Runner:
                 )
         return outcome
 
-    async def start_agent(self, state: _State, agent: Any) -> bool:
+    async def start_agent(self, state: RunState, agent: Any) -> bool:
         """Journal ``agent_started`` unless an operator request (pause, abort …) is
         pending; the ``control`` read and the event share one statement and transaction."""
         run_id = state.run.id
@@ -263,7 +263,7 @@ class Runner:
             await s.commit()
         return True
 
-    async def run_agent(self, state: _State, lease: Lease, agent: Any) -> str:
+    async def run_agent(self, state: RunState, lease: Lease, agent: Any) -> str:
         state.last, state.attempts = None, 0
         started = time.monotonic()
         raw = {k: state.context[k] for k in agent.inputs if k in state.context}
@@ -291,7 +291,7 @@ class Runner:
                 continue
             return await self.complete(state, lease, agent, result, session, started)
 
-    async def discard(self, state: _State, session: AsyncSession) -> None:
+    async def discard(self, state: RunState, session: AsyncSession) -> None:
         """Throw away one attempt's writes before a retry."""
         if state.data is not None:
             await state.savepoint.rollback()
@@ -300,7 +300,7 @@ class Runner:
             await session.close()
 
     async def complete_per_run(
-        self, state: _State, lease: Lease, agent: Any, result: AgentResult, started: float
+        self, state: RunState, lease: Lease, agent: Any, result: AgentResult, started: float
     ) -> str:
         """``per_run``: keep or drop this step's savepoint; journal and the run
         row are written outside the run's transaction (observability)."""
@@ -391,7 +391,7 @@ class Runner:
 
     async def complete(
         self,
-        state: _State,
+        state: RunState,
         lease: Lease,
         agent: Any,
         result: AgentResult,
@@ -527,7 +527,7 @@ class Runner:
     async def claim_seqs(
         self,
         session: AsyncSession,
-        state: _State,
+        state: RunState,
         lease: Lease,
         count: int,
         tokens: int,
@@ -546,14 +546,14 @@ class Runner:
 
     # ── control, ends, failure ───────────────────────────────────────────────
 
-    def dev_pause_possible(self, state: _State) -> bool:
+    def dev_pause_possible(self, state: RunState) -> bool:
         """Whether :meth:`dev_pause` could pause before the next agent. When it cannot,
         the operator-control check is folded into :meth:`start_agent`."""
         from tuvl.runtime import devtools
 
         return state.data is None and devtools.enabled()
 
-    async def honour_control(self, state: _State, lease: Lease) -> bool:
+    async def honour_control(self, state: RunState, lease: Lease) -> bool:
         async with AsyncSession(self.engine) as s:
             row = (
                 await queue._execute(
@@ -589,7 +589,7 @@ class Runner:
             return True
         return False
 
-    async def dev_pause(self, state: _State, lease: Lease) -> bool:
+    async def dev_pause(self, state: RunState, lease: Lease) -> bool:
         """Dev-mode breakpoints and step mode: pause before the next agent."""
         from tuvl.runtime import devtools
 
@@ -610,7 +610,7 @@ class Runner:
             await s.commit()
         return True
 
-    async def finish(self, state: _State, lease: Lease, end: str) -> None:
+    async def finish(self, state: RunState, lease: Lease, end: str) -> None:
         spec = state.doc.spec.outputs.get(end)
         status_code, body = (spec.status, render(spec.body, state.context)) if spec else (200, None)
         output = {"status": status_code, "body": body}
@@ -666,7 +666,7 @@ class Runner:
 
     async def end_with_error(
         self,
-        state: _State,
+        state: RunState,
         lease: Lease,
         error_type: str,
         message: str,
@@ -711,7 +711,7 @@ class Runner:
 
     # ── compensation (spec §14.7) ────────────────────────────────────────────
 
-    async def compensate(self, state: _State, lease: Lease) -> str | None:
+    async def compensate(self, state: RunState, lease: Lease) -> str | None:
         """Run the compensators of completed agents, newest first. Returns
         ``None`` when nothing needed compensating."""
         by_id = {a.id: a for a in state.doc.spec.agents}
@@ -855,7 +855,7 @@ class Runner:
             await asyncio.sleep(poll)
 
     async def call_engine(
-        self, state: _State, agent: Any, view: dict[str, Any], key: str
+        self, state: RunState, agent: Any, view: dict[str, Any], key: str
     ) -> tuple[AgentResult, AsyncSession]:
         """Run *agent*'s engine once in a fresh session (returned uncommitted),
         or — under ``per_run`` — in a savepoint of the run's session."""

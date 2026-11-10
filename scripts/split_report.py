@@ -105,6 +105,34 @@ def core_used_by_tooling() -> list[str]:
     return sorted({t for m in tooling for t in edges[m] if t not in tooling})
 
 
+def private_imports() -> list[tuple[str, str]]:
+    """Tooling modules that import a private (underscore) name from the core: (module, "tuvl.x._name")."""
+    sizes, _ = scan()
+    found = []
+    for module in sorted(m for m in sizes if is_tooling(m)):
+        path = next(
+            r.joinpath(*module.split(".")).with_suffix(".py")
+            if not r.joinpath(*module.split(".")).is_dir()
+            else r.joinpath(*module.split("."), "__init__.py")
+            for r in ROOTS
+            if r.joinpath(*module.split(".")).with_suffix(".py").exists()
+            or r.joinpath(*module.split("."), "__init__.py").exists()
+        )
+        for node in ast.walk(ast.parse(path.read_text())):
+            if (
+                isinstance(node, ast.ImportFrom)
+                and node.level == 0
+                and node.module
+                and node.module.split(".")[0] == "tuvl"
+            ):
+                found += [
+                    (module, f"{node.module}.{a.name}")
+                    for a in node.names
+                    if a.name.startswith("_") and not a.name.startswith("__")
+                ]
+    return found
+
+
 def main() -> int:
     sizes, edges = scan()
     tooling = {m for m in sizes if is_tooling(m)}
