@@ -138,6 +138,8 @@ jobs:
           $RUNNER_TEMP/fresh/bin/tuvl --version
           $RUNNER_TEMP/fresh/bin/tuvl check system --help > /dev/null
           $RUNNER_TEMP/fresh/bin/tuvl generate rls --help > /dev/null
+          $RUNNER_TEMP/fresh/bin/tuvl serve app --help > /dev/null
+          $RUNNER_TEMP/fresh/bin/tuvl pin run --help > /dev/null
           set +e; $RUNNER_TEMP/fresh/bin/tuvl init demo -y 2> $RUNNER_TEMP/hint.txt; code=$?; set -e
           test "$code" = 2 && grep -q "tuvl\[standard\]" $RUNNER_TEMP/hint.txt
           # the bare install may skip only the modules that need an extra; with every extra and tuvl-insight, none
