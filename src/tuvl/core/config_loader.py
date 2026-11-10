@@ -67,13 +67,13 @@ _SCAN_EXCLUDE: frozenset[str] = frozenset(
 _DEV_KINDS: frozenset[str] = frozenset({"Test", "TaskPlan"})
 
 # Kinds that are intentionally NOT handled by the central loader
-_SKIP_KINDS: frozenset[str] = frozenset(
+SKIP_KINDS: frozenset[str] = frozenset(
     {"ProjectConfig", "TelemetryConfig", "SystemConfig", "test", "Idea", "IdeaIndex"}
 )
 
 # Processing order — earlier kinds must be registered before later ones
 # (e.g. collections reference embeddings, workflows reference collections)
-_PROCESS_ORDER: list[str] = [
+PROCESS_ORDER: list[str] = [
     "Artifact",
     "AgentModel",
     "ModelDefinition",
@@ -91,7 +91,7 @@ _PROCESS_ORDER: list[str] = [
 ]
 
 
-def _walk_yaml_files(root: pathlib.Path) -> Iterator[pathlib.Path]:
+def walk_yaml_files(root: pathlib.Path) -> Iterator[pathlib.Path]:
     """Yield every ``*.yaml`` path under *root*, skipping excluded dirs."""
     for dirpath, dirnames, filenames in os.walk(root):
         # Prune excluded dirs in-place so os.walk does not descend into them
@@ -192,7 +192,7 @@ def load_all_configs(
     by_kind: dict[str, list[tuple[dict[str, Any], str]]] = defaultdict(list)
     unknown_kinds: set[str] = set()
 
-    for yaml_path in _walk_yaml_files(root):
+    for yaml_path in walk_yaml_files(root):
         try:
             with open(yaml_path) as f:
                 docs = [d for d in yaml.safe_load_all(f) if d is not None]
@@ -218,10 +218,10 @@ def load_all_configs(
                 continue
 
             kind = data["kind"]
-            if kind in _SKIP_KINDS:
+            if kind in SKIP_KINDS:
                 continue
 
-            if kind not in _PROCESS_ORDER:
+            if kind not in PROCESS_ORDER:
                 unknown_kinds.add(kind)
                 continue
 
@@ -261,7 +261,7 @@ def load_all_configs(
         "TaskPlan": lambda data, filename="<unknown>": None,
     }
 
-    for kind in _PROCESS_ORDER:
+    for kind in PROCESS_ORDER:
         entries = by_kind.get(kind, [])
         if not entries:
             continue
