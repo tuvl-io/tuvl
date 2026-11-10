@@ -12,6 +12,10 @@ release below is the current one.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Insight: the collapsed menu could not be expanded on a short window.** The icon rail kept its expand button below the icons, so in any window shorter than the rail (about 900 px, a typical laptop browser) the button was off screen, and the pages at the bottom (IAM, Federation, API Docs, Settings) were unreachable. The button now sits under the logo, the icons scroll, and the app height follows the visible viewport (`100dvh`), so a browser toolbar no longer covers the bottom of the page.
+
 ### Changed
 
 - **Listing a project in the Nest is open and checked by a git tag, not by GitHub sign-in.** `tuvl register project` (and Insight → Settings → Project →
