@@ -1008,7 +1008,7 @@ def _write_pyproject(path: Path, *, name: str) -> None:
         prerelease = re.search(r"(a|b|rc|\.dev)\d", tuvl_version) is not None
     except importlib.metadata.PackageNotFoundError:
         tuvl_dep = '"tuvl"'
-        tuvl_dev_dep = '"tuvl[standard]>=2.0.3"'
+        tuvl_dev_dep = '"tuvl[standard]>=2.1.0b1"'
         prerelease = True
     content = (
         "# ── tuvl project ─────────────────────────────────────────────────────────────\n"
@@ -1045,7 +1045,7 @@ def _write_pyproject(path: Path, *, name: str) -> None:
         "]\n"
         "\n"
         "[tool.uv]\n"
-        + ('prerelease = "allow"  # tuvl 2.0 is still in beta\n' if prerelease else "")
+        + ('prerelease = "allow"  # this tuvl release is a pre-release\n' if prerelease else "")
         + "# uv manages the virtual environment.\n"
         "# Run: uv sync          — install / refresh the venv\n"
         "# Run: uv add <pkg>     — add a new runtime dependency\n"
