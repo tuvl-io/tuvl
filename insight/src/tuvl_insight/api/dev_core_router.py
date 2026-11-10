@@ -331,104 +331,48 @@ def _registrable_record() -> dict:
 
 @router.post("/project/register/preview")
 async def register_preview(body: dict):
-    """The exact payload a registration would send."""
+    """The exact payload a registration would send, and what verification would do."""
     from tuvl.core.project_info import registration_payload
+    from tuvl_insight import registration
     from tuvl_insight.cli.nest import nest_url
 
     record = _registrable_record()
     payload = registration_payload(record, tuvl_version=_engine_version())
-    return {"nest": nest_url(body.get("nest")), "payload": payload}
-
-
-async def _post_registration(url: str, token: str, body: dict):
-    import httpx
-
-    from tuvl.core.project_info import record_registration, registration_payload
-
-    record = _registrable_record()
-    payload = registration_payload(record, tuvl_version=_engine_version())
-    async with httpx.AsyncClient(timeout=30) as http:
-        res = await http.post(
-            f"{url}/api/register-project",
-            json=payload,
-            headers={"Authorization": f"Bearer {token}"},
-        )
-    if res.status_code == 401:
-        return None
-    if res.status_code >= 400:
-        detail = res.json().get("detail", res.text) if res.content else res.status_code
-        raise HTTPException(status_code=502, detail=f"The Nest rejected the registration: {detail}")
-    from datetime import UTC, datetime
-
-    updated = record_registration(
-        settings.project_dir,
-        url,
-        when=datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    found = await asyncio.to_thread(
+        registration.plan, settings.project_dir, record, str(body.get("remote") or "origin")
     )
-    return _project_view(updated)
-
-
-async def _device_start(url: str) -> dict:
-    import httpx
-
-    from tuvl_insight.cli.nest import PROVIDER
-
-    try:
-        async with httpx.AsyncClient(timeout=20) as http:
-            res = await http.post(f"{url}/auth/oauth/{PROVIDER}/device/start")
-    except httpx.HTTPError as exc:
-        raise HTTPException(status_code=502, detail=f"Could not reach {url}: {exc}") from exc
-    if res.status_code != 200:
-        raise HTTPException(
-            status_code=502, detail=f"The Nest refused the login ({res.status_code})."
-        )
-    body: dict[str, Any] = res.json()
-    return body
+    return {"nest": nest_url(body.get("nest")), "payload": payload, "verification": found.as_dict()}
 
 
 @router.post("/project/register")
 async def register_project(body: dict):
-    """Register or update the listing. Starts a GitHub device login when none is cached."""
-    from tuvl_insight.cli.nest import cached_token, forget_token, nest_url
+    """List the project (open, no sign-in). With ``verify: true`` (the developer's consent in the dialog) it
+    also pushes the Nest's one-time tag to the project's git remote with the developer's own git credentials
+    and reports the result; the label says how far the listing was checked."""
+    from tuvl.core.project_info import load_project
+    from tuvl_insight import registration
+    from tuvl_insight.cli.nest import NestError, nest_url
 
-    url = nest_url(body.get("nest"))
-    token = cached_token(url)
-    if token:
-        done = await _post_registration(url, token, body)
-        if done is not None:
-            return {"status": "registered", "project": done}
-        forget_token(url)
-    start = await _device_start(url)
-    return {"status": "login_required", "nest": url, **start}
-
-
-@router.post("/project/register/poll")
-async def register_poll(body: dict):
-    """Poll the device login; on approval, complete the registration."""
-    import httpx
-
-    from tuvl_insight.cli.nest import PROVIDER, nest_url, store_token
-
-    url = nest_url(body.get("nest"))
-    handle = str(body.get("handle", ""))
-    if not handle:
-        raise HTTPException(status_code=422, detail="handle is required")
+    record = _registrable_record()
     try:
-        async with httpx.AsyncClient(timeout=20) as http:
-            res = await http.post(
-                f"{url}/auth/oauth/{PROVIDER}/device/poll", json={"handle": handle}
-            )
-    except httpx.HTTPError as exc:
-        raise HTTPException(status_code=502, detail=f"Could not reach {url}: {exc}") from exc
-    if res.status_code == 428:
-        slow = res.json().get("detail") == "slow_down"
-        return {"status": "pending", "slow_down": slow}
-    if res.status_code != 200:
-        detail = res.json().get("detail", res.text) if res.content else res.status_code
-        raise HTTPException(status_code=502, detail=f"Login failed: {detail}")
-    token = str(res.json()["access_token"])
-    store_token(url, token)
-    done = await _post_registration(url, token, body)
-    if done is None:
-        raise HTTPException(status_code=502, detail="The Nest did not accept the new login.")
-    return {"status": "registered", "project": done}
+        outcome = await asyncio.to_thread(
+            registration.register_project,
+            settings.project_dir,
+            record,
+            nest_url(body.get("nest")),
+            tuvl_version=_engine_version(),
+            verify=bool(body.get("verify")),
+            remote=str(body.get("remote") or "origin"),
+            keep_tag=bool(body.get("keep_tag")),
+        )
+    except NestError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return {
+        "status": "registered",
+        "label": outcome.label,
+        "claim": outcome.claim,
+        "applied": outcome.applied,
+        "pushed": outcome.pushed,
+        "notes": outcome.notes,
+        "project": _project_view(load_project(settings.project_dir) or record),
+    }

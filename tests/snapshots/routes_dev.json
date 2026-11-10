@@ -122,7 +122,6 @@
  "POST /dev/judges/label": "judge_label",
  "POST /dev/judges/try": "judge_try",
  "POST /dev/project/register": "register_project",
- "POST /dev/project/register/poll": "register_poll",
  "POST /dev/project/register/preview": "register_preview",
  "POST /dev/rules/try": "rules_try",
  "POST /dev/runs/replay": "replay",
