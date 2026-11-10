@@ -85,8 +85,11 @@ uv tool install "tuvl[standard]"     # CLI + Insight (dev UI)
 uv add "tuvl[standard]"
 ```
 
-`tuvl` alone is the production server; `[standard]` adds **Insight**, served only in dev mode, and the
-development tools (`tuvl generate code`, `tuvl run tests`, `tuvl serve mcp`). Features with their own packages are
+`tuvl` alone is the engine and the production CLI: it parses the YAML, talks to the database and serves the API
+(`tuvl serve app`, `run workflow`, `list runs`, `check system`, `generate key`, ...). `[standard]` adds the
+`tuvl-insight` package: **Insight** (served only in dev mode) and the development tools (`tuvl init`, `dev`, `ship`,
+`lint project`, `generate code`, `run tests`, `serve mcp`). On a bare install those commands answer with how to install
+them. See [Core and Insight](docs/core-and-insight.md). Features with their own packages are
 extras: `tuvl[mcp]`, `tuvl[redis]`, `tuvl[vector]`, `tuvl[otel-grpc]`. `tuvl ship` installs only the ones a project uses.
 
 ## Quick start

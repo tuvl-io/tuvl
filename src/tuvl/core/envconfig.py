@@ -302,9 +302,9 @@ def register_env_config_from_dict(data: dict[str, Any], filename: str = "<unknow
 
 def yaml_files(root: Path) -> Iterator[Path]:
     """The project's YAML documents, without the `deploy/` directory that `tuvl ship` writes."""
-    from tuvl.core.config_loader import _walk_yaml_files
+    from tuvl.core.config_loader import walk_yaml_files
 
-    for path in _walk_yaml_files(root):
+    for path in walk_yaml_files(root):
         if "deploy" not in path.relative_to(root).parts[:-1]:
             yield path
 

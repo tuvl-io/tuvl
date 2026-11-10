@@ -24,9 +24,9 @@ from tuvl.core.artifacts.kinds import (
 )
 from tuvl.core.auth.schemas import SCOPE_NAME_RE
 from tuvl.core.bootstrap import VALID_DEPLOYMENT_MODES
-from tuvl.core.config_loader import _PROCESS_ORDER as _RUNTIME_KINDS
-from tuvl.core.config_loader import _SKIP_KINDS as _RUNTIME_SKIP_KINDS
-from tuvl.core.config_loader import _walk_yaml_files
+from tuvl.core.config_loader import PROCESS_ORDER as _RUNTIME_KINDS
+from tuvl.core.config_loader import SKIP_KINDS as _RUNTIME_SKIP_KINDS
+from tuvl.core.config_loader import walk_yaml_files
 from tuvl.core.engine.guardrails import GUARDRAIL_CHECKS
 from tuvl.core.models.loader import TYPE_MAP
 from tuvl.core.system_config import (
@@ -73,7 +73,7 @@ _EXTRA_EXCLUDE_DIRS: frozenset[str] = frozenset({"deploy"})
 
 def _walk_project_yaml(project_dir: Path) -> Iterator[Path]:
     """The runtime's recursive YAML walk, minus tuvl-ship's own output dir."""
-    for path in _walk_yaml_files(project_dir):
+    for path in walk_yaml_files(project_dir):
         rel_parts = path.relative_to(project_dir).parts[:-1]
         if _EXTRA_EXCLUDE_DIRS.isdisjoint(rel_parts):
             yield path

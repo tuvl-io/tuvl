@@ -12,7 +12,7 @@ release below is the current one.
 
 ## [Unreleased]
 
-Production IAM and the environment manifest.
+Production IAM, the environment manifest, and the tooling split.
 
 ### Added
 
@@ -35,9 +35,27 @@ Production IAM and the environment manifest.
 
 ### Changed
 
+- **The developer tooling moves into the `tuvl-insight` package.** `tuvl` is now the engine and the production CLI
+  (160 modules instead of 264): it parses the YAML, talks to the database and serves the API. Everything that exists to
+  *develop* a project is in `tuvl-insight`: the lint engine (`tuvl lint project`), spec and task tooling, code
+  generation, `tuvl init` / `dev` / `ship`, the terminal UI, the offline test runner, the file-based dev API and Insight.
+  It is still one `tuvl` command: on a bare install the toolchain commands answer with how to install them, and
+  `tuvl[standard]` installs everything as before. See [Core and Insight](docs/core-and-insight.md).
+- `tuvl` and `tuvl-insight` are released in lockstep and pin each other with `==`.
+- `tuvl replay runs` is a toolchain command (it runs `tuvl.testing`); `tuvl pin run` stays in the production CLI.
+- The engine no longer loads the lint engine: `import tuvl.runtime.runner` used to pull in all of `tuvl.validate`.
+
+### Breaking
+
 - **Breaking for production setups that call the REST IAM API.** `/auth/bootstrap` and `/auth/admin/*` move to a new `iam` API group that a
   production server does not mount by default. Login, refresh, logout, `me` and OAuth stay in `auth`. Use `tuvl iam`, or add `iam` to
   `spec.api.expose` / `TUVL_API_EXPOSE`. The dev server still mounts every group.
+- Python imports of tooling modules moved from `tuvl.<name>` to `tuvl_insight.<name>`: `spec`, `specgen`, `taskrun`,
+  `codegen`, `coding_agents`, `skills`, `review`, `audit`, `uispec`, `tui`, `devmcp`, `devtelemetry`, `testing`,
+  `gitflow`, `gitutil`, `shipgate`, `shiparchive`, `validate`, `lock` (generation), `cli.commands.<toolchain command>`.
+  These were never documented API. `tuvl.contract.facts` and `tuvl.contract.lockfile` hold what the engine needs from them.
+- The extras `tuvl[codegen]`, `tuvl[test]`, `tuvl[tui]`, `tuvl[review]` and `tuvl[pdf]` are gone: their packages are
+  dependencies of `tuvl-insight`. Use `tuvl[standard]`.
 
 ---
 

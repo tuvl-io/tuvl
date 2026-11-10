@@ -40,7 +40,7 @@ from tuvl.contract.tel import TELError, compile_expr, compile_template
 from tuvl.runtime import decision, journal, queue
 from tuvl.runtime.engines import AgentResult
 from tuvl.runtime.models import RUNTIME_TABLES, SystemRun
-from tuvl.runtime.runner import Runner, _State, workflow_hash
+from tuvl.runtime.runner import Runner, RunState, workflow_hash
 
 OFFLINE = "offline"
 _NEEDS_LIVE = ("llm", "loop", "tool")
@@ -130,11 +130,11 @@ class TestRunner(Runner):
         self.canned = canned
         self.live = live
 
-    async def dev_pause(self, state: _State, lease: queue.Lease) -> bool:
+    async def dev_pause(self, state: RunState, lease: queue.Lease) -> bool:
         return False  # Insight breakpoints and step mode never apply to tests or replays
 
     async def call_engine(
-        self, state: _State, agent: Any, view: dict[str, Any], key: str
+        self, state: RunState, agent: Any, view: dict[str, Any], key: str
     ) -> tuple[AgentResult, AsyncSession]:
         queue_ = self.canned.get(agent.id)
         if queue_:
