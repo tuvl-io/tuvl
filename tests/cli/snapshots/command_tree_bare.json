@@ -1,0 +1,258 @@
+[
+ {
+  "command": "approve spec",
+  "hidden": true
+ },
+ {
+  "command": "check agent",
+  "hidden": true
+ },
+ {
+  "command": "check dev-telemetry",
+  "hidden": true
+ },
+ {
+  "command": "check storage",
+  "hidden": false
+ },
+ {
+  "command": "check system",
+  "hidden": false
+ },
+ {
+  "command": "create spec",
+  "hidden": true
+ },
+ {
+  "command": "deploy",
+  "hidden": true
+ },
+ {
+  "command": "dev",
+  "hidden": true
+ },
+ {
+  "command": "export audit",
+  "hidden": true
+ },
+ {
+  "command": "export schema",
+  "hidden": true
+ },
+ {
+  "command": "follow run",
+  "hidden": false
+ },
+ {
+  "command": "generate code",
+  "hidden": true
+ },
+ {
+  "command": "generate key",
+  "hidden": false
+ },
+ {
+  "command": "generate lock",
+  "hidden": true
+ },
+ {
+  "command": "generate rls",
+  "hidden": false
+ },
+ {
+  "command": "generate spec",
+  "hidden": true
+ },
+ {
+  "command": "generate tasks",
+  "hidden": true
+ },
+ {
+  "command": "generate ui-spec",
+  "hidden": true
+ },
+ {
+  "command": "help",
+  "hidden": false
+ },
+ {
+  "command": "import idea",
+  "hidden": true
+ },
+ {
+  "command": "init",
+  "hidden": true
+ },
+ {
+  "command": "lint project",
+  "hidden": true
+ },
+ {
+  "command": "lint spec",
+  "hidden": true
+ },
+ {
+  "command": "list agents",
+  "hidden": true
+ },
+ {
+  "command": "list branches",
+  "hidden": true
+ },
+ {
+  "command": "list ideas",
+  "hidden": true
+ },
+ {
+  "command": "list objects",
+  "hidden": false
+ },
+ {
+  "command": "list runs",
+  "hidden": false
+ },
+ {
+  "command": "list specs",
+  "hidden": true
+ },
+ {
+  "command": "list tasks",
+  "hidden": true
+ },
+ {
+  "command": "list team-activity",
+  "hidden": true
+ },
+ {
+  "command": "pin run",
+  "hidden": false
+ },
+ {
+  "command": "prune memory",
+  "hidden": false
+ },
+ {
+  "command": "prune traces",
+  "hidden": true
+ },
+ {
+  "command": "register developer",
+  "hidden": true
+ },
+ {
+  "command": "register project",
+  "hidden": true
+ },
+ {
+  "command": "reject spec",
+  "hidden": true
+ },
+ {
+  "command": "renumber idea",
+  "hidden": true
+ },
+ {
+  "command": "reopen spec",
+  "hidden": true
+ },
+ {
+  "command": "replay runs",
+  "hidden": false
+ },
+ {
+  "command": "review code",
+  "hidden": true
+ },
+ {
+  "command": "run tests",
+  "hidden": true
+ },
+ {
+  "command": "run workflow",
+  "hidden": false
+ },
+ {
+  "command": "serve app",
+  "hidden": false
+ },
+ {
+  "command": "serve mcp",
+  "hidden": true
+ },
+ {
+  "command": "set dev-telemetry",
+  "hidden": true
+ },
+ {
+  "command": "set project",
+  "hidden": true
+ },
+ {
+  "command": "ship",
+  "hidden": true
+ },
+ {
+  "command": "show audit",
+  "hidden": true
+ },
+ {
+  "command": "show dev-telemetry",
+  "hidden": true
+ },
+ {
+  "command": "show drift",
+  "hidden": true
+ },
+ {
+  "command": "show event",
+  "hidden": true
+ },
+ {
+  "command": "show idea",
+  "hidden": true
+ },
+ {
+  "command": "show project",
+  "hidden": true
+ },
+ {
+  "command": "show run",
+  "hidden": false
+ },
+ {
+  "command": "show task",
+  "hidden": true
+ },
+ {
+  "command": "update skills",
+  "hidden": true
+ },
+ {
+  "command": "upgrade project",
+  "hidden": true
+ },
+ {
+  "command": "use agent",
+  "hidden": true
+ },
+ {
+  "command": "verify audit",
+  "hidden": true
+ },
+ {
+  "command": "verify lock",
+  "hidden": true
+ },
+ {
+  "command": "verify rls",
+  "hidden": false
+ },
+ {
+  "command": "verify spec",
+  "hidden": true
+ },
+ {
+  "command": "verify ui-spec",
+  "hidden": true
+ }
+]
