@@ -170,11 +170,17 @@ def test_pyproject_python_range_matches_the_package(tmp_path, monkeypatch) -> No
     assert 'requires-python = ">=3.13,<3.15"' in text
 
 
-def test_pyproject_allows_prereleases_only_for_a_prerelease_tuvl(tmp_path, monkeypatch) -> None:
+def test_a_prerelease_tuvl_is_pinned_explicitly_not_by_a_global_prerelease_flag(
+    tmp_path, monkeypatch
+) -> None:
     import tomllib
 
     beta = tomllib.loads(_pyproject(tmp_path, monkeypatch, "2.0.0b6"))
-    assert beta["tool"]["uv"]["prerelease"] == "allow"
+    # the flag would let every dependency go pre-release (httpx 1.0 dev, protobuf rc, wrapt dev)
+    assert "prerelease" not in beta["tool"]["uv"]
+    assert beta["project"]["dependencies"] == ["tuvl>=2.0.0b6"]
+    # tuvl-insight is pinned by the standard extra, so it needs its own pre-release specifier
+    assert beta["dependency-groups"]["dev"] == ["tuvl[standard]>=2.0.0b6", "tuvl-insight>=2.0.0b6"]
     (tmp_path / "pyproject.toml").unlink()
     stable = tomllib.loads(_pyproject(tmp_path, monkeypatch, "2.0.0"))
     assert "prerelease" not in stable["tool"]["uv"]

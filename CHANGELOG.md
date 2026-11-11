@@ -12,8 +12,34 @@ release below is the current one.
 
 ## [Unreleased]
 
+
+---
+
+## [2.1.0-beta.2] — 2026-11-11
+
+**Role management over HTTP, open registration in the Nest, and a safer beta install.** `tuvl` and `tuvl-insight` release together as `2.1.0b2`.
+This is a beta. Install it by pinning both packages, **without** `--prerelease allow`:
+
+```bash
+uv tool install "tuvl==2.1.0b2" --with "tuvl-insight==2.1.0b2"      # the CLI and Insight
+pip install "tuvl==2.1.0b2" "tuvl-insight==2.1.0b2"                  # or into an environment
+pip install "tuvl==2.1.0b2"                                          # the production engine only
+```
+
+`--prerelease allow` lets *every* dependency go to a pre-release. With 2.1.0b1 it resolved `httpx 1.0.dev6` (no `httpx.Limits`), `protobuf 7.37.0rc1`
+and `wrapt 2.6.0.dev1`, and the engine failed to start (`AttributeError: module 'httpx' has no attribute 'Limits'`). Pinning the two tuvl packages
+asks for pre-releases of those two only.
+
+Upgrading from 2.1.0b1: nothing in your YAML changes. If you run a project created by `tuvl init` on b1, delete the line `prerelease = "allow"`
+from its `[tool.uv]` table, add `"tuvl-insight>=2.1.0b2"` to the `dev` dependency group, and run `uv lock --upgrade`. Registering a project in the
+Nest needs this release (the old device-login flow is gone).
+
 ### Fixed
 
+- **The engine failed to start when a pre-release `httpx` was installed.** `httpx` is now capped below 1.0 (`httpx>=0.27.0,<1`).
+- **`tuvl init` no longer writes `prerelease = "allow"`.** A new project pinned to a pre-release tuvl now carries `tuvl>=<version>` and, in the `dev`
+  group, `tuvl[standard]>=<version>` plus `tuvl-insight>=<version>`: uv then allows pre-releases of those two packages only, and everything else
+  resolves to its stable release.
 - **Insight: the collapsed menu could not be expanded on a short window.** The icon rail kept its expand button below the icons, so in any window shorter than the rail (about 900 px, a typical laptop browser) the button was off screen, and the pages at the bottom (IAM, Federation, API Docs, Settings) were unreachable. The button now sits under the logo, the icons scroll, and the app height follows the visible viewport (`100dvh`), so a browser toolbar no longer covers the bottom of the page.
 
 ### Changed

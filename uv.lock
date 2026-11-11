@@ -1662,7 +1662,7 @@ wheels = [
 
 [[package]]
 name = "tuvl"
-version = "2.1.0b1"
+version = "2.1.0b2"
 source = { editable = "." }
 dependencies = [
     { name = "asyncpg" },
@@ -1730,7 +1730,7 @@ requires-dist = [
     { name = "cryptography", specifier = ">=43.0.0" },
     { name = "fastapi", specifier = ">=0.136.0" },
     { name = "greenlet", specifier = ">=3.4.0" },
-    { name = "httpx", specifier = ">=0.27.0" },
+    { name = "httpx", specifier = ">=0.27.0,<1" },
     { name = "mcp", marker = "extra == 'mcp'", specifier = ">=1.30.0,<2" },
     { name = "opentelemetry-api", specifier = ">=1.45.1" },
     { name = "opentelemetry-exporter-otlp-proto-grpc", marker = "extra == 'otel-grpc'", specifier = ">=1.42.0" },
@@ -1769,7 +1769,7 @@ dev = [
 
 [[package]]
 name = "tuvl-insight"
-version = "2.1.0b1"
+version = "2.1.0b2"
 source = { editable = "insight" }
 dependencies = [
     { name = "aiosqlite" },
