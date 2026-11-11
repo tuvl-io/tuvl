@@ -1008,8 +1008,14 @@ def _write_pyproject(path: Path, *, name: str) -> None:
         prerelease = re.search(r"(a|b|rc|\.dev)\d", tuvl_version) is not None
     except importlib.metadata.PackageNotFoundError:
         tuvl_dep = '"tuvl"'
-        tuvl_dev_dep = '"tuvl[standard]>=2.1.0b1"'
+        tuvl_dev_dep = '"tuvl[standard]>=2.1.0b2"'
+        tuvl_version = tuvl_dev_dep.split(">=", 1)[1].rstrip('"')
         prerelease = True
+    # A pre-release tuvl is asked for with a pre-release specifier, and so is tuvl-insight (which the `standard` extra
+    # pins): uv then allows pre-releases of those two packages only. A global `prerelease = "allow"` would let every
+    # dependency go pre-release too (httpx 1.0 dev builds, protobuf and wrapt candidates), and break the engine.
+    dev_deps = [tuvl_dev_dep] + ([f'"tuvl-insight>={tuvl_version}"'] if prerelease else [])
+    dev_group = "".join(f"    {dep},\n" for dep in dev_deps)
     content = (
         "# ── tuvl project ─────────────────────────────────────────────────────────────\n"
         "#\n"
@@ -1041,12 +1047,11 @@ def _write_pyproject(path: Path, *, name: str) -> None:
         "[dependency-groups]\n"
         "# Development: uv injects the UI and tools automatically for local work\n"
         "dev = [\n"
-        f"    {tuvl_dev_dep},\n"
+        f"{dev_group}"
         "]\n"
         "\n"
         "[tool.uv]\n"
-        + ('prerelease = "allow"  # this tuvl release is a pre-release\n' if prerelease else "")
-        + "# uv manages the virtual environment.\n"
+        "# uv manages the virtual environment.\n"
         "# Run: uv sync          — install / refresh the venv\n"
         "# Run: uv add <pkg>     — add a new runtime dependency\n"
         "# Run: uv add --dev <pkg> — add a dev-only dependency\n"
