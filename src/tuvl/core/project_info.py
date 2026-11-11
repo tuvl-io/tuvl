@@ -269,19 +269,46 @@ def registration_state(record: dict[str, Any]) -> str:
     return "current" if reg.get("digest") == current else "outdated"
 
 
-def record_registration(project_dir: Path | str, url: str, *, when: str) -> dict[str, Any]:
-    """Store the outcome of a successful registration, with the id and a digest of the listing."""
+#: How far the Nest checked a listing: self-declared, the developer's tool reported a push to the
+#: remote (not checked), or the Nest itself saw the challenge tag on the public remote.
+REGISTRY_LABELS: tuple[str, ...] = ("listed", "push_confirmed", "verified")
+
+
+def record_registration(
+    project_dir: Path | str,
+    url: str,
+    *,
+    when: str,
+    label: str = "listed",
+    verified_at: str = "",
+) -> dict[str, Any]:
+    """Store the outcome of a successful registration, with the id, a digest of the listing and its label."""
     record = load_project(project_dir) or {}
     digest = payload_digest(registration_payload(record))
-    return set_registry(
-        project_dir,
-        {
-            "url": url,
-            "id": record.get("id", ""),
-            "registered_at": when,
-            "digest": digest,
-        },
-    )
+    registry: dict[str, Any] = {
+        "url": url,
+        "id": record.get("id", ""),
+        "registered_at": when,
+        "digest": digest,
+        "label": label if label in REGISTRY_LABELS else "listed",
+    }
+    if verified_at:
+        registry["verified_at"] = verified_at
+    return set_registry(project_dir, registry)
+
+
+def record_verification(
+    project_dir: Path | str, label: str, *, verified_at: str = ""
+) -> dict[str, Any]:
+    """Update the label of the stored registration after the Nest answered a verification."""
+    record = load_project(project_dir) or {}
+    registry = dict(record.get("registry") or {})
+    registry["label"] = label if label in REGISTRY_LABELS else "listed"
+    if verified_at:
+        registry["verified_at"] = verified_at
+    else:
+        registry.pop("verified_at", None)
+    return set_registry(project_dir, registry)
 
 
 def set_registry(project_dir: Path | str, registry: dict[str, Any]) -> dict[str, Any]:

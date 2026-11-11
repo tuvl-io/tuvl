@@ -12,6 +12,54 @@ release below is the current one.
 
 ## [Unreleased]
 
+
+---
+
+## [2.1.0-beta.2] — 2026-11-11
+
+**Role management over HTTP, open registration in the Nest, and a safer beta install.** `tuvl` and `tuvl-insight` release together as `2.1.0b2`.
+This is a beta. Install it by pinning both packages, **without** `--prerelease allow`:
+
+```bash
+uv tool install "tuvl==2.1.0b2" --with "tuvl-insight==2.1.0b2"      # the CLI and Insight
+pip install "tuvl==2.1.0b2" "tuvl-insight==2.1.0b2"                  # or into an environment
+pip install "tuvl==2.1.0b2"                                          # the production engine only
+```
+
+`--prerelease allow` lets *every* dependency go to a pre-release. With 2.1.0b1 it resolved `httpx 1.0.dev6` (no `httpx.Limits`), `protobuf 7.37.0rc1`
+and `wrapt 2.6.0.dev1`, and the engine failed to start (`AttributeError: module 'httpx' has no attribute 'Limits'`). Pinning the two tuvl packages
+asks for pre-releases of those two only.
+
+Upgrading from 2.1.0b1: nothing in your YAML changes. If you run a project created by `tuvl init` on b1, delete the line `prerelease = "allow"`
+from its `[tool.uv]` table, add `"tuvl-insight>=2.1.0b2"` to the `dev` dependency group, and run `uv lock --upgrade`. Registering a project in the
+Nest needs this release (the old device-login flow is gone).
+
+### Fixed
+
+- **The engine failed to start when a pre-release `httpx` was installed.** `httpx` is now capped below 1.0 (`httpx>=0.27.0,<1`).
+- **`tuvl init` no longer writes `prerelease = "allow"`.** A new project pinned to a pre-release tuvl now carries `tuvl>=<version>` and, in the `dev`
+  group, `tuvl[standard]>=<version>` plus `tuvl-insight>=<version>`: uv then allows pre-releases of those two packages only, and everything else
+  resolves to its stable release.
+- **Insight: the collapsed menu could not be expanded on a short window.** The icon rail kept its expand button below the icons, so in any window shorter than the rail (about 900 px, a typical laptop browser) the button was off screen, and the pages at the bottom (IAM, Federation, API Docs, Settings) were unreachable. The button now sits under the logo, the icons scroll, and the app height follows the visible viewport (`100dvh`), so a browser toolbar no longer covers the bottom of the page.
+
+### Changed
+
+- **Listing a project in the Nest is open and checked by a git tag, not by GitHub sign-in.** `tuvl register project` (and Insight → Settings → Project →
+  Register) needs no account. It registers, then, after a prompt, pushes a one-time tag to the project's git remote with your own credentials and removes it
+  again. The Nest answers with a label: **Verified** (it saw the tag on a public repository), **Push confirmed** (this tool pushed, the Nest could not see it:
+  a private repository) or **Listed** (self-declared). The first registration returns an entry secret, kept in `~/.config/tuvl/nest.json` (`TUVL_NEST_ENTRY_SECRET`
+  for CI), that authorises later updates. `--no-verify` lists without the push, `--remote` and `--keep-tag` adjust it. The device-login dev routes
+  (`/dev/project/register/poll`) are gone. Developer toolchain only: nothing of it is in a production install. Needs the matching Nest (tuvl-io/hub).
+- Insight → Settings → API Access lists the `roles` group.
+
+### Added
+
+- **Role management over HTTP: the `roles` API group.** List roles, find users, add or remove a member, disable or enable a role, from your own
+  screen. It is a separate group from `iam`, **not mounted in production** until `roles` is in `spec.api.expose` / `TUVL_API_EXPOSE`, and needs the
+  new scope `roles:manage` (`iam:admin` also passes). Creating roles, changing what a role grants, creating users and federation stay
+  development-time (`RoleSeed`, `tuvl iam`) and have no route. A caller without `iam:admin` can only change roles within their own scopes, and never a role
+  carrying `iam:admin` or `roles:manage`. See [auth](docs/auth.md#role-management-from-your-own-screen-roles).
+
 ---
 
 ## [2.1.0-beta.1] — 2026-11-10

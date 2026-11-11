@@ -203,13 +203,16 @@ Register yourself at the team's collector and keep your token (it sends and read
 
 ### `tuvl register project`
 
-List this project in the public catalogue (shows the payload first).
+List this project in the public catalogue. Optional, open, no sign-in.
 
 | Option | Value | Default | What it does |
 |---|---|---|---|
 | `--project-dir`, `-d` | DIRECTORY | `.` | Project directory. |
 | `--nest` | TEXT |  | Registry URL (TUVL_NEST_URL). |
-| `--yes`, `-y` |  |  | Skip the confirmation. |
+| `--remote` | TEXT | `origin` | The git remote that holds the project's repository. |
+| `--no-verify` |  |  | List the project without pushing the one-time tag. |
+| `--keep-tag` |  |  | Leave the one-time tag on the remote. |
+| `--yes`, `-y` |  |  | Skip the confirmations. |
 
 
 ## `tuvl update`

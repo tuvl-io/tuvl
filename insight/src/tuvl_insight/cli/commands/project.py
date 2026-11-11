@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import sys
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated
 
@@ -19,7 +18,6 @@ from tuvl.core.project_info import (
     default_identity,
     id_is_valid,
     load_project,
-    record_registration,
     regenerate_id,
     registration_payload,
     registration_state,
@@ -76,8 +74,13 @@ def info_cmd(
         "outdated": "changed since last registration — run `tuvl register project`",
         "id_changed": "id differs from the registered one — run `tuvl register project`",
     }.get(registration_state(record), "")
+    label = str(reg.get("label", "")).replace("_", " ") if reg else ""
     table.add_row(
-        "registry", f"{reg.get('url')} · {reg.get('registered_at')} · {state}" if reg else state
+        "registry",
+        f"{reg.get('url')} · {reg.get('registered_at')} · {state}"
+        + (f" · {label}" if label else "")
+        if reg
+        else state,
     )
     console.print(table)
     if record.get("description"):
@@ -163,16 +166,30 @@ def register_cmd(
     nest: Annotated[
         str | None, typer.Option("--nest", help="Registry URL (TUVL_NEST_URL).")
     ] = None,
-    yes: Annotated[bool, typer.Option("--yes", "-y", help="Skip the confirmation.")] = False,
+    remote: Annotated[
+        str, typer.Option("--remote", help="The git remote that holds the project's repository.")
+    ] = "origin",
+    no_verify: Annotated[
+        bool,
+        typer.Option("--no-verify", help="List the project without pushing the one-time tag."),
+    ] = False,
+    keep_tag: Annotated[
+        bool, typer.Option("--keep-tag", help="Leave the one-time tag on the remote.")
+    ] = False,
+    yes: Annotated[bool, typer.Option("--yes", "-y", help="Skip the confirmations.")] = False,
 ) -> None:
-    """List this project in the public catalogue (shows the payload first)."""
-    import httpx
+    """List this project in the public catalogue. Optional, open, no sign-in.
 
-    from tuvl_insight.cli.nest import NestError, ensure_token, forget_token, nest_url
-
-    record = _require(project_dir)
+    Shows the payload first. Then, so the listing can be checked, pushes a one-time tag to the project's
+    git remote with your own git credentials (after asking) and removes it again. A public repository
+    becomes Verified; a private one becomes Push confirmed. Developer toolchain only.
+    """
     import importlib.metadata
 
+    from tuvl_insight import registration
+    from tuvl_insight.cli.nest import LABEL_TEXT, NestError, nest_url
+
+    record = _require(project_dir)
     try:
         engine_version = importlib.metadata.version("tuvl")
     except importlib.metadata.PackageNotFoundError:
@@ -180,37 +197,44 @@ def register_cmd(
     payload = registration_payload(record, tuvl_version=engine_version)
 
     url = nest_url(nest)
-    console.print(f"Registering with [bold]{url}[/bold]:")
+    console.print(f"Registering with [bold]{url}[/bold] (no account needed):")
     console.print_json(json.dumps(payload))
+    if not no_verify:
+        found = registration.plan(project_dir, record, remote)
+        if found.reason:
+            console.print(f"[yellow]Verification will not run:[/yellow] {found.reason}")
+        else:
+            console.print(
+                f"Afterwards a one-time tag is pushed to [bold]{remote}[/bold] ({found.remote_url}) "
+                "and removed again, to check the listing. [dim]--no-verify lists without it.[/dim]"
+            )
     if not yes and not typer.confirm("Send this?", default=False):
         raise typer.Exit(1)
 
+    def ask(remote_name: str, remote_url: str, tag: str) -> bool:
+        if yes:
+            return True
+        console.print(
+            f"  git tag {tag} && git push {remote_name} refs/tags/{tag}   [dim]({remote_url})[/dim]"
+        )
+        return typer.confirm("Run this?", default=False)
+
     try:
-        token = ensure_token(url)
-        for attempt in (0, 1):
-            res = httpx.post(
-                f"{url}{_REGISTER_PATH}",
-                json=payload,
-                headers={"Authorization": f"Bearer {token}"},
-                timeout=30,
-            )
-            if res.status_code == 401 and attempt == 0:
-                forget_token(url)
-                token = ensure_token(url, relogin=True)
-                continue
-            break
-    except (NestError, httpx.HTTPError) as exc:
+        outcome = registration.register_project(
+            project_dir,
+            record,
+            url,
+            tuvl_version=engine_version,
+            verify=not no_verify,
+            remote=remote,
+            keep_tag=keep_tag,
+            confirm_push=ask,
+        )
+    except NestError as exc:
         console.print(f"[red]{exc}[/red]")
         raise typer.Exit(1) from exc
 
-    if res.status_code >= 400:
-        detail = res.json().get("detail", res.text) if res.content else res.status_code
-        console.print(f"[red]The Nest rejected the registration: {detail}[/red]")
-        raise typer.Exit(1)
-
-    record_registration(
-        project_dir,
-        url,
-        when=datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
-    )
     console.print(f"[green]✓[/green] Registered {record['id']}")
+    console.print(f"  {LABEL_TEXT.get(outcome.label, outcome.label)}")
+    for note in outcome.notes:
+        console.print(f"  [yellow]{note}[/yellow]")

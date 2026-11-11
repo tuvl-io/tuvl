@@ -155,42 +155,6 @@ def test_cli_info_without_project_fails(tmp_path: Path):
     assert res.exit_code == 1
 
 
-def test_cli_register_sends_the_shown_payload_and_records_it(monkeypatch, tmp_path: Path):
-    import httpx
-
-    from tuvl_insight.cli import nest as nest_mod
-
-    create_project(tmp_path, name="demo", author="Jane", email="jane@example.com")
-    sent: dict = {}
-
-    class _Res:
-        status_code = 200
-        content = b"{}"
-
-        def json(self):
-            return {}
-
-    def _post(url, json=None, headers=None, timeout=None):
-        sent.update(url=url, json=json, auth=headers["Authorization"])
-        return _Res()
-
-    monkeypatch.setattr(httpx, "post", _post)
-    monkeypatch.setattr(nest_mod, "ensure_token", lambda url, relogin=False: "tok")
-    res = runner.invoke(
-        cli_app,
-        ["register", "project", "-d", str(tmp_path), "--nest", "https://nest.test", "--yes"],
-    )
-    assert res.exit_code == 0, res.output
-    assert sent["url"] == "https://nest.test/api/register-project"
-    assert sent["auth"] == "Bearer tok"
-    assert (
-        sent["json"]["contact_email"] == "jane@example.com"
-    )  # kept private by the Nest, not by the client
-    assert sent["json"]["author"] == "Jane"
-    assert sent["json"]["id"] == id_uuid(load_project(tmp_path)["id"])
-    assert load_project(tmp_path)["registry"]["url"] == "https://nest.test"
-
-
 def test_registration_state_tracks_drift_and_id_change(tmp_path: Path):
     create_project(tmp_path, name="demo", author="Jane")
     assert registration_state(load_project(tmp_path)) == "unregistered"
@@ -216,82 +180,6 @@ def test_commands_refuse_a_tampered_id_and_new_id_recovers(tmp_path: Path):
     fresh = regenerate_id(tmp_path)
     assert id_is_valid(fresh["id"])
     assert runner.invoke(cli_app, ["show", "project", "-d", str(tmp_path)]).exit_code == 0
-
-
-def _fake_nest(monkeypatch, *, pending_polls: int = 0, cached: str | None = None):
-    """Route the dev server's outbound httpx calls to an in-memory nest."""
-    import httpx
-
-    from tuvl_insight.cli import nest as nest_mod
-
-    seen: dict = {"register": [], "polls": 0}
-    monkeypatch.setattr(nest_mod, "cached_token", lambda url: cached)
-    monkeypatch.setattr(nest_mod, "store_token", lambda url, t: seen.setdefault("stored", t))
-    monkeypatch.setattr(nest_mod, "forget_token", lambda url: seen.setdefault("forgot", True))
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        path = request.url.path
-        if path.endswith("/device/start"):
-            return httpx.Response(
-                200,
-                json={
-                    "handle": "h1",
-                    "user_code": "AB-12",
-                    "verification_uri": "https://github.com/login/device",
-                    "interval": 1,
-                    "expires_in": 600,
-                },
-            )
-        if path.endswith("/device/poll"):
-            seen["polls"] += 1
-            if seen["polls"] <= pending_polls:
-                return httpx.Response(428, json={"detail": "authorization_pending"})
-            return httpx.Response(200, json={"access_token": "tok"})
-        seen["register"].append(request.read())
-        return httpx.Response(200, json={"project_id": "x"})
-
-    real = httpx.AsyncClient
-    monkeypatch.setattr(
-        httpx,
-        "AsyncClient",
-        lambda **kw: real(transport=httpx.MockTransport(handler), **kw),
-    )
-    return seen
-
-
-def test_dev_register_logs_in_polls_then_registers(monkeypatch, tmp_path: Path):
-    client = _client(monkeypatch, tmp_path)
-    client.put("/dev/project", json={"author": "Jane"})
-    seen = _fake_nest(monkeypatch, pending_polls=1)
-
-    started = client.post("/dev/project/register", json={"nest": "https://nest.test"}).json()
-    assert started["status"] == "login_required"
-    assert started["user_code"] == "AB-12"
-    assert "token" not in started
-
-    poll = {"nest": "https://nest.test", "handle": started["handle"]}
-    assert client.post("/dev/project/register/poll", json=poll).json()["status"] == "pending"
-    done = client.post("/dev/project/register/poll", json=poll).json()
-    assert done["status"] == "registered"
-    assert done["project"]["registration_state"] == "current"
-    assert seen["stored"] == "tok"
-    assert len(seen["register"]) == 1
-    assert b"organization" in seen["register"][0]
-
-
-def test_dev_register_uses_cached_token_and_preview_matches(monkeypatch, tmp_path: Path):
-    client = _client(monkeypatch, tmp_path)
-    client.put("/dev/project", json={"author": "Jane", "email": "jane@example.com"})
-    seen = _fake_nest(monkeypatch, cached="tok")
-
-    preview = client.post(
-        "/dev/project/register/preview", json={"nest": "https://nest.test"}
-    ).json()
-    assert preview["payload"]["contact_email"] == "jane@example.com"
-
-    res = client.post("/dev/project/register", json={"nest": "https://nest.test"}).json()
-    assert res["status"] == "registered"
-    assert len(seen["register"]) == 1
 
 
 def test_cli_description_markdown_from_file_and_stdin(tmp_path: Path):

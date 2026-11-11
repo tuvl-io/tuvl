@@ -33,13 +33,29 @@ def _project(monkeypatch, tmp_path: Path, api: str = "") -> None:
 def test_the_dev_server_mounts_every_group(monkeypatch, tmp_path):
     _project(monkeypatch, tmp_path, "    expose: [auth]\n")
     monkeypatch.setattr(settings, "tuvl_dev_mode", True)
-    assert exposed_api_groups() == {"auth", "runs", "iam", "admin", "artifacts", "system"}
+    assert exposed_api_groups() == {"auth", "runs", "iam", "roles", "admin", "artifacts", "system"}
 
 
 def test_production_mounts_only_auth_and_runs_by_default(monkeypatch, tmp_path):
     _project(monkeypatch, tmp_path)
     monkeypatch.setattr(settings, "tuvl_dev_mode", False)
     assert exposed_api_groups() == {"auth", "runs"}
+
+
+def test_role_management_is_a_separate_group_that_production_leaves_out_until_asked(
+    monkeypatch, tmp_path
+):
+    _project(monkeypatch, tmp_path)
+    monkeypatch.setattr(settings, "tuvl_dev_mode", False)
+    assert "roles" not in exposed_api_groups()
+    monkeypatch.setattr(settings, "tuvl_api_expose", "auth,roles")
+    assert exposed_api_groups() == {"auth", "runs", "roles"}
+
+
+def test_exposing_role_management_in_system_yaml_does_not_expose_iam(monkeypatch, tmp_path):
+    _project(monkeypatch, tmp_path, "    expose: [auth, roles]\n")
+    monkeypatch.setattr(settings, "tuvl_dev_mode", False)
+    assert exposed_api_groups() == {"auth", "runs", "roles"}
 
 
 def test_production_groups_come_from_system_yaml_and_the_environment_wins(monkeypatch, tmp_path):
@@ -154,7 +170,7 @@ def test_the_dev_server_can_mirror_production(monkeypatch, tmp_path):
     assert exposed_api_groups() == {"auth", "runs"}
     assert api_docs_mode() == "off"
     monkeypatch.setattr(settings, "tuvl_dev_expose_all", True)  # the environment wins
-    assert exposed_api_groups() == {"auth", "runs", "iam", "admin", "artifacts", "system"}
+    assert exposed_api_groups() == {"auth", "runs", "iam", "roles", "admin", "artifacts", "system"}
     assert api_docs_mode() == "workflows"
 
 
