@@ -76,11 +76,27 @@ Package the project for production — validate, containerize, and emit a Helm c
 
 ### `tuvl deploy` *(toolchain)*
 
-Deploy to managed tuvl hosting (coming soon: prints a message and exits 1).
+Deploy this project to a tuvl cloud with a client token (cloud.tuvl.io by default).
 
 | Option | Value | Default | What it does |
 |---|---|---|---|
-| `--project-dir`, `-d` | PATH | `.` | Path to the tuvl project (not used yet). |
+| `--project-dir`, `-d` | DIRECTORY | `.` | Path to the tuvl project. |
+| `--archive` | FILE |  | Deploy this archive (made by `tuvl ship --format archive`) instead of packaging the project. |
+| `--url` | TEXT |  | The cloud to deploy to (default: $TUVL_CLOUD_URL, then https://cloud.tuvl.io). |
+| `--plan` | TEXT | `hobby` | The hosting plan for a new project (hobby or standard); its price is taken from your wallet. |
+| `--hostname` | TEXT |  | The name to serve a new deployment on (default: <project>.<the cloud's base domain>). |
+| `--set-hostname` | TEXT |  | Change the name the deployed app is served on, and nothing else: nothing is packaged or uploaded. The app restarts behind the new name; the old name stops working. |
+| `--check-dns` |  |  | Check that a name is available and points at the cloud (the name of --hostname or --set-hostname, else the project's default name). Nothing is deployed. |
+| `--project` | TEXT |  | The project to check or rename (default: the name in pyproject.toml). |
+| `--admin-email` | TEXT |  | Create an administrator with this email in the new app; its password is made here, shown once, and kept nowhere. (`TUVL_ADMIN_EMAIL`) |
+| `--no-admin` |  |  | Do not create an administrator in the app. |
+| `--login` |  |  | Save a client token for this cloud (asked for with a hidden prompt) and exit. |
+| `--logout` |  |  | Forget the saved token for this cloud and exit. |
+| `--token-stdin` |  |  | Read the client token from standard input (for CI). It is never taken from an argument. |
+| `--no-follow` |  |  | Start the deployment and return; it continues on the cloud. |
+| `--allow-dirty` |  |  | Pass to `tuvl ship`: package although the working tree has uncommitted changes. |
+| `--allow-incomplete` |  |  | Pass to `tuvl ship`: package although some spec tasks are not done. |
+| `--strict` |  |  | Pass to `tuvl ship`: treat validation warnings as errors. |
 
 
 ## `tuvl create`

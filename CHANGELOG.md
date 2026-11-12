@@ -12,6 +12,46 @@ release below is the current one.
 
 ## [Unreleased]
 
+---
+
+## [2.1.0-beta.3] — 2026-11-12
+
+**`tuvl deploy` deploys to a tuvl cloud.** `tuvl` and `tuvl-insight` release together as `2.1.0b3`.
+This is a beta. Install it by pinning both packages, **without** `--prerelease allow`:
+
+```bash
+uv tool install "tuvl==2.1.0b3" --with "tuvl-insight==2.1.0b3"      # the CLI and Insight
+pip install "tuvl==2.1.0b3" "tuvl-insight==2.1.0b3"                  # or into an environment
+pip install "tuvl==2.1.0b3"                                          # the production engine only
+```
+
+Upgrading from 2.1.0b2: nothing in your YAML changes. In a project created by `tuvl init`, change the `tuvl-insight` pin in the `dev` group to
+`>=2.1.0b3` and run `uv lock --upgrade`.
+
+### Added
+
+- **`tuvl deploy` deploys to a tuvl cloud.** Until now the command only announced that hosting was coming. It packages the project with
+  `tuvl ship --format archive` (or takes `--archive`), uploads it with a **client token**, follows the upload, build and deploy, and prints the address.
+  The token comes from `TUVL_CLIENT_TOKEN`, standard input (`--token-stdin`) or a saved login (`tuvl deploy --login`, `--logout`); it is never an
+  argument, never printed, and sent only over https (plain http only to `localhost`). The cloud is `https://cloud.tuvl.io` unless `--url` or
+  `TUVL_CLOUD_URL` says otherwise. A project name nobody owns is claimed by deploying it; one owned by another customer is refused as "not available"
+  without saying whether it exists; a wallet that cannot pay the plan (`--plan hobby|standard`) stops the deployment before anything is built.
+- **`tuvl deploy --admin-email EMAIL` creates an administrator in a new app.** The password is made on your machine, sealed so only the cloud can read it,
+  and shown once at the end (`--no-admin` skips it).
+- **`tuvl deploy --check-dns [--hostname NAME] [--project P]`** deploys nothing. It says whether a name is available, already this project's, taken
+  (used by another project, not saying which), outside the cloud's base domain or invalid, and for a usable name whether DNS resolves it to the cloud
+  (`ok`, `missing`, `wrong`). A taken or unusable name exits 1; a record that does not resolve yet is only a warning.
+- **`tuvl deploy --set-hostname NAME`** serves the deployed app under a new name without packaging or uploading anything: the app restarts on its
+  running release behind the new name, the old name stops working, the database is untouched, and it costs no credits. It is refused before anything
+  restarts when the name is taken, already this project's or outside the base domain, or when the project is not yours, not running, or stopped for an
+  unpaid plan. A deploy to a name another project already serves is refused before the upload.
+
+### Changed
+
+- The `tuvl` help screen no longer lists `deploy` as "coming soon", and the `tuvl-ship` agent skill, the CLI reference and `docs/cli.md` describe
+  the working command.
+- Needs a tuvl cloud with the client gateway (cloud.tuvl.io, the `tuvl-app-host` platform). A cloud's operator makes client tokens in its console.
+  Custom domains of your own (`app.acme.com`) are not supported yet.
 
 ---
 
