@@ -129,8 +129,13 @@ model providers and blob storage (S3, Azure, GCS, local) are part of `tuvl` and 
 - A kept `deploy/Dockerfile` (no `--force`) that lacks an extra the project now needs stops the ship.
 - Using a feature without its extra fails with `pip install 'tuvl[name]'`; the same message appears for
   `tuvl generate code`, `tuvl run tests` and `tuvl serve mcp` on a bare install.
-- `tuvl deploy` is for managed hosting and is not available yet: it prints a message and exits 1.
-  Until then, install the chart `tuvl ship` writes with `helm`.
+- `tuvl deploy` ships the project as an archive and deploys it to a tuvl cloud (`https://cloud.tuvl.io` by default, or `--url` / `TUVL_CLOUD_URL`).
+  It needs a client token, which a cloud's operator makes for your account: set `TUVL_CLIENT_TOKEN`, pipe it with `--token-stdin` in CI, or save
+  it with `tuvl deploy --login`. The token is never an argument, is sent only over https (plain http only to localhost) and is never printed.
+  `--admin-email` creates an administrator in a new app; its password is made on your machine, sealed for the cloud and shown once.
+  `--check-dns` says whether a name is available and points at the cloud (nothing is deployed), and `--set-hostname NAME` changes the name a deployed app is served on
+  (nothing is packaged or uploaded; the app restarts behind the new name). Names must be under the cloud's base domain.
+  To run the app yourself instead, install the chart `tuvl ship` writes with `helm`.
 
 ## The CI gate
 

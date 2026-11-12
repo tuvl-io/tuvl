@@ -108,7 +108,9 @@ def _print_banner() -> None:
         commands_table.add_row(
             "ship", "Validate, containerize, and emit a Helm chart for production"
         )
-        commands_table.add_row("deploy", "Deploy to managed tuvl hosting (coming soon)")
+        commands_table.add_row(
+            "deploy", "Deploy to a tuvl cloud (cloud.tuvl.io) with a client token"
+        )
         commands_table.add_row(
             "list · show", "ideas, specs, tasks, runs, agents · idea, run, project, audit, drift"
         )
