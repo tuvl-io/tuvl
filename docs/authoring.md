@@ -137,7 +137,7 @@ what exists. Write your own notes below the marker at the end of a file; they su
 `verify spec` clean, tasks done, generated files current, no C-rule errors, a current `uv.lock`, a clean
 tree. Then `--format image` (the default) builds the image labelled with a hash of its runtime files and
 the commit, `--format archive` writes a reproducible `tar.gz` or `zip` you run with `uv` on a host without
-Docker, and `both` does both. Nothing is deployed; `tuvl deploy` is for hosted tuvl.
+Docker, and `both` does both. Nothing is deployed; `tuvl deploy` sends the project to a tuvl cloud.
 
 ## CI
 

@@ -1,6 +1,6 @@
 [project]
 name = "tuvl"
-version = "2.1.0b2"
+version = "2.1.0b3"
 description = "Intelligent workflows, deterministic execution. Declare agents and their contracts in YAML; tuvl checks them before they run, bounds every model call, journals every step, and refuses anything the contract doesn't declare."
 readme = "README.md"
 requires-python = ">=3.13,<3.15"
@@ -60,7 +60,7 @@ dependencies = [
 # engine, spec and code generation) plus the production extras.
 # Install with: pip install tuvl[standard]
 standard = [
-    "tuvl-insight==2.1.0b2",
+    "tuvl-insight==2.1.0b3",
     "tuvl[mcp,redis,vector,otel-grpc]",
 ]
 
