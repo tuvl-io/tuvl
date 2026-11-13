@@ -25,6 +25,9 @@ def etag(data: bytes) -> str:
 class FakeS3:
     """Path-style S3 at ``http://s3.test`` (bucket first in the path)."""
 
+    algorithm = "AWS4-HMAC-SHA256"
+    prefix = "x-amz-"
+
     def __init__(self, bucket: str = "b") -> None:
         self.bucket = bucket
         self.objects: dict[str, Obj] = {}
@@ -44,8 +47,11 @@ class FakeS3:
             return httpx.Response(
                 self.fail_next.pop(0), text="<Error><Code>SlowDown</Code></Error>"
             )
-        if not request.headers.get("authorization", "").startswith("AWS4-HMAC-SHA256"):
+        if not request.headers.get("authorization", "").startswith(self.algorithm):
             return httpx.Response(403, text="<Error><Code>AccessDenied</Code></Error>")
+        refused = self._refuse(request)
+        if refused is not None:
+            return refused
         key, query = self._key(request), parse_qs(urlsplit(str(request.url)).query)
         method = request.method
         if method == "GET" and not key:
@@ -67,9 +73,15 @@ class FakeS3:
         headers["content-length"] = str(len(obj.data))
         return httpx.Response(200, headers=headers, content=b"" if method == "HEAD" else obj.data)
 
+    def _refuse(self, request: httpx.Request) -> httpx.Response | None:
+        return None
+
+    def _create_only(self, request: httpx.Request) -> bool:
+        return request.headers.get("if-none-match") == "*"
+
     def _put(self, request: httpx.Request, key: str) -> httpx.Response:
-        source = request.headers.get("x-amz-copy-source")
-        if request.headers.get("if-none-match") == "*" and key in self.objects:
+        source = request.headers.get(f"{self.prefix}copy-source")
+        if self._create_only(request) and key in self.objects:
             return httpx.Response(412, text="<Error><Code>PreconditionFailed</Code></Error>")
         if source:
             src = self.objects.get(unquote(source).removeprefix(f"/{self.bucket}/"))
@@ -80,7 +92,7 @@ class FakeS3:
         headers = {
             k: v
             for k, v in request.headers.items()
-            if k.startswith("x-amz-meta-") or k == "content-type"
+            if k.startswith(f"{self.prefix}meta-") or k == "content-type"
         }
         self.objects[key] = Obj(request.content, headers)
         return httpx.Response(200, headers={"etag": f'"{etag(request.content)}"'})
@@ -104,6 +116,27 @@ class FakeS3:
             f"<IsTruncated>{str(more).lower()}</IsTruncated>{items}{token}</ListBucketResult>"
         )
         return httpx.Response(200, text=xml)
+
+
+class FakeGoogleXml(FakeS3):
+    """Google's XML API as Google serves it: GOOG4 signatures, ``x-goog-*`` headers only, and only its own create-only
+    precondition (``If-None-Match`` is ignored and the object is overwritten)."""
+
+    algorithm = "GOOG4-HMAC-SHA256"
+    prefix = "x-goog-"
+
+    def _refuse(self, request: httpx.Request) -> httpx.Response | None:
+        names = {k.lower() for k in request.headers}
+        if any(n.startswith("x-amz-") for n in names) and any(
+            n.startswith("x-goog-") for n in names
+        ):
+            return httpx.Response(400, text="<Error><Code>ExcessHeaderValues</Code></Error>")
+        if any(n.startswith("x-amz-") for n in names):
+            return httpx.Response(400, text="<Error><Code>InvalidArgument</Code></Error>")
+        return None
+
+    def _create_only(self, request: httpx.Request) -> bool:
+        return request.headers.get("x-goog-if-generation-match") == "0"
 
 
 class FakeGcs:

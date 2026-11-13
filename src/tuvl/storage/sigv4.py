@@ -1,4 +1,4 @@
-"""AWS Signature Version 4 for S3 and S3-compatible stores (header auth and presigned URLs)."""
+"""Signature Version 4 for S3 and S3-compatible stores, and its Google twin (GOOG4-HMAC-SHA256): header auth and presigned URLs."""
 
 from __future__ import annotations
 
@@ -8,7 +8,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from urllib.parse import parse_qsl, quote, urlsplit
 
-ALGORITHM = "AWS4-HMAC-SHA256"
+from tuvl.storage.dialects import AWS4, SigningScheme
+
 UNSIGNED = "UNSIGNED-PAYLOAD"
 EMPTY_SHA256 = hashlib.sha256(b"").hexdigest()
 _DEFAULT_PORTS = {"http": 80, "https": 443}
@@ -30,9 +31,9 @@ def _hmac(key: bytes, msg: str) -> bytes:
     return hmac.new(key, msg.encode(), hashlib.sha256).digest()
 
 
-def _signing_key(secret: str, date: str, region: str, service: str) -> bytes:
-    key = _hmac(f"AWS4{secret}".encode(), date)
-    for part in (region, service, "aws4_request"):
+def _signing_key(scheme: SigningScheme, secret: str, date: str, region: str, service: str) -> bytes:
+    key = _hmac(f"{scheme.key_label}{secret}".encode(), date)
+    for part in (region, service, scheme.terminator):
         key = _hmac(key, part)
     return key
 
@@ -57,6 +58,7 @@ def _stamp(now: datetime) -> tuple[str, str]:
 
 
 def _signature(
+    scheme: SigningScheme,
     creds: AwsCreds,
     *,
     method: str,
@@ -81,9 +83,9 @@ def _signature(
             payload_hash,
         ]
     )
-    scope = f"{date}/{region}/{service}/aws4_request"
-    to_sign = "\n".join([ALGORITHM, amz_date, scope, sha256_hex(canonical.encode())])
-    key = _signing_key(creds.secret_key, date, region, service)
+    scope = f"{date}/{region}/{service}/{scheme.terminator}"
+    to_sign = "\n".join([scheme.algorithm, amz_date, scope, sha256_hex(canonical.encode())])
+    key = _signing_key(scheme, creds.secret_key, date, region, service)
     return hmac.new(key, to_sign.encode(), hashlib.sha256).hexdigest()
 
 
@@ -96,23 +98,26 @@ def sign_headers(
     region: str,
     *,
     now: datetime | None = None,
-    service: str = "s3",
+    service: str | None = None,
+    scheme: SigningScheme = AWS4,
 ) -> dict[str, str]:
-    """*headers* plus the ``x-amz-*`` and ``Authorization`` headers that sign the request."""
+    """*headers* plus the scheme's date, content-hash and ``Authorization`` headers that sign the request."""
+    service = service or scheme.service
     amz_date, date = _stamp(now or datetime.now(UTC))
     out = {k.lower(): v for k, v in headers.items()}
     out["host"] = host_header(url)
-    out["x-amz-date"] = amz_date
-    out["x-amz-content-sha256"] = payload_hash
+    out[scheme.date_header] = amz_date
+    out[scheme.hash_header] = payload_hash
     if creds.token:
-        out["x-amz-security-token"] = creds.token
+        out[scheme.token_header] = creds.token
     signed = sorted(
         k
         for k in out
-        if k == "host" or k.startswith("x-amz-") or k in ("content-type", "content-md5")
+        if k == "host" or k.startswith(scheme.header_prefix) or k in ("content-type", "content-md5")
     )
     query = parse_qsl(urlsplit(url).query, keep_blank_values=True)
     signature = _signature(
+        scheme,
         creds,
         method=method,
         url=url,
@@ -125,9 +130,9 @@ def sign_headers(
         amz_date=amz_date,
         date=date,
     )
-    scope = f"{date}/{region}/{service}/aws4_request"
+    scope = f"{date}/{region}/{service}/{scheme.terminator}"
     out["authorization"] = (
-        f"{ALGORITHM} Credential={creds.access_key}/{scope}, "
+        f"{scheme.algorithm} Credential={creds.access_key}/{scope}, "
         f"SignedHeaders={';'.join(signed)}, Signature={signature}"
     )
     return out
@@ -141,21 +146,25 @@ def presign_url(
     expires_in: int,
     *,
     now: datetime | None = None,
-    service: str = "s3",
+    service: str | None = None,
+    scheme: SigningScheme = AWS4,
 ) -> str:
+    service = service or scheme.service
     amz_date, date = _stamp(now or datetime.now(UTC))
+    q = scheme.query_prefix
     parts = urlsplit(url)
     query = parse_qsl(parts.query, keep_blank_values=True)
     query += [
-        ("X-Amz-Algorithm", ALGORITHM),
-        ("X-Amz-Credential", f"{creds.access_key}/{date}/{region}/{service}/aws4_request"),
-        ("X-Amz-Date", amz_date),
-        ("X-Amz-Expires", str(expires_in)),
-        ("X-Amz-SignedHeaders", "host"),
+        (f"{q}Algorithm", scheme.algorithm),
+        (f"{q}Credential", f"{creds.access_key}/{date}/{region}/{service}/{scheme.terminator}"),
+        (f"{q}Date", amz_date),
+        (f"{q}Expires", str(expires_in)),
+        (f"{q}SignedHeaders", "host"),
     ]
     if creds.token:
-        query.append(("X-Amz-Security-Token", creds.token))
+        query.append((f"{q}Security-Token", creds.token))
     signature = _signature(
+        scheme,
         creds,
         method=method,
         url=url,
@@ -169,4 +178,4 @@ def presign_url(
         date=date,
     )
     base = f"{parts.scheme}://{parts.netloc}{parts.path}"
-    return f"{base}?{_canonical_query(query)}&X-Amz-Signature={signature}"
+    return f"{base}?{_canonical_query(query)}&{q}Signature={signature}"
