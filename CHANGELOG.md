@@ -14,6 +14,36 @@ release below is the current one.
 
 ---
 
+## [2.1.0-beta.4] — 2026-11-13
+
+**Google Cloud Storage works with HMAC keys.** `tuvl` and `tuvl-insight` release together as `2.1.0b4`.
+This is a beta. Install it by pinning both packages, **without** `--prerelease allow`:
+
+```bash
+uv tool install "tuvl==2.1.0b4" --with "tuvl-insight==2.1.0b4"      # the CLI and Insight
+pip install "tuvl==2.1.0b4" "tuvl-insight==2.1.0b4"                  # or into an environment
+pip install "tuvl==2.1.0b4"                                          # the production engine only
+```
+
+Upgrading from 2.1.0b3: nothing in your YAML changes. In a project created by `tuvl init`, change the `tuvl-insight` pin in the `dev` group to
+`>=2.1.0b4` and run `uv lock --upgrade`. A `kind: Storage` store with `provider: gcs` and an `access_key`/`secret_key` pair, which could not write
+before, now can.
+
+### Fixed
+
+- **Google Cloud Storage with an HMAC key can write.** The S3 backend sent Google's create-only header (`x-goog-if-generation-match`) next to the
+  Amazon-style headers HMAC requests were signed with, and Google refuses a request that mixes them, so every first write failed with
+  `400 ExcessHeaderValues`. HMAC requests to Google are now signed with Google's own scheme (`GOOG4-HMAC-SHA256`), carry `x-goog-*` headers only,
+  and presigned URLs use `X-Goog-*` query names. A second write of the same key is refused with `Conflict` as on every other provider.
+  Checked against a real bucket: create-only write, metadata, get, list, copy, presigned GET and PUT.
+
+### Changed
+
+- Storage request names and signing labels are now in one place, `tuvl.storage.dialects` (Amazon, Google, Azure). `S3Backend` takes a `dialect`
+  (default Amazon), so S3-compatible services keep working unchanged and a service with different names is one entry.
+
+---
+
 ## [2.1.0-beta.3] — 2026-11-12
 
 **`tuvl deploy` deploys to a tuvl cloud.** `tuvl` and `tuvl-insight` release together as `2.1.0b3`.

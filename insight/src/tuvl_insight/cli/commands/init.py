@@ -1008,7 +1008,7 @@ def _write_pyproject(path: Path, *, name: str) -> None:
         prerelease = re.search(r"(a|b|rc|\.dev)\d", tuvl_version) is not None
     except importlib.metadata.PackageNotFoundError:
         tuvl_dep = '"tuvl"'
-        tuvl_dev_dep = '"tuvl[standard]>=2.1.0b3"'
+        tuvl_dev_dep = '"tuvl[standard]>=2.1.0b4"'
         tuvl_version = tuvl_dev_dep.split(">=", 1)[1].rstrip('"')
         prerelease = True
     # A pre-release tuvl is asked for with a pre-release specifier, and so is tuvl-insight (which the `standard` extra

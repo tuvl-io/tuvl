@@ -14,6 +14,7 @@ import httpx
 
 from tuvl.storage.azure import AzureBackend
 from tuvl.storage.creds import AwsCredentialSource, azure_token_source, gcs_token_source
+from tuvl.storage.dialects import GOOGLE
 from tuvl.storage.errors import (
     AuthError,
     ConfigError,
@@ -129,7 +130,7 @@ def build_backend(
             path_style=True,
             creds=AwsCredentialSource(static=static, region="auto", http=http, metadata_http=meta),
             http=http,
-            conditional=("x-goog-if-generation-match", "0"),
+            dialect=GOOGLE,
         )
     return S3Backend(
         bucket=r["bucket"],

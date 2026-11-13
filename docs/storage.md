@@ -56,12 +56,22 @@ Short-lived tokens are cached and refreshed a minute before they expire. Not bui
 config and SSO profiles, assume-role chains, `az login` and `gcloud` user credentials. Run with a
 role, a workload identity or a key instead.
 
+### Dialects
+
+The S3 backend serves two vocabularies. Amazon's (`x-amz-*` headers, `AWS4-HMAC-SHA256`, `If-None-Match: *` to refuse an overwrite) is
+used for `provider: s3`, which covers AWS, MinIO, R2, Wasabi, Spaces, B2 and Oracle. Google's (`x-goog-*` headers, `GOOG4-HMAC-SHA256`,
+`x-goog-if-generation-match: 0`) is used for `provider: gcs` with an HMAC key: Google rejects a request that mixes the two sets of names
+and ignores `If-None-Match` on a write, so a create-only write has to be signed and conditioned in Google's own terms. Azure Blob does
+not sign this way (SharedKey, SAS or a bearer token) but names its metadata and create-only headers in the same table. The names live in
+`src/tuvl/storage/dialects.py`; a service that needs different ones is one more entry there.
+
 ### Other services
 
 | Service | Setup |
 |---|---|
 | MinIO, Cloudflare R2, Wasabi, DigitalOcean Spaces, Backblaze B2 | `provider: s3` with the service's `endpoint` |
 | Google Cloud Storage with HMAC keys | `provider: gcs` with `access_key` and `secret_key` (this also enables `presign`) |
+| Oracle Cloud Infrastructure Object Storage | `provider: s3` with `endpoint: https://<namespace>.compat.objectstorage.<region>.oraclecloud.com`, `region: <region>` and `path_style: true`; the Customer Secret Key is the `access_key`/`secret_key` pair. It uses Amazon's dialect through OCI's S3 compatibility API (not exercised in this repo's tests) |
 | Azurite | `provider: azure`, `endpoint: http://127.0.0.1:10000/devstoreaccount1` |
 
 ## Use a store in a workflow

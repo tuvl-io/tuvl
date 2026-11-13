@@ -1,4 +1,4 @@
-"""S3 and S3-compatible stores (MinIO, R2, Wasabi, Spaces, B2; GCS through HMAC keys)."""
+"""S3 and S3-compatible stores (MinIO, R2, Wasabi, Spaces, B2, Oracle Object Storage; GCS through HMAC keys)."""
 
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ from urllib.parse import quote, urlsplit
 import httpx
 
 from tuvl.storage.creds import AwsCredentialSource, _local_name, _xml_text
+from tuvl.storage.dialects import AWS, Dialect
 from tuvl.storage.errors import (
     AuthError,
     Conflict,
@@ -69,13 +70,19 @@ class S3Backend:
         path_style: bool | None,
         creds: AwsCredentialSource,
         http: Http,
-        conditional: tuple[str, str] = ("If-None-Match", "*"),
+        dialect: Dialect = AWS,
     ) -> None:
+        signing = dialect.signing
+        if signing is None:
+            raise ValueError(
+                f"the {dialect.name} dialect has no request signing for the S3 backend"
+            )
         self.bucket = bucket
         self.region = region or "us-east-1"
         self._creds = creds
         self._http = http
-        self._conditional = conditional
+        self._dialect = dialect
+        self._scheme = signing
         if endpoint:
             parts = urlsplit(endpoint)
             self._path_style = True if path_style is None else path_style
@@ -110,7 +117,13 @@ class S3Backend:
     ) -> httpx.Response:
         payload = sha256_hex(body) if body is not None else EMPTY_SHA256
         signed = sign_headers(
-            method, url, headers or {}, payload, await self._creds.get(), self.region
+            method,
+            url,
+            headers or {},
+            payload,
+            await self._creds.get(),
+            self.region,
+            scheme=self._scheme,
         )
         response = await self._http.send(
             method, url, headers=signed, content=body, max_bytes=max_bytes
@@ -119,15 +132,14 @@ class S3Backend:
             return response
         raise _error(method, url, response)
 
-    @staticmethod
-    def _info(key: str, response: httpx.Response, size: int | None = None) -> RawInfo:
+    def _info(self, key: str, response: httpx.Response, size: int | None = None) -> RawInfo:
         headers = response.headers
         return RawInfo(
             key=key,
             size=size if size is not None else int(headers.get("content-length", 0)),
             content_type=headers.get("content-type", ""),
             etag=headers.get("etag", "").strip('"'),
-            sha256=headers.get("x-amz-meta-sha256", ""),
+            sha256=headers.get(f"{self._dialect.meta_prefix}sha256", ""),
             modified=_iso(headers.get("last-modified", "")),
         )
 
@@ -141,9 +153,10 @@ class S3Backend:
         overwrite: bool,
     ) -> RawInfo:
         headers = {"content-type": content_type}
-        headers.update({f"x-amz-meta-{k.lower()}": v for k, v in metadata.items()})
+        headers.update({f"{self._dialect.meta_prefix}{k.lower()}": v for k, v in metadata.items()})
         if not overwrite:
-            headers[self._conditional[0]] = self._conditional[1]
+            name, value = self._dialect.create_only
+            headers[name] = value
         response = await self._send(
             "PUT", self._url(key), headers=headers, body=data, ok=(200, 201)
         )
@@ -203,7 +216,7 @@ class S3Backend:
                 raise Conflict(f"'{dst}' already exists")
         source = f"/{self.bucket}/{_quote(src)}"
         response = await self._send(
-            "PUT", self._url(dst), headers={"x-amz-copy-source": source}, ok=(200,)
+            "PUT", self._url(dst), headers={self._dialect.copy_source: source}, ok=(200,)
         )
         if "<Error>" in response.text[:200]:
             raise Unavailable(
@@ -212,7 +225,14 @@ class S3Backend:
         return await self.head(dst)
 
     async def presign(self, key: str, method: Method, expires_in: int) -> str:
-        return presign_url(method, self._url(key), await self._creds.get(), self.region, expires_in)
+        return presign_url(
+            method,
+            self._url(key),
+            await self._creds.get(),
+            self.region,
+            expires_in,
+            scheme=self._scheme,
+        )
 
     async def aclose(self) -> None:
         await self._http.aclose()
