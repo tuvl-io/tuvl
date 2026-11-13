@@ -61,3 +61,90 @@ def test_query_and_session_token_match_botocore() -> None:
         "SignedHeaders=host;x-amz-content-sha256;x-amz-date;x-amz-security-token, "
         "Signature=8451cdfa6e4b6283cc01440238608034d886110525f47c2b9f040eb101f1991d"
     )
+
+
+def _independent_goog4(secret: str, canonical: str, date: str, stamp: str, region: str) -> str:
+    """GOOG4-HMAC-SHA256 worked out from Google's description, without the module under test."""
+    import hashlib
+    import hmac
+
+    key = ("GOOG4" + secret).encode()
+    for part in (date, region, "storage", "goog4_request"):
+        key = hmac.new(key, part.encode(), hashlib.sha256).digest()
+    to_sign = "\n".join(
+        [
+            "GOOG4-HMAC-SHA256",
+            stamp,
+            f"{date}/{region}/storage/goog4_request",
+            hashlib.sha256(canonical.encode()).hexdigest(),
+        ]
+    )
+    return hmac.new(key, to_sign.encode(), hashlib.sha256).hexdigest()
+
+
+def test_google_headers_use_goog4_and_no_amazon_names() -> None:
+    from tuvl.storage.dialects import GOOG4
+
+    out = sign_headers(
+        "PUT",
+        "https://storage.googleapis.com/bucket/a.txt",
+        {"content-type": "text/plain", "x-goog-meta-sha256": "abc"},
+        sha256_hex(b"hello"),
+        CREDS,
+        "auto",
+        now=NOW,
+        scheme=GOOG4,
+    )
+    assert out["x-goog-date"] == "20130524T000000Z"
+    assert out["x-goog-content-sha256"] == sha256_hex(b"hello")
+    assert not [k for k in out if k.startswith("x-amz-")]
+    canonical = "\n".join(
+        [
+            "PUT",
+            "/bucket/a.txt",
+            "",
+            "content-type:text/plain\nhost:storage.googleapis.com\n"
+            f"x-goog-content-sha256:{sha256_hex(b'hello')}\n"
+            "x-goog-date:20130524T000000Z\nx-goog-meta-sha256:abc\n",
+            "content-type;host;x-goog-content-sha256;x-goog-date;x-goog-meta-sha256",
+            sha256_hex(b"hello"),
+        ]
+    )
+    expected = _independent_goog4(
+        CREDS.secret_key, canonical, "20130524", "20130524T000000Z", "auto"
+    )
+    assert out["authorization"] == (
+        f"GOOG4-HMAC-SHA256 Credential={CREDS.access_key}/20130524/auto/storage/goog4_request, "
+        "SignedHeaders=content-type;host;x-goog-content-sha256;x-goog-date;x-goog-meta-sha256, "
+        f"Signature={expected}"
+    )
+
+
+def test_google_presigned_url_has_goog_query_names() -> None:
+    from tuvl.storage.dialects import GOOG4
+
+    url = presign_url(
+        "GET",
+        "https://storage.googleapis.com/bucket/a%20b.txt",
+        CREDS,
+        "auto",
+        600,
+        now=NOW,
+        scheme=GOOG4,
+    )
+    assert "X-Goog-Algorithm=GOOG4-HMAC-SHA256" in url
+    assert (
+        "X-Goog-Credential=AKIAIOSFODNN7EXAMPLE%2F20130524%2Fauto%2Fstorage%2Fgoog4_request" in url
+    )
+    assert "X-Goog-Expires=600" in url and "X-Goog-Signature=" in url
+    assert "X-Amz" not in url
+
+
+def test_the_amazon_scheme_is_still_the_default() -> None:
+    from tuvl.storage.dialects import AWS4
+
+    plain = sign_headers("GET", "http://h/b", {}, EMPTY_SHA256, CREDS, "us-east-1", now=NOW)
+    explicit = sign_headers(
+        "GET", "http://h/b", {}, EMPTY_SHA256, CREDS, "us-east-1", now=NOW, scheme=AWS4
+    )
+    assert plain == explicit and plain["authorization"].startswith("AWS4-HMAC-SHA256")

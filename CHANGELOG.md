@@ -12,6 +12,19 @@ release below is the current one.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Google Cloud Storage with an HMAC key can write.** The S3 backend sent Google's create-only header (`x-goog-if-generation-match`) next to the
+  Amazon-style headers HMAC requests were signed with, and Google refuses a request that mixes them, so every first write failed with
+  `400 ExcessHeaderValues`. HMAC requests to Google are now signed with Google's own scheme (`GOOG4-HMAC-SHA256`), carry `x-goog-*` headers only,
+  and presigned URLs use `X-Goog-*` query names. A second write of the same key is refused with `Conflict` as on every other provider.
+  Checked against a real bucket: create-only write, metadata, get, list, copy, presigned GET and PUT.
+
+### Changed
+
+- Storage request names and signing labels are now in one place, `tuvl.storage.dialects` (Amazon, Google, Azure). `S3Backend` takes a `dialect`
+  (default Amazon), so S3-compatible services keep working unchanged and a service with different names is one entry.
+
 ---
 
 ## [2.1.0-beta.3] — 2026-11-12

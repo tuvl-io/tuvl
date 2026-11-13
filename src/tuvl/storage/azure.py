@@ -13,6 +13,7 @@ from urllib.parse import parse_qsl, quote, unquote, urlsplit
 import httpx
 
 from tuvl.storage.creds import CachedToken, _local_name, _xml_text
+from tuvl.storage.dialects import AZURE
 from tuvl.storage.errors import (
     AuthError,
     ConfigError,
@@ -141,7 +142,7 @@ class AzureBackend:
             size=size if size is not None else int(h.get("content-length", 0)),
             content_type=h.get("content-type", ""),
             etag=h.get("etag", "").strip('"'),
-            sha256=h.get("x-ms-meta-sha256", ""),
+            sha256=h.get(f"{AZURE.meta_prefix}sha256", ""),
             modified=_iso(h.get("last-modified", "")),
         )
 
@@ -155,9 +156,9 @@ class AzureBackend:
         overwrite: bool,
     ) -> RawInfo:
         headers = {"x-ms-blob-type": "BlockBlob", "content-type": content_type}
-        headers.update({f"x-ms-meta-{k.lower()}": v for k, v in metadata.items()})
+        headers.update({f"{AZURE.meta_prefix}{k.lower()}": v for k, v in metadata.items()})
         if not overwrite:
-            headers["if-none-match"] = "*"
+            headers[AZURE.create_only[0]] = AZURE.create_only[1]
         response = await self._send("PUT", self._url(key), headers=headers, body=data, ok=(201,))
         return RawInfo(
             key=key,
