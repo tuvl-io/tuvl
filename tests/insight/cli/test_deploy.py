@@ -22,7 +22,7 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from typer.testing import CliRunner
 
 from tuvl.cli import app
-from tuvl_insight.cli import cloud
+from tuvl_insight.cli import cloud, webui
 from tuvl_insight.cli.commands import deploy as deploy_mod
 
 pytestmark = pytest.mark.requires_insight
@@ -109,6 +109,24 @@ class FakeCloud:
             },
         }
         self.rename_status, self.rename_body = 202, None
+        self.ui_uploads, self.ui_status, self.ui_body = [], 202, None
+        self.ui_final = {
+            "id": "ee" * 16,
+            "project": "shop",
+            "state": "succeeded",
+            "step": "done",
+            "steps": [{"name": s, "detail": "", "at": 1} for s in ("upload", "done")],
+            "message": "",
+            "result": {
+                "project": "shop",
+                "url": "https://shop.tuvl.app",
+                "api_url": "https://api.shop.tuvl.app",
+                "hostname": "shop.tuvl.app",
+                "api_hostname": "api.shop.tuvl.app",
+                "key": "abc123def456",
+                "files": 3,
+            },
+        }
 
     def handler(self, request: httpx.Request) -> httpx.Response:
         self.requests.append(request)
@@ -147,6 +165,17 @@ class FakeCloud:
             if self.rename_status != 202:
                 return httpx.Response(self.rename_status, json={"detail": self.rename_body})
             return httpx.Response(202, json={**self.job, "id": "cd" * 16})
+        if (
+            path.startswith("/client/v1/projects/")
+            and path.endswith("/ui")
+            and request.method == "POST"
+        ):
+            if self.ui_status != 202:
+                return httpx.Response(self.ui_status, json={"detail": self.ui_body})
+            self.ui_uploads.append((path.split("/")[4], request.content))
+            return httpx.Response(202, json={**self.job, "id": "ee" * 16})
+        if path == "/client/v1/deployments/" + "ee" * 16:
+            return httpx.Response(200, json=self.ui_final)
         if path.startswith("/client/v1/deployments/"):
             self.job_polls.append(path)
             return httpx.Response(
@@ -951,3 +980,314 @@ def test_a_finished_deployment_points_at_the_name_check(fake, tmp_path):
         env={cloud.TOKEN_ENV: TOKEN},
     )
     assert res.exit_code == 0 and "tuvl deploy --check-dns" in res.output
+
+
+# ---- the web UI
+
+
+def make_ui(folder: Path, files=None):
+    folder.mkdir(parents=True, exist_ok=True)
+    for name, content in (
+        files
+        or {
+            "index.html": "<html></html>",
+            "js/main.js": "1",
+            "css/app.css": "a",
+            "config.js": "window.X={}",
+        }
+    ).items():
+        path = folder / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content)
+    return folder
+
+
+def ui_names(blob: bytes) -> list[str]:
+    start = blob.index(b"\x1f\x8b")
+    with tarfile.open(fileobj=io.BytesIO(blob[start:]), mode="r:gz") as tar:
+        return sorted(m.name for m in tar)
+
+
+def test_packaging_a_ui_folder_leaves_out_development_files_secrets_and_links_and_is_reproducible(
+    tmp_path,
+):
+    ui = make_ui(
+        tmp_path / "ui",
+        {
+            "index.html": "x",
+            "js/a.js": "1",
+            "serve.py": "dev",
+            "tests/t.js": "t",
+            "specs/s.yaml": "s",
+            ".env": "SECRET=1",
+            ".git/config": "c",
+            "node_modules/x/y.js": "n",
+            "__pycache__/z.pyc": "z",
+            ".hidden/file": "h",
+            "assets/logo.svg": "<svg/>",
+        },
+    )
+    (ui / "link.html").symlink_to(ui / "index.html")
+    blob, count, skipped = webui.package(ui)
+    assert count == 3 and ui_names(blob) == ["assets/logo.svg", "index.html", "js/a.js"]
+    assert {
+        ".env",
+        ".git",
+        ".hidden",
+        "serve.py",
+        "tests",
+        "specs",
+        "node_modules",
+        "__pycache__",
+        "links",
+    } == set(skipped)
+    assert webui.package(ui)[0] == blob, "the same files give the same bytes"
+    (ui / "js/a.js").write_text("2")
+    assert webui.package(ui)[0] != blob
+
+
+def test_a_ui_folder_needs_an_index_html_at_its_top_and_a_wrapping_folder_is_pointed_out(tmp_path):
+    with pytest.raises(webui.UiError, match="no index.html at its top"):
+        webui.package(make_ui(tmp_path / "a", {"js/a.js": "1"}))
+    with pytest.raises(webui.UiError, match="point --ui at that folder"):
+        webui.package(make_ui(tmp_path / "b", {"dist/index.html": "x", "dist/js/a.js": "1"}))
+    with pytest.raises(webui.UiError, match="at most"):
+        monkey = pytest.MonkeyPatch()
+        monkey.setattr(webui, "MAX_FILES", 2)
+        try:
+            webui.package(make_ui(tmp_path / "c", {"index.html": "x", "a": "1", "b": "2"}))
+        finally:
+            monkey.undo()
+
+
+def test_the_ui_folder_is_found_by_name_or_by_convention(tmp_path):
+    assert webui.find_ui_dir(tmp_path, None) is None
+    make_ui(tmp_path / "ui")
+    assert webui.find_ui_dir(tmp_path, None) == tmp_path / "ui"
+    assert webui.find_ui_dir(tmp_path, tmp_path / "ui") == tmp_path / "ui"
+    with pytest.raises(webui.UiError, match="not a folder"):
+        webui.find_ui_dir(tmp_path, tmp_path / "missing")
+    (tmp_path / "ui" / "index.html").unlink()
+    assert webui.find_ui_dir(tmp_path, None) is None, (
+        "a ui/ folder without an index.html is not a web UI"
+    )
+
+
+def project(tmp_path, with_ui=True, name="shop"):
+    d = tmp_path / "proj"
+    d.mkdir(exist_ok=True)
+    (d / "pyproject.toml").write_text(f'[project]\nname = "{name}"\nversion = "0.1.0"\n')
+    if with_ui:
+        make_ui(d / "ui")
+    return d
+
+
+def test_a_project_with_a_ui_folder_deploys_the_backend_then_the_ui_and_prints_both_addresses(
+    fake, tmp_path, monkeypatch
+):
+    d = project(tmp_path)
+    archive = make_archive(tmp_path)
+    monkeypatch.setattr(deploy_mod, "_ship", lambda *a, **k: archive)
+    res = run("-d", str(d), "--url", URL, "--no-admin", env={cloud.TOKEN_ENV: TOKEN})
+    assert res.exit_code == 0, res.output
+    flat = " ".join(res.output.split())
+    assert "Uploading the web UI" in flat and "4 files" in flat
+    assert (
+        "Web UI: https://shop.tuvl.app" in flat
+        and "Backend (API): https://api.shop.tuvl.app" in flat
+        and TOKEN not in res.output
+    )
+    order = [r.url.path for r in fake.requests if r.method == "POST"]
+    assert order == ["/client/v1/deployments", "/client/v1/projects/shop/ui"], (
+        "the backend first: the UI is served beside a running backend"
+    )
+    slug, blob = fake.ui_uploads[0]
+    assert slug == "shop" and ui_names(blob) == [
+        "config.js",
+        "css/app.css",
+        "index.html",
+        "js/main.js",
+    ]
+
+
+def test_a_backend_only_deploy_still_prints_the_api_address(fake, tmp_path):
+    fake.finals[-1]["result"] = {
+        **fake.finals[-1]["result"],
+        "url": "https://shop.tuvl.app",
+        "api_url": "https://api.shop.tuvl.app",
+    }
+    res = run(
+        "--archive",
+        str(make_archive(tmp_path)),
+        "--url",
+        URL,
+        "--no-admin",
+        env={cloud.TOKEN_ENV: TOKEN},
+    )
+    assert (
+        res.exit_code == 0
+        and "Backend (API): https://api.shop.tuvl.app" in " ".join(res.output.split())
+        and fake.ui_uploads == []
+    )
+
+
+def test_no_ui_skips_the_folder_and_an_archive_alone_does_not_look_for_one(
+    fake, tmp_path, monkeypatch
+):
+    d = project(tmp_path)
+    monkeypatch.setattr(deploy_mod, "_ship", lambda *a, **k: make_archive(tmp_path))
+    assert (
+        run(
+            "-d", str(d), "--no-ui", "--url", URL, "--no-admin", env={cloud.TOKEN_ENV: TOKEN}
+        ).exit_code
+        == 0
+        and fake.ui_uploads == []
+    )
+    assert (
+        run(
+            "-d",
+            str(d),
+            "--archive",
+            str(make_archive(tmp_path)),
+            "--url",
+            URL,
+            "--no-admin",
+            env={cloud.TOKEN_ENV: TOKEN},
+        ).exit_code
+        == 0
+        and fake.ui_uploads == []
+    )
+    res = run(
+        "-d",
+        str(d),
+        "--archive",
+        str(make_archive(tmp_path)),
+        "--ui",
+        str(d / "ui"),
+        "--url",
+        URL,
+        "--no-admin",
+        env={cloud.TOKEN_ENV: TOKEN},
+    )
+    assert res.exit_code == 0 and len(fake.ui_uploads) == 1, (
+        "an archive plus an explicit --ui deploys both"
+    )
+
+
+def test_ui_only_uploads_just_the_ui_using_the_projects_name_and_never_packages_or_uploads_the_backend(
+    fake, tmp_path, monkeypatch
+):
+    d = project(tmp_path)
+
+    def boom(*a, **k):
+        raise AssertionError("nothing of the backend may be packaged")
+
+    monkeypatch.setattr(deploy_mod, "_ship", boom)
+    res = run("-d", str(d), "--ui-only", "--url", URL, env={cloud.TOKEN_ENV: TOKEN})
+    assert res.exit_code == 0, res.output
+    flat = " ".join(res.output.split())
+    assert (
+        "Web UI deployed." in flat
+        and "https://shop.tuvl.app" in flat
+        and "https://api.shop.tuvl.app" in flat
+        and "release abc123def456" in flat
+    )
+    assert [r.url.path for r in fake.requests if r.method == "POST"] == [
+        "/client/v1/projects/shop/ui"
+    ]
+    assert (
+        run(
+            "-d",
+            str(d),
+            "--ui-only",
+            "--project",
+            "blog",
+            "--url",
+            URL,
+            env={cloud.TOKEN_ENV: TOKEN},
+        ).exit_code
+        == 0
+        and fake.ui_uploads[-1][0] == "blog"
+    )
+
+
+def test_ui_only_without_a_ui_and_combinations_that_make_no_sense_are_a_usage_error_before_anything_is_sent(
+    fake, tmp_path
+):
+    bare = project(tmp_path, with_ui=False)
+    res = run("-d", str(bare), "--ui-only", "--url", URL, env={cloud.TOKEN_ENV: TOKEN})
+    assert (
+        res.exit_code == 2
+        and "no web UI to deploy" in " ".join(res.output.split())
+        and fake.requests == []
+    )
+    d = project(tmp_path)
+    for args in (
+        ["--ui-only", "--no-ui"],
+        ["--ui-only", "--hostname", "a.tuvl.app"],
+        ["--ui-only", "--archive", str(make_archive(tmp_path))],
+        ["--no-ui", "--ui", str(d / "ui")],
+        ["--ui-only", "--admin-email", "a@b.example"],
+    ):
+        assert (
+            run("-d", str(d), *args, "--url", URL, env={cloud.TOKEN_ENV: TOKEN}).exit_code == 2
+        ), args
+    assert fake.requests == []
+
+
+def test_a_ui_folder_without_an_index_html_stops_the_deploy_before_the_backend_is_uploaded(
+    fake, tmp_path, monkeypatch
+):
+    d = project(tmp_path, with_ui=False)
+    make_ui(tmp_path / "elsewhere", {"js/a.js": "1"})
+    monkeypatch.setattr(deploy_mod, "_ship", lambda *a, **k: make_archive(tmp_path))
+    res = run(
+        "-d",
+        str(d),
+        "--ui",
+        str(tmp_path / "elsewhere"),
+        "--url",
+        URL,
+        "--no-admin",
+        env={cloud.TOKEN_ENV: TOKEN},
+    )
+    assert (
+        res.exit_code == 2
+        and "no index.html" in " ".join(res.output.split())
+        and fake.requests == []
+    ), "fail before talking to the cloud at all"
+
+
+def test_a_ui_the_cloud_refuses_exits_non_zero_with_the_reason_after_the_backend_was_deployed(
+    fake, tmp_path, monkeypatch
+):
+    d = project(tmp_path)
+    monkeypatch.setattr(deploy_mod, "_ship", lambda *a, **k: make_archive(tmp_path))
+    fake.ui_status, fake.ui_body = (
+        422,
+        "the web UI archive was refused: .env looks like a secret and would be served to everyone; leave it out",
+    )
+    res = run("-d", str(d), "--url", URL, "--no-admin", env={cloud.TOKEN_ENV: TOKEN})
+    assert res.exit_code == 1 and "looks like a secret" in " ".join(res.output.split())
+    fake.ui_status = 202
+    fake.ui_final = {
+        **fake.ui_final,
+        "state": "failed",
+        "step": "failed",
+        "message": "the web UI was not deployed: shop is not running: deploy its backend first",
+    }
+    res = run("-d", str(d), "--ui-only", "--url", URL, env={cloud.TOKEN_ENV: TOKEN})
+    assert (
+        res.exit_code == 1
+        and "The web UI deployment failed" in res.output
+        and "deploy its backend first" in " ".join(res.output.split())
+    )
+
+
+def test_no_follow_says_the_ui_was_not_deployed_and_how_to_deploy_it(fake, tmp_path, monkeypatch):
+    d = project(tmp_path)
+    monkeypatch.setattr(deploy_mod, "_ship", lambda *a, **k: make_archive(tmp_path))
+    res = run("-d", str(d), "--no-follow", "--url", URL, "--no-admin", env={cloud.TOKEN_ENV: TOKEN})
+    assert (
+        res.exit_code == 0 and "--ui-only" in " ".join(res.output.split()) and fake.ui_uploads == []
+    )

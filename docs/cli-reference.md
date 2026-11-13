@@ -88,6 +88,9 @@ Deploy this project to a tuvl cloud with a client token (cloud.tuvl.io by defaul
 | `--set-hostname` | TEXT |  | Change the name the deployed app is served on, and nothing else: nothing is packaged or uploaded. The app restarts behind the new name; the old name stops working. |
 | `--check-dns` |  |  | Check that a name is available and points at the cloud (the name of --hostname or --set-hostname, else the project's default name). Nothing is deployed. |
 | `--project` | TEXT |  | The project to check or rename (default: the name in pyproject.toml). |
+| `--ui` | PATH |  | The folder holding the project's web UI (static files, index.html at its top). Default: ui/ in the project when it has an index.html. |
+| `--no-ui` |  |  | Deploy the backend only, even if the project has a ui/ folder. |
+| `--ui-only` |  |  | Deploy only the web UI of a project that is already running; the backend is not packaged or uploaded. |
 | `--admin-email` | TEXT |  | Create an administrator with this email in the new app; its password is made here, shown once, and kept nowhere. (`TUVL_ADMIN_EMAIL`) |
 | `--no-admin` |  |  | Do not create an administrator in the app. |
 | `--login` |  |  | Save a client token for this cloud (asked for with a hidden prompt) and exit. |

@@ -18,7 +18,7 @@ from rich.console import Console
 from rich.markup import escape
 from rich.panel import Panel
 
-from tuvl_insight.cli import cloud
+from tuvl_insight.cli import cloud, webui
 
 console = Console()
 err = Console(stderr=True)
@@ -115,6 +115,19 @@ def deploy_cmd(
         "--project",
         help="The project to check or rename (default: the name in pyproject.toml).",
     ),
+    ui: Path | None = typer.Option(
+        None,
+        "--ui",
+        help="The folder holding the project's web UI (static files, index.html at its top). Default: ui/ in the project when it has an index.html.",
+    ),
+    no_ui: bool = typer.Option(
+        False, "--no-ui", help="Deploy the backend only, even if the project has a ui/ folder."
+    ),
+    ui_only: bool = typer.Option(
+        False,
+        "--ui-only",
+        help="Deploy only the web UI of a project that is already running; the backend is not packaged or uploaded.",
+    ),
     admin_email: str | None = typer.Option(
         None,
         "--admin-email",
@@ -185,6 +198,32 @@ def deploy_cmd(
             "--check-dns only checks a name; it cannot be combined with --archive or --admin-email.",
             2,
         )
+    if no_ui and (ui or ui_only):
+        raise _fail("--no-ui cannot be combined with --ui or --ui-only.", 2)
+    if ui_only and (archive or hostname or admin_email or set_hostname or check_dns):
+        raise _fail(
+            "--ui-only deploys just the web UI; it cannot be combined with --archive, --hostname, --admin-email, --set-hostname or --check-dns.",
+            2,
+        )
+    ui_pack = None
+    if not no_ui and not (check_dns or set_hostname):
+        try:
+            ui_dir = (
+                ui
+                if (ui or ui_only)
+                else (None if archive else webui.find_ui_dir(project_dir, None))
+            )
+            if ui_dir is None and ui_only:
+                ui_dir = webui.find_ui_dir(project_dir, None)
+            if ui_only and ui_dir is None:
+                raise webui.UiError(
+                    "there is no web UI to deploy: pass --ui FOLDER, or add ui/index.html to the project"
+                )
+            if ui_dir is not None:
+                blob, count, skipped = webui.package(ui_dir)
+                ui_pack = (blob, count, skipped, ui_dir)
+        except webui.UiError as exc:
+            raise _fail(f"The web UI cannot be deployed: {exc}", 2) from None
     try:
         api = cloud.Cloud(base, token)
         me = api.me()
@@ -205,6 +244,19 @@ def deploy_cmd(
             )
             job = _follow(api, api.set_hostname(slug, new_name))
             _finish(job, what="rename")
+            return
+        if ui_only:
+            slug = project or _project_slug(project_dir)
+            result = _deploy_ui(api, slug, ui_pack, no_follow=no_follow)
+            if result is None:
+                return
+            console.print(
+                Panel(
+                    "\n".join(_ui_lines(result)),
+                    title="[green]tuvl deploy[/green]",
+                    border_style="green",
+                )
+            )
             return
         email = "" if no_admin else (admin_email or "").strip()
         with tempfile.TemporaryDirectory(prefix="tuvl-deploy-") as scratch:
@@ -255,17 +307,32 @@ def deploy_cmd(
             console.print(
                 "Follow it with the cloud's console, or run `tuvl deploy` again; it keeps going on the cloud."
             )
+            if ui_pack:
+                console.print(
+                    "[yellow]The web UI was not deployed: when the backend is up, run `tuvl deploy --ui-only`.[/yellow]"
+                )
             return
         job = _follow(api, started)
+        result = _finish(job, what="deployment")
+        ui_result = _deploy_ui(api, result.get("project", ""), ui_pack) if ui_pack else None
     except cloud.CloudError as exc:
         raise _fail(str(exc)) from None
     except subprocess.SubprocessError as exc:
         raise _fail(f"could not run `tuvl ship`: {exc}") from None
-    result = _finish(job, what="deployment")
+    app_url = (ui_result or {}).get("url") or result.get("url") or result.get("hostname", "")
     lines = [
-        f"[green bold]Deployed.[/green bold]  [bold]{escape(result.get('url') or result.get('hostname', ''))}[/bold]",
+        f"[green bold]Deployed.[/green bold]  [bold]{escape(app_url)}[/bold]",
         f"Project {escape(result.get('project', ''))} on the {escape(result.get('plan', ''))} plan",
     ]
+    lines += (
+        [
+            f"Web UI: [bold]{escape(app_url)}[/bold]   Backend (API): [bold]{escape((ui_result or result).get('api_url', ''))}[/bold]"
+        ]
+        if ui_result
+        else [f"Backend (API): [bold]{escape(result.get('api_url', ''))}[/bold]"]
+        if result.get("api_url")
+        else []
+    )
     admin_state = result.get("admin", "")
     if email and admin_state == "set":
         lines += [
@@ -281,6 +348,39 @@ def deploy_cmd(
         ]
     lines += ["", "[dim]Check the name any time: tuvl deploy --check-dns[/dim]"]
     console.print(Panel("\n".join(lines), title="[green]tuvl deploy[/green]", border_style="green"))
+
+
+def _deploy_ui(
+    api: cloud.Cloud,
+    slug: str,
+    pack: tuple[bytes, int, list[str], Path] | None,
+    *,
+    no_follow: bool = False,
+) -> dict | None:
+    """Upload the packaged web UI of a running project and follow it. ``None`` when only started (--no-follow)."""
+    if not pack:
+        raise _fail("there is no web UI to deploy.", 2)
+    blob, count, skipped, folder = pack
+    left = f"; left out: {', '.join(skipped)}" if skipped else ""
+    console.print(
+        f"Uploading the web UI from [bold]{escape(str(folder))}[/bold] ({count} files, {len(blob) / 1024:,.0f} KB{escape(left)})..."
+    )
+    started = api.start_ui(slug, blob)
+    console.print(
+        f"Web UI deployment [bold]{started['id'][:8]}[/bold] for project [bold]{escape(started.get('project', ''))}[/bold] started."
+    )
+    if no_follow:
+        console.print("Follow it with the cloud's console; it keeps going on the cloud.")
+        return None
+    return _finish(_follow(api, started), what="web UI deployment")
+
+
+def _ui_lines(result: dict) -> list[str]:
+    return [
+        f"[green bold]Web UI deployed.[/green bold]  [bold]{escape(result.get('url', ''))}[/bold]",
+        f"Project {escape(result.get('project', ''))}   Backend (API): [bold]{escape(result.get('api_url', ''))}[/bold]",
+        f"{result.get('files', 0)} files, release {escape(result.get('key', ''))}",
+    ]
 
 
 def _follow(api: cloud.Cloud, started: dict) -> dict:
