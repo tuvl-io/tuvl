@@ -342,6 +342,7 @@ It asks for an administrator's email and password (prompted, `--password-stdin`,
 | Command | Does |
 |---|---|
 | `roles list` · `create` · `delete` · `enable` · `disable` | The roles. A disabled role keeps its members and scopes but grants nothing. `delete` refuses a role that still has members unless `--force`. |
+| `users create <email> [--no-password]` · `users invite <email> [--url ...{token}...] [--hours N]` | A user with no password and a one-time set-password link for them (see *Set-password links*). `invite` prints only the link, or the bare token without `--url`, so it can be captured and sent to the user yourself; it works once and a newer one replaces an older unused one. |
 | `roles grant <role> <scope>` · `revoke` | One scope at a time. Revoking signs the holders out. |
 | `roles add-user <role> <email>` · `remove-user` | Who holds the role. |
 | `users list` · `create` · `enable` · `disable` | The users. `create` prompts for the password (or `TUVL_IAM_NEW_PASSWORD`). |

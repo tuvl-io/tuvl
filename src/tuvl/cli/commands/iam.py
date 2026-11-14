@@ -16,6 +16,7 @@ Roles come from the project's ``RoleSeed`` on a fresh database and are managed h
 from __future__ import annotations
 
 import asyncio
+import datetime
 import sys
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
@@ -397,9 +398,15 @@ def users_create(
     role: Annotated[
         list[str] | None, typer.Option("--role", "-r", help="A role to give (repeatable).")
     ] = None,
+    no_password: Annotated[
+        bool,
+        typer.Option(
+            "--no-password", help="Create the user with no password; give them `users invite`."
+        ),
+    ] = False,
 ) -> None:
-    """Create a user. The password is prompted (or TUVL_IAM_NEW_PASSWORD)."""
-    password = _new_password(email)
+    """Create a user. The password is prompted (or TUVL_IAM_NEW_PASSWORD) unless --no-password."""
+    password = None if no_password else _new_password(email)
 
     async def op(session: Any, actor: str | None) -> None:
         roles = [await _role(session, name) for name in dict.fromkeys(role or [])]
@@ -417,6 +424,41 @@ def users_create(
 
     _execute(ctx, op)
     _done(f"Created {email}.")
+
+
+@users_app.command("invite")
+def users_invite(
+    ctx: typer.Context,
+    email: Annotated[str, typer.Argument()],
+    url: Annotated[
+        str | None,
+        typer.Option(
+            "--url",
+            help="Your app's set-password address with {token} where the token goes, "
+            "for example 'https://app.example.com/#/set-password?token={token}'. Without it only the token is printed.",
+        ),
+    ] = None,
+    hours: Annotated[int, typer.Option("--hours", help="How long the link works (1 to 720).")] = 72,
+) -> None:
+    """Make a one-time link for a user to set their own password, and print it.
+
+    The link or token is the only thing written to stdout, so it can be captured; send it to the user
+    yourself. It works once, and a newer one replaces an older unused one.
+    """
+    if url is not None and "{token}" not in url:
+        raise _fail("--url must contain {token}, where the token goes.", 2)
+
+    async def op(session: Any, actor: str | None) -> tuple[str, datetime.datetime]:
+        user = await _user(session, email)
+        token, expires = await _svc().issue_password_token(session, user.id, ttl_hours=hours)
+        _audit(actor, "users invite", email)
+        return str(token), expires
+
+    token, expires = _execute(ctx, op)
+    err.print(
+        f"[green]✓[/green] Link for {email}, one use, valid until {expires:%Y-%m-%d %H:%M} UTC:"
+    )
+    typer.echo(url.replace("{token}", token) if url else token)
 
 
 def _set_user_active(ctx: typer.Context, email: str, active: bool) -> None:
