@@ -140,6 +140,10 @@
   "hidden": false
  },
  {
+  "command": "iam users invite",
+  "hidden": false
+ },
+ {
   "command": "iam users list",
   "hidden": false
  },

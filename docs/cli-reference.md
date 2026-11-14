@@ -1040,7 +1040,7 @@ List the scopes this project enforces and what each guards.
 
 ### `tuvl iam users create`
 
-Create a user. The password is prompted (or TUVL_IAM_NEW_PASSWORD).
+Create a user. The password is prompted (or TUVL_IAM_NEW_PASSWORD) unless --no-password.
 
 Arguments: `<email>`
 
@@ -1050,6 +1050,7 @@ Arguments: `<email>`
 | `--last-name` | TEXT |  |  |
 | `--phone` | TEXT |  |  |
 | `--role`, `-r` | TEXT (repeatable) |  | A role to give (repeatable). |
+| `--no-password` |  |  | Create the user with no password; give them `users invite`. |
 
 
 ### `tuvl iam users disable`
@@ -1064,6 +1065,18 @@ Arguments: `<email>`
 Let a disabled user sign in again.
 
 Arguments: `<email>`
+
+
+### `tuvl iam users invite`
+
+Make a one-time link for a user to set their own password, and print it.
+
+Arguments: `<email>`
+
+| Option | Value | Default | What it does |
+|---|---|---|---|
+| `--url` | TEXT |  | Your app's set-password address with {token} where the token goes, for example 'https://app.example.com/#/set-password?token={token}'. Without it only the token is printed. |
+| `--hours` | INTEGER | `72` | How long the link works (1 to 720). |
 
 
 ### `tuvl iam users list`

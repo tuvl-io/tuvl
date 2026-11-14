@@ -20,6 +20,7 @@
  "POST /auth/logout": "logout",
  "POST /auth/oauth/{provider}/device/poll": "oauth_device_poll",
  "POST /auth/oauth/{provider}/device/start": "oauth_device_start",
+ "POST /auth/password/set": "set_password",
  "POST /auth/refresh": "refresh_token",
  "POST /auth/token": "login"
 }
