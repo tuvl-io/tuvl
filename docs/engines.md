@@ -62,8 +62,10 @@ async def issue_refund(inp: IssueRefundIn, ctx: Ctx) -> IssueRefundOut:
 | Signature | `async def f(inp: <Id>In, ctx: Ctx) -> <Id>Out` or `tuple[<Id>Out, str]`. `tuvl generate code` writes the decorator, signature and docstring; you write the body. |
 | Signals | Returning `Out` emits `default`; `(Out, "signal")` emits that signal (it must be routed); an exception emits `error` (`code_exception`). |
 | `ctx.db` | Unit of work restricted to `spec.models`; read-only when `effect: read` (a write raises). Writes commit with the step's checkpoint. |
-| `ctx` | `ctx.log` (structlog, bound to the run and agent), `ctx.run_id`, `ctx.principal`, `ctx.idempotency_key`, `ctx.http` (shared HTTP client), `ctx.artifact(ref)`, `ctx.params` (rendered `code.with`), `ctx.agent_id` |
+| `ctx` | `ctx.log` (structlog, bound to the run and agent), `ctx.run_id`, `ctx.principal`, `ctx.idempotency_key`, `ctx.http` (shared HTTP client), `ctx.artifact(ref)`, `ctx.params` (`code.with`: `${VAR}` / `${VAR:default}` read the environment, then `{{ }}` templates are rendered), `ctx.agent_id` |
 | `effect` | Declared, because it can't be derived from Python. It drives policy (`require_human_before`) and MCP annotations. |
+
+**Configuration and secrets.** A code agent never reads `os.environ` (rule C004). Pass what it needs through `code.with`: `with: { api_key: "${CRM_KEY}", base: "${CRM_URL:https://crm.example.com}" }` reaches the function as `ctx.params`. The references are expanded in the document's own text, before the templates are rendered, so a value that arrives through `{{ }}` is data and is never read as a variable. A variable with no default that is not set fails the agent.
 
 **Built-ins.** `run: tuvl.data_search` and `run: tuvl.data_ingest` are vector search and ingest with
 typed contracts, configured by `code.with` (`collection`, `query`/`document`, `top_k`, `filter`,

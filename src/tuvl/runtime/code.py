@@ -39,6 +39,7 @@ from tuvl.runtime.engines import (
     AgentResult,
     EngineContext,
     EngineError,
+    expand_env_params,
     register_engine,
     render_params,
 )
@@ -257,7 +258,7 @@ async def code_engine(agent_spec: Any, view: dict[str, Any], ctx: EngineContext)
     if fn is None:
         raise EngineError("engine_unavailable", f"no @agent('{agent_spec.code.run}') is registered")
     inp = _input_class(fn, agent_spec, ctx).model_validate(view)
-    params = render_params(agent_spec.code.with_, view)
+    params = render_params(expand_env_params(agent_spec.code.with_), view)
     returned = await fn(inp, Ctx(ctx, agent_spec, params))
     if isinstance(returned, str):
         return AgentResult(returned)
