@@ -26,14 +26,17 @@ Security-relevant behavior that lives HERE:
 from __future__ import annotations
 
 import copy
+import datetime
+import hashlib
 import re
+import secrets
 import uuid
 from pathlib import Path
 from typing import Any
 
 import yaml as _yaml
 from fastapi.concurrency import run_in_threadpool
-from sqlalchemy import distinct, func
+from sqlalchemy import distinct, func, update
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import col, or_, select
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -41,7 +44,13 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from tuvl.core.auth.blacklist import token_blacklist
 from tuvl.core.auth.crypto import aget_password_hash, averify_password, get_password_hash
 from tuvl.core.auth.federation_loader import load_all_federation_providers
-from tuvl.core.auth.models import IAMRole, IAMRoleScope, IAMUser, IAMUserRole
+from tuvl.core.auth.models import (
+    IAMPasswordToken,
+    IAMRole,
+    IAMRoleScope,
+    IAMUser,
+    IAMUserRole,
+)
 from tuvl.core.auth.token import mint_token
 from tuvl.core.config import settings
 from tuvl.core.logger import logger
@@ -473,6 +482,81 @@ async def update_user(
         await end_sessions([user_id])
     roles = await load_user_roles(session, user)
     return user, [r.name for r in roles]
+
+
+# ── Set-password links ─────────────────────────────────────────────────────────
+
+PASSWORD_TOKEN_DEFAULT_HOURS = 72
+PASSWORD_TOKEN_MAX_HOURS = 24 * 30
+PASSWORD_MIN_LENGTH = 8
+PASSWORD_MAX_BYTES = 72  # bcrypt ignores everything after 72 bytes
+
+
+def _digest(raw_token: str) -> str:
+    return hashlib.sha256(raw_token.encode()).hexdigest()
+
+
+def _now() -> datetime.datetime:
+    return datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
+
+
+async def issue_password_token(
+    session: AsyncSession, user_id: uuid.UUID, *, ttl_hours: int = PASSWORD_TOKEN_DEFAULT_HOURS
+) -> tuple[str, datetime.datetime]:
+    """A one-time token that lets the user set their own password; earlier unused ones stop working.
+
+    Only its hash is stored, so the token cannot be read back: hand it to the user now.
+    """
+    if not 1 <= ttl_hours <= PASSWORD_TOKEN_MAX_HOURS:
+        raise ValidationError(f"The link must last between 1 and {PASSWORD_TOKEN_MAX_HOURS} hours.")
+    user = await get_user_by_id(session, user_id)
+    if user is None:
+        raise NotFoundError("User not found.")
+    if not user.is_active:
+        raise ValidationError("An inactive user cannot be given a link.")
+    old = await session.exec(
+        select(IAMPasswordToken).where(
+            IAMPasswordToken.user_id == user_id, col(IAMPasswordToken.used_at).is_(None)
+        )
+    )
+    for row in old.all():
+        await session.delete(row)
+    raw = secrets.token_urlsafe(32)
+    expires = _now() + datetime.timedelta(hours=ttl_hours)
+    session.add(IAMPasswordToken(user_id=user_id, token_hash=_digest(raw), expires_at=expires))
+    await session.commit()
+    logger.info("auth.password_token.issued", user_id=str(user_id), ttl_hours=ttl_hours)
+    return raw, expires
+
+
+async def set_password_with_token(session: AsyncSession, raw_token: str, password: str) -> None:
+    """Set the password of the user a token was issued for; the token works once."""
+    if len(password) < PASSWORD_MIN_LENGTH:
+        raise ValidationError(f"The password must be at least {PASSWORD_MIN_LENGTH} characters.")
+    if len(password.encode()) > PASSWORD_MAX_BYTES:
+        raise ValidationError(f"The password must be at most {PASSWORD_MAX_BYTES} bytes.")
+    invalid = AuthenticationError("This link is not valid or has expired.")
+    found = await session.exec(
+        select(IAMPasswordToken).where(IAMPasswordToken.token_hash == _digest(raw_token))
+    )
+    row = found.first()
+    if row is None or row.used_at is not None or row.expires_at < _now():
+        raise invalid
+    user = await get_user_by_id(session, row.user_id)
+    if user is None or not user.is_active:
+        raise invalid
+    # claim it first: of two requests with the same token only one changes a row
+    claimed = await session.exec(
+        update(IAMPasswordToken)
+        .where(col(IAMPasswordToken.id) == row.id, col(IAMPasswordToken.used_at).is_(None))
+        .values(used_at=_now())
+    )
+    if claimed.rowcount != 1:
+        raise invalid
+    user.hashed_password = await aget_password_hash(password)
+    await session.commit()
+    await end_sessions([user.id])
+    logger.info("auth.password_token.used", user_id=str(user.id))
 
 
 # ── Roles ──────────────────────────────────────────────────────────────────────

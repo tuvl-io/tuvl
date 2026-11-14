@@ -6,6 +6,7 @@ tuvl_system_iam_users       — end-user credentials (email + bcrypt hash OR fed
 tuvl_system_iam_roles       — named roles, e.g. "hr_manager", "recruiter".
 tuvl_system_iam_user_roles  — many-to-many: which user holds which role.
 tuvl_system_iam_role_scopes — which scopes a role grants, e.g. "requisition:write".
+tuvl_system_iam_password_tokens — one-time links that let a user set their own password (hashed, expiring).
 
 Design notes
 ------------
@@ -123,3 +124,25 @@ class IAMRoleScope(SQLModel, table=True):
         ),
     )
     scope_name: str = Field()
+
+
+class IAMPasswordToken(SQLModel, table=True):
+    """A one-time link to set a password. Only the SHA-256 of the token is kept; the token itself goes to the user."""
+
+    __tablename__ = "tuvl_system_iam_password_tokens"
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    user_id: uuid.UUID = Field(
+        foreign_key="tuvl_system_iam_users.id",
+        ondelete="CASCADE",
+        index=True,
+    )
+    token_hash: str = Field(sa_column=sa.Column(sa.String, unique=True, index=True, nullable=False))
+    expires_at: datetime.datetime = Field(sa_column=sa.Column(sa.DateTime, nullable=False))
+    used_at: datetime.datetime | None = Field(
+        default=None, sa_column=sa.Column(sa.DateTime, nullable=True)
+    )
+    created_at: datetime.datetime = Field(
+        default_factory=datetime.datetime.utcnow,
+        sa_column=sa.Column(sa.DateTime, default=datetime.datetime.utcnow, nullable=False),
+    )
