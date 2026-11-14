@@ -239,6 +239,15 @@ class Cloud:
                 timeout=600.0,
             )
 
+    def start_ui(self, slug: str, data: bytes) -> dict:
+        """Upload a project's web UI (a .tar.gz of static files). A deployment job, followed like any other."""
+        return self._call(
+            "POST",
+            f"/projects/{slug}/ui",
+            files={"archive": ("ui.tar.gz", data, "application/gzip")},
+            timeout=300.0,
+        )
+
     def check_hostname(self, name: str = "", project: str = "") -> dict:
         """Whether *name* (default: the project's own default name) can be used, and whether it points at the cloud."""
         return self._call("GET", "/hostnames/check", params={"name": name, "project": project})

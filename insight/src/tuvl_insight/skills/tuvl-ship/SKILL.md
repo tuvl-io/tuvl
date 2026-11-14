@@ -48,5 +48,6 @@ and every model provider need no extra.
 - A production server mounts only what it needs: no Insight or dev routes, and the OpenAPI pages and admin routes are off unless exposed.
 - A workflow naming a disabled or undefined model is refused with the reason (HTTP 409), not run.
 - `tuvl deploy` ships the project as an archive and deploys it to a tuvl cloud (cloud.tuvl.io by default) with a client token
-  (`TUVL_CLIENT_TOKEN`, standard input or `tuvl deploy --login`; never an argument). To run it yourself instead, deploy the chart
+  (`TUVL_CLIENT_TOKEN`, standard input or `tuvl deploy --login`; never an argument). The backend is served at `api.<name>`; a `ui/` folder with an `index.html`
+  is deployed too, on `<name>` (`--ui FOLDER`, `--no-ui`, `--ui-only`). To run it yourself instead, deploy the chart
   that ship writes with `helm`.
