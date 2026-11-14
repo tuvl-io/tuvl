@@ -20,7 +20,7 @@ from tuvl.cli import app
 from tuvl.cli.commands import iam as iam_cli
 from tuvl.core.auth import iam_service
 from tuvl.core.auth.blacklist import token_blacklist
-from tuvl.core.auth.models import IAMRole, IAMRoleScope, IAMUser, IAMUserRole
+from tuvl.core.auth.models import IAMPasswordToken, IAMRole, IAMRoleScope, IAMUser, IAMUserRole
 from tuvl.core.auth.seed import parse_role_seed
 from tuvl.core.config import settings
 
@@ -50,6 +50,7 @@ def db(monkeypatch, tmp_path):
                     IAMRole.__table__,
                     IAMUserRole.__table__,
                     IAMRoleScope.__table__,
+                    IAMPasswordToken.__table__,
                 ],
             )
         await engine.dispose()
@@ -283,3 +284,34 @@ def test_iam_is_in_the_core_cli_not_the_toolchain():
 
     assert "iam" not in TOOLCHAIN_COMMANDS
     assert Path(iam_cli.__file__).name == "iam.py"
+
+
+def test_a_user_with_no_password_is_given_a_link_and_sets_their_own(db):
+    created = iam("users", "create", "vee@example.com", "--no-password")
+    assert created.exit_code == 0, created.output
+    with pytest.raises(iam_service.AuthenticationError):
+        db.run(lambda s: iam_service.login(s, login_str="vee@example.com", password="anything-123"))
+
+    url = "https://app.test/#/set-password?token={token}"
+    made = iam("users", "invite", "vee@example.com", "--url", url)
+    assert made.exit_code == 0, made.output
+    link = made.stdout.strip().splitlines()[-1]
+    assert link.startswith("https://app.test/#/set-password?token=") and "{token}" not in link
+    token = link.split("token=")[1]
+
+    db.run(lambda s: iam_service.set_password_with_token(s, token, "Chosen-pass-1"))
+    assert db.run(
+        lambda s: iam_service.login(s, login_str="vee@example.com", password="Chosen-pass-1")
+    )
+    with pytest.raises(iam_service.AuthenticationError):  # the link works once
+        db.run(lambda s: iam_service.set_password_with_token(s, token, "Other-pass-123"))
+
+
+def test_invite_without_a_url_prints_just_the_token_and_checks_the_inputs(db):
+    assert iam("users", "create", "wes@example.com", "--no-password").exit_code == 0
+    plain = iam("users", "invite", "wes@example.com", "--hours", "24")
+    assert plain.exit_code == 0 and len(plain.stdout.strip().splitlines()[-1]) >= 40
+    assert iam("users", "invite", "nobody@example.com").exit_code == 1
+    bad_url = iam("users", "invite", "wes@example.com", "--url", "https://app.test/set")
+    assert bad_url.exit_code == 2 and "{token}" in bad_url.output
+    assert iam("users", "invite", "wes@example.com", "--hours", "0").exit_code == 1

@@ -233,6 +233,8 @@ tuvl_system_iam_users                 tuvl_system_iam_roles
 
 Users and roles are administered under `/auth/admin/users` and `/auth/admin/roles` (full CRUD plus role assignment/revocation), all guarded by `iam:admin`. Role scope sets are replaced atomically via `PATCH /auth/admin/roles/{id}/scopes`.
 
+**Set-password links.** An admin makes a one-time link token for a user with `POST /auth/admin/users/{id}/invite` (`iam:admin`; optional `{"ttl_hours": 72}`, 1 to 720; the answer is `{token, expires_at}`). The token is shown once: only its SHA-256 is stored. A user created without a `password` has no way to sign in until they use it. The user then calls the public `POST /auth/password/set` with `{token, password}` (8 to 72 bytes): `204` on success; `400` for a token that is wrong, already used or expired; `422` for a password that breaks the rules (the token is kept). The token works once, a newer link replaces the older unused one, an inactive user cannot be given one, and setting the password ends the sessions the user already held. Put the token in a link in your own UI (for example `https://app.example.com/#/set-password?token=...`) and send it by email.
+
 ---
 
 ## 7. Authorization Surfaces
@@ -340,6 +342,7 @@ It asks for an administrator's email and password (prompted, `--password-stdin`,
 | Command | Does |
 |---|---|
 | `roles list` · `create` · `delete` · `enable` · `disable` | The roles. A disabled role keeps its members and scopes but grants nothing. `delete` refuses a role that still has members unless `--force`. |
+| `users create <email> [--no-password]` · `users invite <email> [--url ...{token}...] [--hours N]` | A user with no password and a one-time set-password link for them (see *Set-password links*). `invite` prints only the link, or the bare token without `--url`, so it can be captured and sent to the user yourself; it works once and a newer one replaces an older unused one. |
 | `roles grant <role> <scope>` · `revoke` | One scope at a time. Revoking signs the holders out. |
 | `roles add-user <role> <email>` · `remove-user` | Who holds the role. |
 | `users list` · `create` · `enable` · `disable` | The users. `create` prompts for the password (or `TUVL_IAM_NEW_PASSWORD`). |

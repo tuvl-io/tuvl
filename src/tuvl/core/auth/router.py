@@ -8,6 +8,7 @@ Microsoft (GET /auth/oauth/{provider}/start and /callback).
 
 from __future__ import annotations
 
+import datetime
 import uuid
 from collections.abc import AsyncIterator
 from typing import Annotated, Any
@@ -66,6 +67,20 @@ class CreateUserRequest(BaseModel):
         description="Plaintext password (will be hashed). Omit for federated-only accounts.",
     )
     is_active: bool = True
+
+
+class InviteRequest(BaseModel):
+    ttl_hours: int = Field(default=72, ge=1, le=720, description="How long the link works.")
+
+
+class InviteResponse(BaseModel):
+    token: str = Field(..., description="Give this to the user once; it cannot be read back.")
+    expires_at: datetime.datetime
+
+
+class SetPasswordRequest(BaseModel):
+    token: str = Field(..., min_length=20, max_length=200)
+    password: str = Field(..., min_length=1, max_length=200)
 
 
 class UpdateUserRequest(BaseModel):
@@ -164,6 +179,21 @@ async def bootstrap(req: BootstrapRequest, session: IamSession) -> TokenResponse
     except ConflictError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     return TokenResponse(access_token=token)
+
+
+@router.post(
+    "/password/set",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Set your own password with a one-time link token",
+)
+async def set_password(req: SetPasswordRequest, session: IamSession) -> None:
+    """Public: the token is the credential. It works once and expires; the user's open sessions end."""
+    try:
+        await iam_service.set_password_with_token(session, req.token, req.password)
+    except AuthenticationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except ValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.post(
@@ -317,6 +347,28 @@ async def create_user(
         is_active=user.is_active,
         roles=roles,
     )
+
+
+@iam_router.post(
+    "/admin/users/{user_id}/invite",
+    response_model=InviteResponse,
+    summary="Make a one-time link token for a user to set their own password",
+)
+async def invite_user(
+    user_id: uuid.UUID,
+    session: IamSession,
+    _admin: AdminUser,
+    req: InviteRequest | None = None,
+) -> InviteResponse:
+    try:
+        token, expires = await iam_service.issue_password_token(
+            session, user_id, ttl_hours=(req.ttl_hours if req else 72)
+        )
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return InviteResponse(token=token, expires_at=expires)
 
 
 @iam_router.get(
