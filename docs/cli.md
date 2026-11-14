@@ -135,6 +135,10 @@ model providers and blob storage (S3, Azure, GCS, local) are part of `tuvl` and 
   `--admin-email` creates an administrator in a new app; its password is made on your machine, sealed for the cloud and shown once.
   `--check-dns` says whether a name is available and points at the cloud (nothing is deployed), and `--set-hostname NAME` changes the name a deployed app is served on
   (nothing is packaged or uploaded; the app restarts behind the new name). Names must be under the cloud's base domain.
+  The backend is served at `api.<name>` (for example `https://api.shop.tuvl.app`). A project's **web UI** (a folder of static files with an `index.html` at its top, by
+  default `ui/`) is deployed after the backend and served on `<name>`; calls from the UI to `/api`, `/auth`, `/models` and `/health` on its own address reach the backend, so a UI
+  that uses its own origin needs no extra setup. `--ui FOLDER` names the folder, `--no-ui` skips it, `--ui-only` deploys just the UI of a project that is already running.
+  The folder is packed without hidden files, `serve.py`, `tests`, `specs`, `node_modules` and links; the cloud checks the archive again and refuses anything that looks like a secret.
   To run the app yourself instead, install the chart `tuvl ship` writes with `helm`.
 
 ## The CI gate

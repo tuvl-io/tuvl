@@ -84,6 +84,23 @@ def render_params(value: Any, view: Mapping[str, Any]) -> Any:
     return value
 
 
+def expand_env_params(value: Any) -> Any:
+    """Expand ``${VAR}`` / ``${VAR:default}`` in the strings of a parameter tree.
+
+    Run it on the static document text *before* :func:`render_params`: a value that arrives later through a
+    ``{{ }}`` template is data and is never read as an environment reference.
+    """
+    from tuvl.core.engine.templating import expand_env
+
+    if isinstance(value, str):
+        return expand_env(value, source="code.with") if "${" in value else value
+    if isinstance(value, dict):
+        return {k: expand_env_params(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [expand_env_params(v) for v in value]
+    return value
+
+
 ENGINES: dict[str, Engine] = {}
 
 _DERIVED: dict[int, tuple[weakref.ref[Any], dict[Hashable, Any]]] = {}

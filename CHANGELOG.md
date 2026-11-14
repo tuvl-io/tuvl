@@ -12,6 +12,11 @@ release below is the current one.
 
 ## [Unreleased]
 
+### Added
+
+- **A code agent's `with:` reads the environment.** `with: { key: "${CRM_KEY}", base: "${CRM_URL:https://crm.example.com}" }` reaches the function as `ctx.params`, so credentials and endpoints no longer need an `os.environ` read (which `tuvl review code` refuses, C004). The references are expanded in the document's text before the `{{ }}` templates are rendered, so data can never be read as a variable.
+- **`tuvl deploy` deploys the web UI, and the backend is served as `api.<name>`.** A project's UI (a folder of static files with an `index.html`, by default `ui/`) is packed and deployed after the backend with `--ui FOLDER` (`--no-ui` skips it, `--ui-only` deploys just the UI of a running project). The UI is served on `<name>` and the backend on `api.<name>`; the UI's own address also hands `/api`, `/auth`, `/models` and `/health` to the backend, so a UI that calls its own origin needs no cross-origin setup. The folder is packed without hidden files, `serve.py`, `tests`, `specs`, `node_modules` and links, the same files give the same bytes, and the cloud checks the archive again. The deploy result prints both addresses. Needs a cloud with web UI support.
+
 ---
 
 ## [2.1.0-beta.4] — 2026-11-13
