@@ -8,6 +8,7 @@ endpoints (OpenAI, Gemini, Ollama, Groq, Mistral, vLLM, any gateway through
 from __future__ import annotations
 
 import asyncio
+import os
 import time
 import weakref
 from collections.abc import AsyncIterator
@@ -60,10 +61,19 @@ __all__ = [
 
 _DEFAULT_TIMEOUT = 600.0
 _tracer = trace.get_tracer("tuvl.llm")
-# No connection cap (each call used to get its own client; a long completion must not queue
-# behind others). Idle connections expire before the 5 s keep-alive of uvicorn-served models
-# (Ollama, vLLM), so a reused connection is not one the server is closing.
-_LIMITS = httpx.Limits(max_connections=None, max_keepalive_connections=32, keepalive_expiry=4.0)
+
+
+def _limits() -> httpx.Limits:
+    """No connection cap unless ``TUVL_LLM_MAX_CONNECTIONS`` sets one (each call used to get its own client;
+    a long completion must not queue behind others, but a burst of runs must not open thousands of
+    sockets either: with a cap, calls past it wait for a connection). Idle connections expire before the
+    5 s keep-alive of uvicorn-served models (Ollama, vLLM), so a reused connection is not one the server
+    is closing."""
+    raw = os.environ.get("TUVL_LLM_MAX_CONNECTIONS", "").strip()
+    cap = int(raw) if raw.isdigit() and int(raw) > 0 else None
+    return httpx.Limits(max_connections=cap, max_keepalive_connections=32, keepalive_expiry=4.0)
+
+
 _clients: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, httpx.AsyncClient] = (
     weakref.WeakKeyDictionary()
 )
@@ -74,7 +84,7 @@ def _client() -> httpx.AsyncClient:
     loop = asyncio.get_running_loop()
     client = _clients.get(loop)
     if client is None or client.is_closed:
-        client = httpx.AsyncClient(timeout=_DEFAULT_TIMEOUT, limits=_LIMITS)
+        client = httpx.AsyncClient(timeout=_DEFAULT_TIMEOUT, limits=_limits())
         _clients[loop] = client
     return client
 

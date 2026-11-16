@@ -66,6 +66,18 @@ A request or a parent run waiting for another run is woken by the commit that en
 and otherwise asks again after 20 ms, 40 ms, 80 ms ... up to once a second (it used to open a session every 20 to 250 ms).
 A claim takes a crashed worker's runs (expired leases) first, then the oldest queued ones.
 
+**Starting several replicas.** The schema is created and altered under one advisory lock, taken by trying it a few
+times a second rather than waiting on it (a waiting session would hold a snapshot that another process's
+`CREATE INDEX CONCURRENTLY` needs): replicas that boot together on an empty database find the tables made by the
+first, and an up-to-date database is not altered at all (a column or index is added only after the catalog shows it
+missing, so no replica takes the brief exclusive lock of an `ALTER TABLE` on every boot). A process that cannot get
+the lock within two minutes stops with a message instead of hanging. A datasource without `ro_host` has **one**
+connection pool, not a read and a write pool to the same server; with `ro_host` the reads use their own. If the
+database cannot be reached at startup, in production the process exits with the error (the supervisor restarts it);
+only `tuvl dev` also stops its reloader. In production, two workflows (or a workflow and a route) claiming one
+`method path` stop the boot with the names; in development the later one is skipped and logged.
+`TUVL_LLM_MAX_CONNECTIONS` (unset: no cap) bounds the connections the model client opens; calls past it wait.
+
 A failing claim, sweep or heartbeat is logged and retried; it never ends the poll loop or the heartbeat for good. A
 sweep that fails is skipped and the others still run. A heartbeat that fails is retried sooner than the lease runs
 out. When the heartbeat finds that the run is no longer this worker's, or a whole lease passes without a good beat,

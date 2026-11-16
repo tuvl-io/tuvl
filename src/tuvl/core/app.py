@@ -120,6 +120,29 @@ async def _stop_runtime() -> None:
         set_host(None)
 
 
+async def _database_unreachable(exc: PostgresStartupError) -> None:
+    """Startup cannot go on without PostgreSQL.
+
+    In development ``tuvl dev``'s reloader is our parent and would sit idle waiting for file changes, so
+    it is stopped and this process exits. In production the parent is a supervisor or a test runner that
+    must not be killed: the lifespan raises, the server exits non-zero and the orchestrator restarts it.
+    """
+    logger.error(
+        "Startup aborted — could not connect to PostgreSQL. "
+        "Fix the connection issue and restart tuvl.",
+        error=str(exc),
+    )
+    await close_db()
+    if not settings.tuvl_dev_mode:
+        raise exc
+    import signal as _signal
+
+    parent = os.getppid()
+    if parent and parent != 1:
+        os.kill(parent, _signal.SIGTERM)
+    os._exit(1)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     logger.info("tuvl starting up")
@@ -194,20 +217,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     try:
         await init_db()
-    except PostgresStartupError:
-        logger.error(
-            "Startup aborted — could not connect to PostgreSQL. "
-            "Fix the connection issue and restart tuvl."
-        )
-        await close_db()
-        # SIGTERM the reloader/supervisor (our parent) so it exits cleanly
-        # rather than hanging idle waiting for file-change events.
-        import signal as _signal
-
-        parent = os.getppid()
-        if parent and parent != 1:
-            os.kill(parent, _signal.SIGTERM)
-        os._exit(1)
+    except PostgresStartupError as exc:
+        await _database_unreachable(exc)
 
     from tuvl.core.datasources.rls import warn_if_role_bypasses_rls
 

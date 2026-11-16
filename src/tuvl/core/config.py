@@ -112,10 +112,6 @@ class Settings(BaseSettings):
     postgres_user: str = "postgres"
     postgres_password: str = "postgres"
 
-    db_echo: bool = False
-    db_pool_min: int = 5
-    db_pool_max: int = 20
-
     @computed_field  # type: ignore[prop-decorator]
     @property
     def pg_database_url_rw(self) -> str:

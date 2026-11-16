@@ -23,6 +23,7 @@ from tuvl.api.uploads import file_inputs, is_multipart, start_upload_run
 from tuvl.contract.schema import WorkflowDocument
 from tuvl.contract.surface import end_schema, input_schema
 from tuvl.contract.types import ModelResolver
+from tuvl.core.config import settings
 
 logger = structlog.get_logger(__name__)
 
@@ -175,6 +176,11 @@ def mount_triggers(app: FastAPI, workflows: dict[str, WorkflowDocument]) -> int:
             logger.error(
                 "runtime.trigger.path_taken", workflow=name, method=http.method, path=http.path
             )
+            if settings.is_production:
+                raise RuntimeError(
+                    f"workflow '{name}' cannot be served: {http.method} {http.path} is already taken "
+                    "by another workflow or route. Give it a path of its own."
+                )
             continue
         app.add_api_route(
             http.path,

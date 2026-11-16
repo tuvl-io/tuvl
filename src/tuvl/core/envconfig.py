@@ -74,6 +74,10 @@ ENGINE_CATALOG: dict[str, EnvVar] = dict(
             secret=True,
         ),
         _v(
+            "TUVL_LLM_MAX_CONNECTIONS",
+            "Most simultaneous connections the model client opens; calls past it wait. Unset: no cap.",
+        ),
+        _v(
             "TUVL_TOKEN_TTL_SECONDS",
             "Access-token lifetime in seconds; 0 disables expiry (not recommended).",
             default="86400",

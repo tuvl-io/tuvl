@@ -1,7 +1,8 @@
+import asyncio
 import contextlib
 import os
 import re
-from collections.abc import AsyncGenerator, Callable
+from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable
 from typing import Any
 from urllib.parse import quote_plus
 
@@ -211,20 +212,24 @@ def _build_engines() -> None:
             connect_args=connect_args,
             **pool_kwargs,
         )
-        _engines_ro[ds_name] = create_async_engine(
-            ro_dsn,
-            echo=False,
-            hide_parameters=True,
-            pool_pre_ping=True,
-            connect_args=connect_args,
-            **pool_kwargs,
-        )
         _sessions_rw[ds_name] = async_sessionmaker(
             _engines_rw[ds_name], class_=AsyncSession, expire_on_commit=False
         )
-        _sessions_ro[ds_name] = async_sessionmaker(
-            _engines_ro[ds_name], class_=AsyncSession, expire_on_commit=False
-        )
+        if conn.get("ro_host") and conn["ro_host"] != conn["host"]:
+            _engines_ro[ds_name] = create_async_engine(
+                ro_dsn,
+                echo=False,
+                hide_parameters=True,
+                pool_pre_ping=True,
+                connect_args=connect_args,
+                **pool_kwargs,
+            )
+            _sessions_ro[ds_name] = async_sessionmaker(
+                _engines_ro[ds_name], class_=AsyncSession, expire_on_commit=False
+            )
+        else:  # no read replica: reads use the same pool, not a second one to the same server
+            _engines_ro[ds_name] = _engines_rw[ds_name]
+            _sessions_ro[ds_name] = _sessions_rw[ds_name]
 
         logger.info(
             "postgres.engine.ready",
@@ -532,6 +537,76 @@ async def ensure_indexes(
             await conn.execute(text("SELECT pg_advisory_unlock(:k)"), {"k": _INDEX_LOCK})
 
 
+#: Held (as a transaction-scoped advisory lock) while the schema is created or altered; distinct from
+#: ``_INDEX_LOCK``. Tried in a loop, never waited for: see :func:`ensure_schema`.
+_SCHEMA_LOCK = 0x7475766C_73636D00
+SCHEMA_LOCK_SECONDS = 120.0
+
+
+@contextlib.asynccontextmanager
+async def _schema_transaction(
+    engine: AsyncEngine, *, timeout: float = SCHEMA_LOCK_SECONDS
+) -> AsyncIterator[AsyncConnection]:
+    """A transaction that holds the schema lock, for one process at a time across the replicas.
+
+    The lock is tried, not waited for: a session blocked in ``pg_advisory_lock`` holds a snapshot that a
+    ``CREATE INDEX CONCURRENTLY`` in another process waits on, which deadlocks (see ``ensure_indexes``).
+    A process that finds it taken tries again a few times a second, and gives up after *timeout*.
+    """
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout
+    while True:
+        async with engine.connect() as conn, conn.begin():
+            got = (
+                await conn.execute(
+                    text("SELECT pg_try_advisory_xact_lock(:k)"), {"k": _SCHEMA_LOCK}
+                )
+            ).scalar_one()
+            if got:
+                yield conn
+                return
+        if loop.time() >= deadline:
+            raise PostgresStartupError(
+                "another process has held the schema lock for too long; the schema was not checked"
+            )
+        await asyncio.sleep(0.2)
+
+
+async def ensure_schema(
+    engine: AsyncEngine,
+    tables: list[Any],
+    *,
+    extra: Callable[[AsyncConnection], Awaitable[None]] | None = None,
+    timeout: float = SCHEMA_LOCK_SECONDS,
+) -> None:
+    """Create the missing *tables*, then run *extra* in the same transaction, one process at a time.
+
+    Replicas starting together on an empty database each found no tables and each tried to create them:
+    one failed with "already exists" and did not boot. Under the lock the second finds them made.
+    """
+    async with _schema_transaction(engine, timeout=timeout) as conn:
+        await conn.run_sync(
+            lambda sync_conn: SQLModel.metadata.create_all(
+                sync_conn, tables=tables, checkfirst=True
+            )
+        )
+        if extra is not None:
+            await extra(conn)
+
+
+async def _has_column(conn: AsyncConnection, table: str, column: str) -> bool:
+    """Whether *table* has *column*, from the catalog. ``ALTER TABLE ... ADD COLUMN IF NOT EXISTS`` takes
+    a brief exclusive lock even when the column is there, so it is only sent when it is not."""
+    found = await conn.execute(
+        text(
+            "SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() "
+            "AND table_name = :t AND column_name = :c"
+        ),
+        {"t": table, "c": column},
+    )
+    return found.first() is not None
+
+
 async def ensure_iam_indexes(engine: AsyncEngine) -> None:
     """Make an email one identity whatever its case: a unique index on ``lower(email)``.
 
@@ -572,12 +647,14 @@ async def ensure_iam_columns(conn: AsyncConnection) -> None:
     """
     from tuvl.core.auth.models import IAMRole
 
-    await conn.execute(
-        text(
-            f'ALTER TABLE "{table_of(IAMRole).name}" ADD COLUMN IF NOT EXISTS '
-            "is_active BOOLEAN NOT NULL DEFAULT true"
+    roles = table_of(IAMRole).name
+    if not await _has_column(conn, roles, "is_active"):
+        await conn.execute(
+            text(
+                f'ALTER TABLE "{roles}" ADD COLUMN IF NOT EXISTS '
+                "is_active BOOLEAN NOT NULL DEFAULT true"
+            )
         )
-    )
 
 
 async def init_db() -> None:
@@ -607,8 +684,7 @@ async def init_db() -> None:
         logger.info(
             "Creating tables on datasource", datasource=ds_name, pid=pid, tables=table_names
         )
-        async with engine.begin() as conn:
-            await conn.run_sync(SQLModel.metadata.create_all, tables=tables)
+        await ensure_schema(engine, tables)
         logger.info("Schema ready", datasource=ds_name, pid=pid)
 
     # Always create IAM tables on the primary datasource when it exists.
@@ -636,13 +712,7 @@ async def init_db() -> None:
             table_of(IAMLoginAttempt),
             table_of(IAMOAuthState),
         ]
-        async with _engines_rw[_PRIMARY_DS].begin() as conn:
-            await conn.run_sync(
-                lambda sync_conn: SQLModel.metadata.create_all(
-                    sync_conn, tables=iam_tables, checkfirst=True
-                )
-            )
-            await ensure_iam_columns(conn)
+        await ensure_schema(_engines_rw[_PRIMARY_DS], iam_tables, extra=ensure_iam_columns)
         await ensure_iam_indexes(_engines_rw[_PRIMARY_DS])
         logger.info("IAM tables ready", datasource=_PRIMARY_DS, pid=pid)
 
@@ -650,39 +720,21 @@ async def init_db() -> None:
     if _PRIMARY_DS in _engines_rw:
         from tuvl.core.models.model_version import ModelVersion
 
-        mv_tables = [table_of(ModelVersion)]
-        async with _engines_rw[_PRIMARY_DS].begin() as conn:
-            await conn.run_sync(
-                lambda sync_conn: SQLModel.metadata.create_all(
-                    sync_conn, tables=mv_tables, checkfirst=True
-                )
-            )
+        await ensure_schema(_engines_rw[_PRIMARY_DS], [table_of(ModelVersion)])
         logger.info("Model version tracking table ready", datasource=_PRIMARY_DS, pid=pid)
 
     # Create tuvl_system_artifacts (DB-source artifact uploads) on the primary.
     if _PRIMARY_DS in _engines_rw:
         from tuvl.core.artifacts.models import SystemArtifact
 
-        artifact_tables = [table_of(SystemArtifact)]
-        async with _engines_rw[_PRIMARY_DS].begin() as conn:
-            await conn.run_sync(
-                lambda sync_conn: SQLModel.metadata.create_all(
-                    sync_conn, tables=artifact_tables, checkfirst=True
-                )
-            )
+        await ensure_schema(_engines_rw[_PRIMARY_DS], [table_of(SystemArtifact)])
         logger.info("Artifact table ready", datasource=_PRIMARY_DS, pid=pid)
 
     # 2.0 durable runtime: runs, journal, checkpoints, approvals (spec §14.2).
     if _PRIMARY_DS in _engines_rw:
         from tuvl.runtime.models import RUNTIME_TABLES
 
-        runtime_tables = [table_of(m) for m in RUNTIME_TABLES]
-        async with _engines_rw[_PRIMARY_DS].begin() as conn:
-            await conn.run_sync(
-                lambda sync_conn: SQLModel.metadata.create_all(
-                    sync_conn, tables=runtime_tables, checkfirst=True
-                )
-            )
+        await ensure_schema(_engines_rw[_PRIMARY_DS], [table_of(m) for m in RUNTIME_TABLES])
         await ensure_indexes(_engines_rw[_PRIMARY_DS], RUNTIME_INDEXES)
         logger.info("Runtime tables ready", datasource=_PRIMARY_DS, pid=pid)
 
@@ -709,9 +761,25 @@ async def init_db() -> None:
             )
         else:
             try:
-                async with _engines_rw[_VECTOR_DS].begin() as conn:
-                    # Enable pgvector extension (requires pg_vector server extension)
+
+                async def _vector_extras(conn: AsyncConnection) -> None:
+                    # A table made before memory existed has no timestamp: add it without
+                    # touching the rows (its indexes follow, built concurrently).
+                    if not await _has_column(conn, "tuvl_system_vector_store", "created_at"):
+                        await conn.execute(
+                            text(
+                                "ALTER TABLE tuvl_system_vector_store ADD COLUMN IF NOT EXISTS "
+                                "created_at timestamptz NOT NULL DEFAULT now()"
+                            )
+                        )
+
+                async def _vector_schema(conn: AsyncConnection) -> None:
+                    # Enable pgvector extension (requires pg_vector server extension); the table's
+                    # column type needs it, so it comes before the table
                     await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+
+                async with _schema_transaction(_engines_rw[_VECTOR_DS]) as conn:
+                    await _vector_schema(conn)
                     await conn.run_sync(
                         lambda sync_conn: SQLModel.metadata.create_all(
                             sync_conn,
@@ -719,15 +787,8 @@ async def init_db() -> None:
                             checkfirst=True,
                         )
                     )
-                    # A table made before memory existed has no timestamp: add it without
-                    # touching the rows (its indexes follow, built concurrently).
-                    await conn.execute(
-                        text(
-                            "ALTER TABLE tuvl_system_vector_store ADD COLUMN IF NOT EXISTS "
-                            "created_at timestamptz NOT NULL DEFAULT now()"
-                        )
-                    )
-                    _dim = _cfg.tuvl_default_embedding_dimensions
+                    await _vector_extras(conn)
+                _dim = _cfg.tuvl_default_embedding_dimensions
                 await ensure_indexes(_engines_rw[_VECTOR_DS], VECTOR_INDEXES)
                 _VECTOR_STORE_READY = True
                 logger.info(
@@ -761,7 +822,7 @@ async def ensure_tenant_columns() -> list[str]:
     if _bootstrap.LOCKED_DEPLOYMENT_MODE != "multi_tenant" or _PRIMARY_DS not in _engines_rw:
         return []
     names = sorted(t.name for t in tenant_tables() if "tenant_id" in t.c)
-    async with _engines_rw[_PRIMARY_DS].begin() as conn:
+    async with _schema_transaction(_engines_rw[_PRIMARY_DS]) as conn:
         existing = {
             row[0]
             for row in await conn.execute(
@@ -770,16 +831,26 @@ async def ensure_tenant_columns() -> list[str]:
                 )
             )
         }
+        indexed = {
+            row[0]
+            for row in await conn.execute(
+                text("SELECT indexname FROM pg_indexes WHERE schemaname = current_schema()")
+            )
+        }
         for name in (n for n in names if n in existing):
-            await conn.execute(
-                text(
-                    f'ALTER TABLE "{name}" ADD COLUMN IF NOT EXISTS tenant_id VARCHAR '
-                    f"NOT NULL DEFAULT '{DEFAULT_TENANT}'"
+            if not await _has_column(conn, name, "tenant_id"):
+                await conn.execute(
+                    text(
+                        f'ALTER TABLE "{name}" ADD COLUMN IF NOT EXISTS tenant_id VARCHAR '
+                        f"NOT NULL DEFAULT '{DEFAULT_TENANT}'"
+                    )
                 )
-            )
-            await conn.execute(
-                text(f'CREATE INDEX IF NOT EXISTS "ix_{name}_tenant_id" ON "{name}" (tenant_id)')
-            )
+            if f"ix_{name}_tenant_id" not in indexed:
+                await conn.execute(
+                    text(
+                        f'CREATE INDEX IF NOT EXISTS "ix_{name}_tenant_id" ON "{name}" (tenant_id)'
+                    )
+                )
     return names
 
 
@@ -808,7 +879,7 @@ async def get_primary_rw_session() -> AsyncGenerator[AsyncSession]:
 async def close_db() -> None:
     pid = os.getpid()
     logger.info("Disposing PostgreSQL connection pools", pid=pid)
-    for engine in list(_engines_rw.values()) + list(_engines_ro.values()):
+    for engine in {id(e): e for e in (*_engines_rw.values(), *_engines_ro.values())}.values():
         await engine.dispose()
     _engines_rw.clear()
     _engines_ro.clear()
