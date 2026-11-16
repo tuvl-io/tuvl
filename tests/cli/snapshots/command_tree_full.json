@@ -208,6 +208,10 @@
   "hidden": false
  },
  {
+  "command": "prune runs",
+  "hidden": false
+ },
+ {
   "command": "prune traces",
   "hidden": false
  },

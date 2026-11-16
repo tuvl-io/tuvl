@@ -60,7 +60,7 @@ VERBS: tuple[tuple[str, str, str], ...] = (
         "Show one idea, task, run, event or the project, the audit log or the drift.",
     ),
     ("export", "Admin", "Write something out as JSON or CSV."),
-    ("prune", "Admin", "Delete old files and old agent memories."),
+    ("prune", "Admin", "Delete old files, old runs and old agent memories."),
 )
 _INSTALL = escape("uv tool install 'tuvl[standard]'")
 
@@ -177,7 +177,7 @@ def follow_run(
 
 
 def register(app: typer.Typer) -> None:
-    from tuvl.cli.commands import db, doctor, keys, memory, run, runs, storage
+    from tuvl.cli.commands import db, doctor, keys, memory, retention, run, runs, storage
 
     toolchain = toolchain_installed()
     tc: Any = None
@@ -291,6 +291,7 @@ def register(app: typer.Typer) -> None:
     g["export"].add("schema", fn("schema", "export_cmd"), hidden=True)
     g["prune"].add("traces", fn("audit", "prune_cmd"))
     g["prune"].add("memory", memory.prune_memory_cmd, toolchain=False)
+    g["prune"].add("runs", retention.prune_runs_cmd, toolchain=False)
 
     for verb, panel, _ in VERBS:
         app.add_typer(groups[verb].app, name=verb, rich_help_panel=panel)

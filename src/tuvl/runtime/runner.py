@@ -45,6 +45,7 @@ from tuvl.runtime import llm as _llm  # noqa: F401 — registers the llm engine
 from tuvl.runtime import loop as _loop  # noqa: F401 — registers the loop engine
 from tuvl.runtime import map as _map  # noqa: F401 — registers the map engine
 from tuvl.runtime import parallel as _parallel  # noqa: F401 — registers the parallel engine
+from tuvl.runtime import retention as _retention  # noqa: F401 — registers the retention sweep
 from tuvl.runtime import tool as _tool  # noqa: F401 — registers the tool engine
 from tuvl.runtime.engines import ENGINES, AgentResult, EngineContext, EngineError, contract_model
 from tuvl.runtime.models import SystemRun, SystemRunCheckpoint

@@ -131,6 +131,16 @@ Read them with `GET /api/runs/{id}/events` (SSE: replay, then live), `tuvl follo
 Runs page, or `RunHandle.events()` in `@tuvl/client`. Checkpoints keep real values (they are the
 resume state); secure fields are redacted on export.
 
+## Keeping the tables small
+
+Nothing removes a run, so `tuvl_system_runs` and the rows that belong to it (the journal, checkpoints, approvals, webhook
+deliveries and drafts) grow with use. `tuvl prune runs --older-than 30d [--status failed] [--dry-run] [--with-uploads]`
+removes the runs that **ended** (`completed`, `failed`, `aborted`, `compensated`) before the cutoff, in batches that each
+commit; a run that is queued, running, waiting or paused is never touched. The files a trigger stored from an upload are
+left alone unless `--with-uploads` names them for deletion (they may be the only copy); a run whose file cannot be
+deleted right now (the store is down) is kept for the next time, and a file that is already gone does not keep it.
+`TUVL_RUN_RETENTION_DAYS` (0, off) makes the worker's sweep do the database part by itself, 500 runs every 15 seconds.
+
 ## Replay and fixtures
 
 The journal is the recording. **Replay** re-executes a run's graph but serves `llm`, `loop`, decide

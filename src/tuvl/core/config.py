@@ -223,6 +223,10 @@ class Settings(BaseSettings):
     #: without HTTP triggers mattering (worker).
     tuvl_role: Literal["all", "api", "worker"] = "all"
     tuvl_worker_concurrency: int = 8
+    #: Runs that ended more than this many days ago are removed, with their journal, checkpoints, approvals,
+    #: webhook deliveries and drafts, a batch at a time by the worker's sweep. 0 (the default): never.
+    #: Uploaded files are not touched (``tuvl prune runs --with-uploads``).
+    tuvl_run_retention_days: int = 0
     #: ``/health`` fails when the worker has made no poll attempt for this long (a hung loop, not a database outage)
     tuvl_worker_stall_seconds: float = 300.0
     #: Largest request body (JSON, not multipart: those are bounded by the trigger's upload settings) in

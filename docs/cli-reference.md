@@ -928,6 +928,20 @@ Arguments: `<collection>`
 | `--project-dir`, `-d` | DIRECTORY | `.` | Project directory. |
 
 
+### `tuvl prune runs`
+
+Remove runs that ended before --older-than, with their journal, checkpoints, approvals, webhook deliveries and drafts. A run that is queued, running, waiting or paused is never removed. Uploaded files stay unless --with-uploads. Try --dry-run first.
+
+| Option | Value | Default | What it does |
+|---|---|---|---|
+| `--older-than` | TEXT |  | Remove runs that ended longer ago than this (30d, 12h). |
+| `--status`, `-s` | TEXT (repeatable) |  | Only runs that ended this way (repeatable): completed, failed, aborted, compensated. |
+| `--dry-run` |  |  | Say what would be removed and remove nothing. |
+| `--with-uploads` |  |  | Also delete the files the runs' triggers stored in a store. |
+| `--batch` | INTEGER RANGE | `500` | Runs removed per commit. |
+| `--project-dir`, `-d` | DIRECTORY | `.` | Project directory. |
+
+
 ### `tuvl prune traces`
 
 Delete trace files (prompts, agent output) older than N days. The ledger is kept.
