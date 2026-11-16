@@ -17,11 +17,10 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from tuvl.core.auth import federation
 from tuvl.core.auth import router as auth_router
 from tuvl.core.auth.federation_loader import FEDERATION_REGISTRY
-from tuvl.core.auth.models import IAMRole, IAMRoleScope, IAMUser, IAMUserRole
-from tuvl.core.auth.state_store import oauth_state_store
+from tuvl.core.auth.models import IAMOAuthState, IAMRole, IAMRoleScope, IAMUser, IAMUserRole
 from tuvl.core.config import settings
 
-_TABLES = [t.__table__ for t in (IAMUser, IAMRole, IAMUserRole, IAMRoleScope)]
+_TABLES = [t.__table__ for t in (IAMUser, IAMRole, IAMUserRole, IAMRoleScope, IAMOAuthState)]
 
 
 class _Resp:
@@ -84,13 +83,11 @@ async def api(monkeypatch):
     FEDERATION_REGISTRY["github"] = {
         "spec": {"provider": "github", "client_id": "cid", "client_secret": "csecret"}
     }
-    oauth_state_store._devices.clear()
-    oauth_state_store._memory.clear()
 
     app = FastAPI()
     app.include_router(federation.router)
     app.dependency_overrides[auth_router._get_iam_session] = _session
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="https://t") as client:
         yield client, gh
     FEDERATION_REGISTRY.clear()
 

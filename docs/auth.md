@@ -184,19 +184,26 @@ spec:
   # allowed_domains: [example.com]
   # allowed_users: [octocat]   # github only: login handles, case-insensitive
   # default_role: member
+  # pkce: true                 # S256; on by default for google and microsoft, off for github
 ```
 
 `${VAR}` references are resolved from the environment at load time (`${VAR:default}` supports defaults); a provider whose variables are unset is skipped with a warning. Built-in URL defaults exist for Google, GitHub, and Microsoft. A legacy fallback reads `TUVL_OAUTH_<PROVIDER>_CLIENT_ID` / `_CLIENT_SECRET` settings when no YAML exists for a built-in provider.
 
 The flow is OAuth 2.0 authorization-code:
 
-1. `GET /auth/oauth/{provider}/start` — stores a one-time `state`, redirects to the IdP.
-2. `GET /auth/oauth/{provider}/callback` — consumes the state, exchanges the code, fetches the user profile, and upserts an IAM user keyed by `(federated_provider, federated_sub)`.
+1. `GET /auth/oauth/{provider}/start` — stores a one-time `state` (with a PKCE verifier where the provider takes one), sets the browser cookie below, redirects to the IdP.
+2. `GET /auth/oauth/{provider}/callback` — consumes the state, checks the cookie, exchanges the code (sending the PKCE `code_verifier`), fetches the user profile, and upserts an IAM user keyed by `(federated_provider, federated_sub)`.
+
+**The callback belongs to the browser that started it.** `start` sets `tuvl_oauth_state`, a short-lived (10 minutes) `HttpOnly`, `SameSite=Lax` cookie (`Secure` when `TUVL_OAUTH_BASE_URL` is https, scoped to `/auth/oauth`) holding a hash of the state, and the callback refuses a state whose cookie is missing or different (`400`, and the state is spent). Without it a link someone else started could be finished in a victim's browser, signing the victim in as the attacker. `TUVL_OAUTH_STATE_COOKIE=false` turns the check off for a client that cannot keep cookies between the two requests (it is also what a device flow does without). **PKCE** (S256) is on by default for Google and Microsoft and off for GitHub unless the file says `pkce: true`; set `pkce: false` for a custom provider that rejects it.
+
+**Where the state lives.** In Redis when a `type: redis` datasource is deployed and reachable, otherwise in `tuvl_system_oauth_states` in the primary database; either way a callback may land on a different worker or replica than the start. A state and a device handle are single-use (one `GETDEL`-style step in Redis, one `DELETE ... RETURNING` in Postgres), expire after 10 minutes, and expired rows are removed whenever a new one is stored.
+
+**Microsoft.** The built-in `userinfo_url` is the OIDC endpoint (`https://graph.microsoft.com/oidc/userinfo`), which carries `email` (grant the `email` scope). If an older file points `userinfo_url` at Graph's `/v1.0/me`, the email is taken from `mail`, or from `userPrincipalName` when it contains an `@`. Microsoft does not assert `email_verified`, so a Microsoft sign-in is never auto-linked to an existing password account: the person signs in with their credentials first, as for any unverified provider.
 
 Account-linking rules in the callback:
 
 - **`email_verified` is required for auto-link.** If an account with the same email already exists but the IdP did not assert the email as verified, the callback returns 403 instead of linking — otherwise an attacker registering an unverified IdP identity under a victim's email could take over the account. For GitHub, only addresses from the verified `/user/emails` list are trusted.
-- `allowed_domains`, when set, rejects any email outside the list (403). `allowed_users` (GitHub) rejects any login handle outside the list (403).
+- `allowed_domains`, when set, rejects any email outside the list (403). `allowed_users` (GitHub) rejects any login handle outside the list (403); a file that sets it for another provider is **refused at load** (`auth.federation.provider_refused` is logged), because no other provider has a login handle and it would turn everyone away.
 - New federated users are created passwordless; `default_role`, when set and existing in the IAM database, is auto-assigned so first-time users don't arrive with zero permissions.
 
 The callback returns the same kind of token as password login, or redirects to `TUVL_OAUTH_UI_REDIRECT_URL` with the token in the URL **fragment** (`#token=…`, so it never reaches a server log) when configured. `TUVL_OAUTH_BASE_URL` sets the redirect-URI origin registered with the IdP.
@@ -209,7 +216,7 @@ The callback returns the same kind of token as password login, or redirects to `
 
 Tick **Enable Device Flow** on the GitHub OAuth app. `tuvl register project` and Insight's Register dialog use this flow ([project](project.md)).
 
-Provider YAMLs can be managed at runtime via `/auth/admin/federation` (list/get/put/delete, `iam:admin` required); `client_secret` is redacted in read responses.
+Provider YAMLs can be managed at runtime via `/auth/admin/federation` (list/get/put/delete, `iam:admin` required). A `PUT` is checked against the document's shape (`kind`, `metadata.name` equal to the URL name, known fields only, `spec.provider` one of `google | github | microsoft | custom`, `client_id` and `client_secret` present, endpoint URLs `https://` (plain `http://` only to `localhost`), `allowed_users` for GitHub only) and answers `400` with what is wrong, writing nothing. `client_secret` is redacted (`***`) in read responses, and a `PUT` that sends `***` back keeps the secret that is stored, so an admin screen can edit a provider without ever seeing its secret. The files are local to the replica that served the request: with several replicas, make a change in the image or the mounted config, not through this API. Federation logs name the user by id, never by email.
 
 ---
 

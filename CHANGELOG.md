@@ -39,6 +39,10 @@ release below is the current one.
 - **Emails are one identity whatever their case.** `Ann@X.com` and `ann@x.com` were two users, and a federated sign-in could miss its existing account. Emails are stored trimmed and lower case, compared case-insensitively, and guarded by a unique index on `lower(email)` built at boot; users stored earlier that differ only by case are logged (`iam.email.duplicates`) and the index waits for them to be merged.
 - **Assigning a role twice at once no longer returns a 500.** A second request that lost the race on the assignment's key now sees the assignment and succeeds.
 - **The `http` tool keeps a query string written in `url`.** httpx replaced it whenever `query:` was given, even empty, so `url: https://x/y?a=1` was sent without `?a=1` and the journal still showed it.
+- **Sign-in state is shared by every worker.** The OAuth state and device handles lived in a dict of one process (and grew without bound), so a callback that reached another replica always failed. They are kept in Redis when a datasource is deployed and otherwise in `tuvl_system_oauth_states`, single-use and expiring, created at boot.
+- **Microsoft sign-in gets an email.** The built-in `userinfo_url` was Graph's `/v1.0/me`, which has no `email`, so every Microsoft login ended in "Provider did not supply an email". It is now the OIDC endpoint, and an older file pointing at `/me` falls back to `mail`, then `userPrincipalName`.
+- **A GitHub provider with another name finds the private email too** (the `/user/emails` lookup was keyed on the name being `github`, not on `provider: github`).
+- **The federation admin API checks what it writes, and a masked secret stays the stored one.** A `PUT` of what a `GET` returned replaced the real `client_secret` with `***`. A body is now validated (`400` with the problem, nothing written), `***` keeps the stored secret, and `allowed_users` on a non-GitHub provider (which refused everyone) is refused at load and on save. Federation logs carry the user id instead of the email.
 
 ### Security
 
@@ -55,6 +59,8 @@ release below is the current one.
 - **The `202` of an anonymous run has no `status_url` or `events_url`,** which nobody could read.
 - **The `http` tool does not reach a host a caller chose that is inside, and never the cloud-metadata address.** A host that arrives through `{{ }}` must now resolve to a public address, and the request goes to the address that was checked (`allow_private: true` admits inside ones for that host). A host written in the `url` is trusted, so calls to in-cluster services keep working, except that `169.254.169.254` and its kin are refused (`destination_refused`); webhooks with `allow_private` refuse them too. Its response is read up to `TUVL_HTTP_TOOL_MAX_BYTES` (10 MiB); a larger one ends the step with `too_large`.
 - **A run's error text carries the constraint, not the row.** Database engines hide statement parameters, and a database error recorded for a step keeps the driver's first line (`duplicate key value violates unique constraint "…"`) without the statement, its parameters or the `DETAIL` values.
+- **A browser sign-in through a provider must finish in the browser that started it.** The OAuth `state` was not tied to a browser, so a link someone else started could be completed in a victim's browser, signing the victim in as the attacker. `start` now sets a short-lived `HttpOnly`, `SameSite=Lax` cookie (`Secure` over https) holding a hash of the state, and the callback refuses a missing or different one. `TUVL_OAUTH_STATE_COOKIE=false` turns it off for a client that cannot keep cookies. **Behaviour change:** a callback without the cookie is `400`.
+- **PKCE (S256) on the authorization-code flow** for Google and Microsoft by default; GitHub with `pkce: true` in its federation file.
 
 ---
 

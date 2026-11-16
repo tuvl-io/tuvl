@@ -22,8 +22,10 @@ from __future__ import annotations
 
 import datetime
 import uuid
+from typing import Any
 
 import sqlalchemy as sa
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
 
 
@@ -167,6 +169,27 @@ class IAMLoginAttempt(SQLModel, table=True):
     updated_at: datetime.datetime = Field(
         default_factory=datetime.datetime.utcnow,
         sa_column=sa.Column(sa.DateTime, nullable=False, index=True),
+    )
+
+
+class IAMOAuthState(SQLModel, table=True):
+    """What a provider sign-in keeps between its start and its end: a ``state`` (the CSRF token of an
+    authorization-code sign-in, with its PKCE verifier) or a ``device`` handle. Single-use and short-lived.
+
+    Used when no Redis datasource is deployed (see ``tuvl.core.auth.state_store``), so a callback that lands
+    on another replica than the start still finds it."""
+
+    __tablename__ = "tuvl_system_oauth_states"
+
+    handle: str = Field(primary_key=True)
+    kind: str = Field()
+    provider: str = Field()
+    payload: dict[str, Any] = Field(
+        default_factory=dict,
+        sa_column=sa.Column(sa.JSON().with_variant(JSONB(), "postgresql"), nullable=False),
+    )
+    expires_at: datetime.datetime = Field(
+        sa_column=sa.Column(sa.DateTime, nullable=False, index=True)
     )
 
 

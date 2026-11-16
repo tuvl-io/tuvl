@@ -1235,7 +1235,31 @@ async def get_federation_provider(name: str) -> dict:
 
 
 async def save_federation_provider(name: str, body: dict) -> None:
+    from tuvl.core.auth.federation_loader import provider_problems
+
     path = safe_federation_path(name)
+    body = copy.deepcopy(body)
+    spec = body.get("spec") if isinstance(body, dict) else None
+    if isinstance(spec, dict) and spec.get("client_secret") == "***":
+        # what an admin screen got back from the read: keep the secret that is stored
+        stored: Any = None
+        if path.exists():
+            try:
+                stored = (
+                    (_yaml.safe_load(await run_in_threadpool(path.read_text)) or {})
+                    .get("spec", {})
+                    .get("client_secret")
+                )
+            except (_yaml.YAMLError, AttributeError):
+                stored = None
+        if not stored:
+            raise ValidationError(
+                "client_secret is required: '***' stands for a stored secret and there is none."
+            )
+        spec["client_secret"] = stored
+    problems = provider_problems(body, name=name, strict=True)
+    if problems:
+        raise ValidationError("; ".join(problems))
 
     def _write() -> None:
         path.parent.mkdir(parents=True, exist_ok=True)

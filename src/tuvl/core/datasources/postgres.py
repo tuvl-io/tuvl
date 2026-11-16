@@ -598,6 +598,7 @@ async def init_db() -> None:
     if _PRIMARY_DS in _engines_rw:
         from tuvl.core.auth.models import (
             IAMLoginAttempt,
+            IAMOAuthState,
             IAMPasswordToken,
             IAMRevokedToken,
             IAMRole,
@@ -616,6 +617,7 @@ async def init_db() -> None:
             table_of(IAMSessionEnd),
             table_of(IAMRevokedToken),
             table_of(IAMLoginAttempt),
+            table_of(IAMOAuthState),
         ]
         async with _engines_rw[_PRIMARY_DS].begin() as conn:
             await conn.run_sync(

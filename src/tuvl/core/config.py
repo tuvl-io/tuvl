@@ -156,6 +156,9 @@ class Settings(BaseSettings):
     #: Failed password attempts one client address may make in 15 minutes before it waits; 0 turns the
     #: per-address limit off (the per-login wait stays). Behind a proxy, set `--forwarded-allow-ips`.
     tuvl_login_ip_failures: int = 30
+    #: A browser sign-in through a provider must finish in the browser that started it (a cookie bound to the
+    #: state); turn it off only for a client that cannot keep cookies between the two requests.
+    tuvl_oauth_state_cookie: bool = True
 
     # How long a worker trusts its own answer to "is this token still good?" when revocations and session ends
     # are kept in Postgres (no Redis datasource). 0 asks the database on every request.

@@ -9,10 +9,14 @@ the built-in providers, from ``TUVL_OAUTH_*`` settings. ``router`` belongs to th
 
 from __future__ import annotations
 
+import base64
+import hashlib
+import hmac
+import secrets
 from typing import Any
 from urllib.parse import quote_plus, urlencode
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Request, Response, status
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 from sqlmodel import select
@@ -49,7 +53,7 @@ _BUILTIN_URLS: dict[str, dict[str, str]] = {
     "microsoft": {
         "auth_url": "https://login.microsoftonline.com/{tenant}/oauth2/v2.0/authorize",
         "token_url": "https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token",
-        "userinfo_url": "https://graph.microsoft.com/v1.0/me",
+        "userinfo_url": "https://graph.microsoft.com/oidc/userinfo",
         "scope": "openid email profile User.Read",
     },
 }
@@ -108,6 +112,40 @@ def _provider_config(provider: str) -> tuple[dict[str, str], str, str]:
     return base, client_id, client_secret
 
 
+#: Cookie that ties a browser sign-in to the browser that started it (holds a hash of the state).
+STATE_COOKIE = "tuvl_oauth_state"
+_STATE_COOKIE_PATH = "/auth/oauth"
+#: Providers that take PKCE unless the federation file says ``pkce: false``.
+_PKCE_BY_DEFAULT = frozenset({"google", "microsoft"})
+
+
+def _provider_type(provider: str) -> str:
+    """What kind of provider *provider* is (``google``, ``github``, ``microsoft``, ``custom``): its
+    federation file may give it another name."""
+    from tuvl.core.auth.federation_loader import FEDERATION_REGISTRY
+
+    entry = FEDERATION_REGISTRY.get(provider)
+    return str((entry or {}).get("spec", {}).get("provider", provider))
+
+
+def _pkce_enabled(provider: str) -> bool:
+    from tuvl.core.auth.federation_loader import FEDERATION_REGISTRY
+
+    spec = (FEDERATION_REGISTRY.get(provider) or {}).get("spec", {})
+    return bool(spec["pkce"]) if "pkce" in spec else _provider_type(provider) in _PKCE_BY_DEFAULT
+
+
+def _state_binding(state: str) -> str:
+    return hashlib.sha256(state.encode()).hexdigest()
+
+
+def _pkce_pair() -> tuple[str, str]:
+    """A PKCE verifier and its S256 challenge (RFC 7636)."""
+    verifier = secrets.token_urlsafe(64)
+    digest = hashlib.sha256(verifier.encode()).digest()
+    return verifier, base64.urlsafe_b64encode(digest).rstrip(b"=").decode()
+
+
 async def _login_with_access_token(
     provider: str, urls: dict[str, str], access_token: str, session: AsyncSession
 ) -> str:
@@ -124,6 +162,8 @@ async def _login_with_access_token(
     profile: dict[str, Any] = profile_resp.json()
 
     from tuvl.core.auth.federation_loader import FEDERATION_REGISTRY as _FED
+
+    provider_type = _provider_type(provider)
 
     allowed_users = [
         str(u).lower()
@@ -142,14 +182,25 @@ async def _login_with_access_token(
     # fetched from the verified /user/emails path below. Defaults to False so an
     # unverified email can never auto-link to an existing account.
     email_verified: bool = bool(profile.get("email_verified", False))
-    first_name: str | None = profile.get("given_name") or profile.get("first_name")
-    last_name: str | None = profile.get("family_name") or profile.get("last_name")
+    if not email and provider_type == "microsoft":
+        # Graph's /me has no ``email``: the mailbox address is ``mail``; a work or school account without
+        # one is still signed in as its principal name, when that is an address.
+        principal = profile.get("userPrincipalName")
+        email = profile.get("mail") or (
+            principal if isinstance(principal, str) and "@" in principal else None
+        )
+    first_name: str | None = (
+        profile.get("given_name") or profile.get("first_name") or profile.get("givenName")
+    )
+    last_name: str | None = (
+        profile.get("family_name") or profile.get("last_name") or profile.get("surname")
+    )
     if not first_name and not last_name and profile.get("name"):
         parts = profile["name"].split(" ", 1)
         first_name = parts[0]
         if len(parts) > 1:
             last_name = parts[1]
-    if not email and provider == "github":
+    if not email and provider_type == "github":
         # GitHub users with private email settings don't expose email in the
         # primary profile endpoint.  Fall back to the /user/emails API which
         # lists all addresses including the primary/verified private one.
@@ -191,9 +242,7 @@ async def _login_with_access_token(
             _email_domain = email.split("@")[-1].lower()
             if _email_domain not in [d.lower() for d in _allowed_domains]:
                 logger.warning(
-                    "Federated login blocked: '%s' domain not in allowed list for provider '%s'.",
-                    email,
-                    provider,
+                    "auth.federation.domain_refused", domain=_email_domain, provider=provider
                 )
                 raise HTTPException(
                     status_code=403,
@@ -246,7 +295,7 @@ async def _login_with_access_token(
         session.add(user)
         await session.commit()
         await session.refresh(user)
-        logger.info("auth.federation.user_created", email=email, provider=provider)
+        logger.info("auth.federation.user_created", user_id=str(user.id), provider=provider)
 
         # Auto-assign default_role if the provider YAML specifies one.
         # This prevents new federated users from arriving with zero permissions.
@@ -262,15 +311,15 @@ async def _login_with_access_token(
                 session.add(IAMUserRole(user_id=user.id, role_id=default_role.id))
                 await session.commit()
                 logger.info(
-                    "Auto-assigned role '%s' to new federated user '%s'.",
-                    _default_role_name,
-                    email,
+                    "auth.federation.role_assigned",
+                    role=_default_role_name,
+                    user_id=str(user.id),
                 )
             else:
                 logger.warning(
-                    "default_role '%s' not found in DB — skipping auto-assignment for '%s'.",
-                    _default_role_name,
-                    email,
+                    "auth.federation.default_role_missing",
+                    role=_default_role_name,
+                    user_id=str(user.id),
                 )
     else:
         # Stitch federation info onto existing account if missing
@@ -283,7 +332,7 @@ async def _login_with_access_token(
         raise HTTPException(status_code=403, detail="Account is disabled.")
 
     tuvl_token = await iam_service.build_token_for_user(session, user)
-    logger.info("auth.federation.login", email=email, provider=provider)
+    logger.info("auth.federation.login", user_id=str(user.id), provider=provider)
     return tuvl_token
 
 
@@ -292,13 +341,20 @@ async def _login_with_access_token(
     summary="Redirect to an OAuth2 provider for federated login",
     response_class=RedirectResponse,
 )
-async def oauth_start(provider: str) -> RedirectResponse:
+async def oauth_start(provider: str, session: IamSession) -> RedirectResponse:
     """Redirect the browser to the OAuth2 provider's authorization page.
 
-    Supported providers: ``google``, ``github``, ``microsoft``.
+    Supported providers: ``google``, ``github``, ``microsoft``. The state is kept for the callback (with a
+    PKCE verifier where the provider takes one) and a cookie ties it to this browser, so a link someone else
+    started cannot be finished here.
     """
     urls, client_id, _ = _provider_config(provider)
-    state = await oauth_state_store.new_state(provider)
+    verifier = challenge = None
+    if _pkce_enabled(provider):
+        verifier, challenge = _pkce_pair()
+    state = await oauth_state_store.new_state(
+        provider, {"verifier": verifier} if verifier else {}, session=session
+    )
     redirect_uri = f"{settings.tuvl_oauth_base_url}/auth/oauth/{provider}/callback"
 
     params = {
@@ -308,8 +364,22 @@ async def oauth_start(provider: str) -> RedirectResponse:
         "scope": urls["scope"],
         "state": state,
     }
+    if challenge:
+        params["code_challenge"] = challenge
+        params["code_challenge_method"] = "S256"
     qs = urlencode(params, quote_via=quote_plus)
-    return RedirectResponse(url=f"{urls['auth_url']}?{qs}", status_code=302)
+    response = RedirectResponse(url=f"{urls['auth_url']}?{qs}", status_code=302)
+    if settings.tuvl_oauth_state_cookie:
+        response.set_cookie(
+            STATE_COOKIE,
+            _state_binding(state),
+            max_age=600,
+            path=_STATE_COOKIE_PATH,
+            httponly=True,
+            samesite="lax",
+            secure=settings.tuvl_oauth_base_url.startswith("https://"),
+        )
+    return response
 
 
 @router.get(
@@ -321,28 +391,37 @@ async def oauth_callback(
     provider: str,
     code: str,
     state: str,
+    request: Request,
+    response: Response,
     session: IamSession,
 ) -> TokenResponse | RedirectResponse:
     """Exchange authorization code for user profile, upsert the IAM user,
     and return an access token with the same claims as a password-grant token.
     """
-    if not await oauth_state_store.consume_state(state, provider):
+    payload = await oauth_state_store.consume_state(state, provider, session=session)
+    if payload is None:
         raise HTTPException(status_code=400, detail="Invalid or expired OAuth state.")
+    if settings.tuvl_oauth_state_cookie and not hmac.compare_digest(
+        request.cookies.get(STATE_COOKIE, ""), _state_binding(state)
+    ):
+        logger.warning("auth.federation.state_cookie_mismatch", provider=provider)
+        raise HTTPException(status_code=400, detail="This sign-in was not started in this browser.")
 
     urls, client_id, client_secret = _provider_config(provider)
     redirect_uri = f"{settings.tuvl_oauth_base_url}/auth/oauth/{provider}/callback"
 
+    form = {
+        "client_id": client_id,
+        "client_secret": client_secret,
+        "code": code,
+        "grant_type": "authorization_code",
+        "redirect_uri": redirect_uri,
+    }
+    if payload.get("verifier"):
+        form["code_verifier"] = payload["verifier"]
     client = get_http_client(timeout=15.0)
     token_resp = await client.post(
-        urls["token_url"],
-        data={
-            "client_id": client_id,
-            "client_secret": client_secret,
-            "code": code,
-            "grant_type": "authorization_code",
-            "redirect_uri": redirect_uri,
-        },
-        headers={"Accept": "application/json"},
+        urls["token_url"], data=form, headers={"Accept": "application/json"}
     )
 
     if token_resp.status_code != 200:
@@ -360,8 +439,11 @@ async def oauth_callback(
     if settings.tuvl_oauth_ui_redirect_url:
         # a fragment is never sent to a server or written to access logs
         redirect_url = f"{settings.tuvl_oauth_ui_redirect_url}#{urlencode({'token': tuvl_token})}"
-        return RedirectResponse(url=redirect_url, status_code=302)
+        redirect = RedirectResponse(url=redirect_url, status_code=302)
+        redirect.delete_cookie(STATE_COOKIE, path=_STATE_COOKIE_PATH)
+        return redirect
 
+    response.delete_cookie(STATE_COOKIE, path=_STATE_COOKIE_PATH)
     return TokenResponse(access_token=tuvl_token)
 
 
@@ -399,7 +481,7 @@ def _device_url(provider: str) -> str:
     response_model=DeviceStartResponse,
     summary="Start a device-flow login for a CLI or other headless client",
 )
-async def oauth_device_start(provider: str) -> DeviceStartResponse:
+async def oauth_device_start(provider: str, session: IamSession) -> DeviceStartResponse:
     """Begin GitHub's device authorization. The device code never leaves the server."""
     device_url = _device_url(provider)
     urls, client_id, _ = _provider_config(provider)
@@ -421,7 +503,10 @@ async def oauth_device_start(provider: str) -> DeviceStartResponse:
     interval = int(data.get("interval", 5))
     expires_in = int(data.get("expires_in", 900))
     handle = await oauth_state_store.new_device(
-        provider, {"device_code": data["device_code"], "interval": interval}, ttl=expires_in
+        provider,
+        {"device_code": data["device_code"], "interval": interval},
+        ttl=expires_in,
+        session=session,
     )
     return DeviceStartResponse(
         handle=handle,
@@ -440,7 +525,7 @@ async def oauth_device_start(provider: str) -> DeviceStartResponse:
 async def oauth_device_poll(
     provider: str, body: DevicePollRequest, session: IamSession
 ) -> TokenResponse:
-    pending = await oauth_state_store.get_device(body.handle, provider)
+    pending = await oauth_state_store.get_device(body.handle, provider, session=session)
     if pending is None:
         raise HTTPException(status_code=400, detail="Unknown or expired device login.")
     urls, client_id, _ = _provider_config(provider)
@@ -465,9 +550,9 @@ async def oauth_device_poll(
             },
         )
     if error or not data.get("access_token"):
-        await oauth_state_store.drop_device(body.handle)
+        await oauth_state_store.drop_device(body.handle, session=session)
         raise HTTPException(status_code=400, detail=f"Device login failed: {error or 'no token'}.")
-    await oauth_state_store.drop_device(body.handle)
+    await oauth_state_store.drop_device(body.handle, session=session)
     tuvl_token = await _login_with_access_token(provider, urls, data["access_token"], session)
     return TokenResponse(access_token=tuvl_token)
 
