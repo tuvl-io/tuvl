@@ -213,6 +213,13 @@ run belongs to one tenant:
 - **Callers reach only their own tenant's runs.** Reads, the event stream, export, pause/resume/abort,
   the run list and approvals are filtered by tenant, whatever scopes the caller holds, `iam:admin`
   and `runs:control` included. Another tenant's run answers `404`.
+- **What the database enforces, and what the application does.** The row-level-security policy that
+  `tuvl generate rls` writes covers your **model tables** and the system tables for the vector store and artifacts. The
+  **run tables** (`runs`, `run_events`, `run_checkpoints`, `approvals`, `webhook_deliveries`, `run_deltas`) have no
+  database policy: a tenant's runs are isolated by the checks above, in the application, because the worker's own
+  housekeeping (claiming, heartbeats, sweeps) binds no tenant and would need a policy of its own. A role that can read
+  those tables reads every tenant's runs, so give the application's database role only the access it needs and do not
+  share it with other tools.
 - **Scheduled workflows list their tenants.** A scheduled run has no request to take a tenant from:
 
   ```yaml
