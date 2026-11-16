@@ -270,8 +270,8 @@ async def _readable_run(request: Request, run_id: uuid.UUID, scope: str = RUNS_R
 
 
 def _authorise_run(user: TokenUser | None, run: SystemRun, scope: str) -> None:
-    """Control needs ``runs:control`` (any run). Reading is for the run's owner —
-    whoever started it may always follow it — or ``iam:admin``."""
+    """Control needs ``runs:control`` (any run). Reading is for the run's owner (whoever started it may
+    always follow it), or a token holding ``runs:read`` (any run in its tenant), or ``iam:admin``."""
     if scope == RUNS_CONTROL:
         require(user, RUNS_CONTROL)
         return
@@ -281,7 +281,7 @@ def _authorise_run(user: TokenUser | None, run: SystemRun, scope: str) -> None:
             "Not authenticated",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    if ADMIN in user.scopes:
+    if ADMIN in user.scopes or RUNS_READ in user.scopes:
         return
     if run.principal != user.user_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"run {run.id} not found")
@@ -294,8 +294,8 @@ async def list_runs(
     run_status: str | None = Query(None, alias="status"),
     limit: int = Query(20, ge=1, le=200),
 ) -> list[dict[str, Any]]:
-    """Newest first. Admins see every run; others see their own (anonymous
-    dev-mode callers see anonymous runs), as for ``GET /runs/{id}``."""
+    """Newest first. A caller with ``runs:read`` (or ``iam:admin``) sees every run of its tenant; others see
+    their own (anonymous dev-mode callers see anonymous runs), as for ``GET /runs/{id}``."""
     from tuvl.core.config import settings
 
     user = await current_user(request)
@@ -309,7 +309,7 @@ async def list_runs(
                 "Not authenticated",
                 headers={"WWW-Authenticate": "Bearer"},
             )
-        if ADMIN not in user.scopes:
+        if ADMIN not in user.scopes and RUNS_READ not in user.scopes:
             query = query.where(SystemRun.principal == user.user_id)  # type: ignore[arg-type]
         if _multi_tenant():
             query = query.where(SystemRun.__table__.c.tenant_id == (user.tenant_id or ""))  # type: ignore[attr-defined]

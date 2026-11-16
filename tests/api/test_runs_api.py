@@ -307,13 +307,29 @@ async def test_run_visibility(client: httpx.AsyncClient) -> None:
     ).status_code == 200
     mine = (await client.get("/api/runs", headers=token("alice"))).json()
     assert run_id in {r["run_id"] for r in mine}
+    stranger = token("eve", ["greet:run"])  # not the owner, no runs:read
     assert run_id not in {
-        r["run_id"] for r in (await client.get("/api/runs", headers=MANAGER)).json()
+        r["run_id"] for r in (await client.get("/api/runs", headers=stranger)).json()
     }
+    assert (await client.get(f"/api/runs/{run_id}", headers=stranger)).status_code == 404
     assert (
-        await client.get(f"/api/runs/{run_id}", headers=MANAGER)
-    ).status_code == 404  # not theirs
+        await client.get(f"/api/runs/{run_id}/events?follow=false", headers=stranger)
+    ).status_code == 404
     assert (await client.get(f"/api/runs/{run_id}", headers=ADMIN)).status_code == 200
+
+
+async def test_runs_read_lets_a_token_read_and_list_any_run(client: httpx.AsyncClient) -> None:
+    """A webhook receiver, a dashboard or a manager holding `runs:read` can pull a run it did not start."""
+    run_id = (await client.post("/t/greet", json={"name": "x"}, headers=ALICE)).headers[
+        "x-tuvl-run-id"
+    ]
+    assert (await client.get(f"/api/runs/{run_id}", headers=MANAGER)).status_code == 200
+    assert (
+        await client.get(f"/api/runs/{run_id}/events?follow=false", headers=MANAGER)
+    ).status_code == 200
+    assert run_id in {r["run_id"] for r in (await client.get("/api/runs", headers=MANAGER)).json()}
+    # reading is all it grants: no control over the run
+    assert (await client.post(f"/api/runs/{run_id}/pause", headers=MANAGER)).status_code == 403
 
 
 def _parse_sse(text: str) -> list[dict[str, Any]]:
@@ -606,9 +622,13 @@ async def test_export_is_a_replayable_journal(client: httpx.AsyncClient) -> None
     run_id = (await client.post("/t/greet", json={"name": "ada"}, headers=ALICE)).headers[
         "x-tuvl-run-id"
     ]
+    stranger = token("eve", ["greet:run"])
+    assert (
+        await client.get(f"/api/runs/{run_id}/export", headers=stranger)
+    ).status_code == 404  # not theirs, and no runs:read
     assert (
         await client.get(f"/api/runs/{run_id}/export", headers=MANAGER)
-    ).status_code == 404  # not theirs
+    ).status_code == 200  # runs:read reads any run
     exported = (await client.get(f"/api/runs/{run_id}/export", headers=ALICE)).json()
     assert exported["format"] == "tuvl.journal/v1" and exported["run"]["workflow"] == "greet"
     assert [c["agent_id"] for c in exported["checkpoints"]] == ["greet"]
@@ -616,15 +636,12 @@ async def test_export_is_a_replayable_journal(client: httpx.AsyncClient) -> None
 
 
 async def test_list_runs_is_scoped_to_the_caller(client: httpx.AsyncClient) -> None:
-    mine = (await client.post("/t/greet", json={"name": "ada"}, headers=ALICE)).headers[
+    own = token("alice", ["greet:run"])  # no runs:read: only what alice started
+    mine = (await client.post("/t/greet", json={"name": "ada"}, headers=own)).headers[
         "x-tuvl-run-id"
     ]
-    (
-        await client.post(
-            "/t/greet", json={"name": "bob"}, headers=token("bob", ["greet:run", "runs:read"])
-        )
-    )
-    listed = (await client.get("/api/runs", headers=ALICE)).json()
+    (await client.post("/t/greet", json={"name": "bob"}, headers=token("bob", ["greet:run"])))
+    listed = (await client.get("/api/runs", headers=own)).json()
     assert [r["run_id"] for r in listed] == [mine]
     everyone = (
         await client.get("/api/runs", params={"workflow": "greet", "limit": 5}, headers=ADMIN)

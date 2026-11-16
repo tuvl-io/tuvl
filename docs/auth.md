@@ -262,7 +262,7 @@ Users and roles are administered under `/auth/admin/users` and `/auth/admin/role
 | Model CRUD | `/models/{model}/…` | Off unless the model opts in per operation with `spec.api.crud: [list, read, create, update, delete]`. Then `{model.lower()}:read` / `:write` / `:delete` by convention; overridable per model via `spec.access.{read,write,delete}_scope`, optionally pinned to IAM groups via `spec.access.{read,write,delete}_groups`; absent entirely when `spec.api.expose_model_crud: false` |
 | Workflow triggers | `spec.trigger.http.path`, and `POST /api/workflows/{name}/runs` | `metadata.required_scope` and/or `metadata.required_group`; a valid bearer token is required even when both are omitted, unless the workflow opts into `spec.trigger.http.public: true` |
 | MCP export | `/mcp` | `mcp:connect`, plus each exported workflow's own trigger gates (`tools/list` hides what the caller can't run) |
-| Runs | `GET /api/runs*` | signed in: your own runs (whoever started a run may follow it); `iam:admin` reads all |
+| Runs | `GET /api/runs*` | signed in: your own runs (whoever started a run may follow it); `runs:read` reads (and lists) **any** run of the caller's tenant, which is what a webhook receiver or a dashboard holds; `iam:admin` reads all |
 | Run control | `POST /api/runs/{id}/pause\|resume\|abort\|steer` | `runs:control` |
 | Approvals | `GET /api/approvals`, `POST /api/approvals/{id}`, `POST /api/runs/{id}/human/{agent}` | `approvals:decide` plus the agent's or tool's `required_group`; never the triggering principal when a group is required ([engines](engines.md#human-a-person-fills-a-form)) |
 | Engine admin | `/admin/*` (scope catalogue, model versions, …) | `iam:admin` |

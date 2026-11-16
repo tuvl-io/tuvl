@@ -9,7 +9,7 @@ surface per workflow. (gRPC was removed in 2.0.)
 |---|---|
 | `<trigger.http.path>` | The workflow's own route: the end's `status`/`body`, or `202` + run descriptor |
 | `POST /api/workflows/{name}/runs` `{ input }` | Start any workflow by name (`?wait=false` returns `202` immediately). For a workflow with `http.upload`, send `multipart/form-data` instead: one part per input |
-| `GET /api/runs` | Recent runs (`?workflow=`, `?status=`, `?limit=`) |
+| `GET /api/runs` | Recent runs (`?workflow=`, `?status=`, `?limit=`): the caller's own, or every run of the tenant with `runs:read` |
 | `GET /api/runs/{id}` | Status, current agent, end, output, error, tokens, pending approval |
 | `GET /api/runs/{id}/events` | **SSE**: journal replay from `?from_seq=`, then live; `?follow=false` stops after the replay |
 | `GET /api/runs/{id}/export` | The run's journal as a replayable fixture |
