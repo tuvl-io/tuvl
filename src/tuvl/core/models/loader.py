@@ -56,6 +56,11 @@ MODEL_RELATIONS: dict[str, list[dict[str, str]]] = {}
 # callers wanting a stable view use ``secure_fields_view()`` below.
 SECURE_FIELDS: set[str] = set()
 
+#: The same fields, per model: what the CRUD API uses, so a field that only shares a *name* with a secure
+#: one in another model is not hidden. ``SECURE_FIELDS`` stays the union of the names, for data that
+#: carries no model (journal events, prompts, tool results).
+SECURE_BY_MODEL: dict[str, frozenset[str]] = {}
+
 
 def secure_fields_view() -> frozenset[str]:
     """Return an immutable snapshot of the secure-fields registry.
@@ -404,9 +409,12 @@ def _register_model_from_dict(data: dict[str, Any], filename: str = "<unknown>")
         datasource=ds_name or "(primary)",
     )
 
-    for _field_spec in data["spec"].get("fields", []):
-        if _field_spec.get("secure"):
-            SECURE_FIELDS.add(_field_spec["name"])
+    _secure = frozenset(
+        spec["name"] for spec in data["spec"].get("fields", []) if spec.get("secure")
+    )
+    if _secure:
+        SECURE_BY_MODEL[model_class.__name__] = _secure
+        SECURE_FIELDS.update(_secure)
 
     relations = data["spec"].get("relations", [])
     if relations:
@@ -469,6 +477,7 @@ def load_all_models(config_dir: pathlib.Path | str | None = None) -> None:
     MODEL_DATASOURCE_MAP.clear()
     MODEL_RELATIONS.clear()
     SECURE_FIELDS.clear()
+    SECURE_BY_MODEL.clear()
 
     if config_dir is None:
         from tuvl.core.config import settings

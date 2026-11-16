@@ -368,7 +368,7 @@ policy:
   require_human_before: [destructive]   # every path to a destructive effect passes a human or approval
   model_only_decisions: warn        # warn | error | allow (V013; allow = accepted on purpose, reviewed)
   max_depth: 2                      # workflow-as-tool nesting
-  allow_secure_to_llm: false        # secure model fields never reach a model (V020)
+  allow_secure_to_llm: false        # secure model fields never reach a model: V020 statically, masked at run time
 ```
 
 ---

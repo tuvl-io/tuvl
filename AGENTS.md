@@ -55,7 +55,9 @@ project) and `docs/tuvl-agentic-manual.md`.
   role or scope name through `validate_role_name` / `validate_scope_name`, an email through `normalize_email`;
   every path that writes one (REST, `tuvl iam`, the seed) uses them.
 - **Security:** Ed25519-signed JWTs; workflow triggers default-deny (`public: true` opt-in); scopes per
-  `docs/auth.md`; `secure: true` fields never reach models, logs or exports.
+  `docs/auth.md`; `secure: true` fields are left out of CRUD responses unless the caller holds `<model>:read_secure` (or
+  `iam:admin`), masked in prompts and tool results unless `policy.allow_secure_to_llm`, and redacted in journal
+  events, logs and exports (run input and checkpoints keep the real value: they are the resume state).
 
 ## 3. Working on the code
 

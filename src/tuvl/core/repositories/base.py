@@ -60,7 +60,8 @@ class BaseRepository[T]:
 
     def filterable_columns(self) -> frozenset[str]:
         """Columns a ``filter[...]`` may name: the table's, minus ``secure`` fields (filtering on one
-        would let a caller test guesses against a value it may not read)."""
+        would let a caller test guesses against a value it may not read, so it is refused for every
+        caller, whether or not they hold ``<model>:read_secure``)."""
         from tuvl.core.models.loader import secure_fields_view
 
         secure = secure_fields_view()

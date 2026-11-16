@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import contextvars
 import datetime as _dt
 import json
 from dataclasses import asdict, dataclass, field
@@ -64,6 +65,7 @@ from tuvl.runtime.llm import (
     _classify,
     _guard,
     _input_block,
+    _masked,
     _prose,
     fence,
     memory_owner,
@@ -265,8 +267,20 @@ def _needs_approval(ref: Any, args: dict[str, Any]) -> bool:
         return True  # an unevaluable condition fails closed
 
 
+#: Whether the running loop's workflow lets ``secure`` values reach a model (``policy.allow_secure_to_llm``);
+#: set by :func:`loop_engine`, so every observation a model reads is masked unless the policy allows it.
+_ALLOW_SECURE: contextvars.ContextVar[bool] = contextvars.ContextVar(
+    "tuvl_loop_allow_secure", default=False
+)
+
+
 def _observation(value: Any) -> str:
-    text = json.dumps(to_jsonable_python(value), default=str)
+    from tuvl.core.models.secure import mask_for_model
+
+    data = to_jsonable_python(value)
+    if not _ALLOW_SECURE.get():
+        data = mask_for_model(data)
+    text = json.dumps(data, default=str)
     return text if len(text) <= _OBSERVATION_CHARS else text[:_OBSERVATION_CHARS] + "…(truncated)"
 
 
@@ -524,7 +538,11 @@ async def _loop_engine(agent: Any, view: dict[str, Any], ctx: EngineContext) -> 
                     edited_from=resumed.payload["args"] if edited else None,
                 )
         else:
-            user = _input_block(agent, view) if agent.inputs else "Begin."
+            user = (
+                _input_block(agent, view if _ALLOW_SECURE.get() else _masked(view))
+                if agent.inputs
+                else "Begin."
+            )
             try:
                 user = await _guard(agent.guardrails.input, user, "input", agent.id)
             except GuardrailViolationError as exc:
@@ -1114,7 +1132,11 @@ async def decide_tool(
 
 
 async def loop_engine(agent: Any, view: dict[str, Any], ctx: EngineContext) -> AgentResult:
-    result = await _loop_engine(agent, view, ctx)
+    allowed = _ALLOW_SECURE.set(ctx.workflow.spec.policy.allow_secure_to_llm)
+    try:
+        result = await _loop_engine(agent, view, ctx)
+    finally:
+        _ALLOW_SECURE.reset(allowed)
     if agent.loop.memory is not None and result.suspend is None and not is_reserved(result.signal):
         owner = memory_owner(agent, view, ctx)
         await remember_result(agent, view, ctx, result.outputs, owner)

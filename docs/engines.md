@@ -227,7 +227,8 @@ calls get a stable `Idempotency-Key`; MCP calls are at-least-once, so give write
   only a preview. When the answer is then rejected (`parse_error`, a cut-off `budget_exceeded`, an error in the stream) or the agent runs
   again, the client receives `token_reset` and discards the draft. Not allowed together with `guardrails.output` (V039): the text would
   reach a user before a guardrail could refuse it. A model that reasons before it answers sends nothing until its answer starts.
-- Secure model fields can't be inputs unless `policy.allow_secure_to_llm: true` (V020).
+- Secure model fields can't be inputs unless `policy.allow_secure_to_llm: true` (V020); without it a value that
+  reaches the prompt or a tool result anyway (a `json` input, a row a tool returned) is replaced by `*****` at run time.
 
 ---
 

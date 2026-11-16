@@ -95,6 +95,13 @@ def fence(value: str, **attrs: str) -> str:
     return f"<data{head}>\n{safe}\n</data>"
 
 
+def _masked(view: dict[str, Any]) -> dict[str, Any]:
+    """*view* as a model may see it: every ``secure`` field's value replaced by ``*****``."""
+    from tuvl.core.models.secure import mask_for_model
+
+    return {key: mask_for_model(value) for key, value in view.items()}
+
+
 def _input_block(agent: Any, view: dict[str, Any]) -> str:
     lines = ["## Input"]
     for key, t in field_types(agent.inputs).items():
@@ -114,8 +121,12 @@ def _prose(value: str, site: str, where: str) -> str:
 
 
 def build_messages(
-    agent: Any, view: dict[str, Any], schema: dict[str, Any]
+    agent: Any, view: dict[str, Any], schema: dict[str, Any], *, mask_secure: bool = True
 ) -> list[dict[str, str]]:
+    """The system and user messages. Unless the workflow's policy allows ``secure`` values to reach a
+    model (*mask_secure* false), the prompt template and the input block are rendered from a masked view."""
+    if mask_secure:
+        view = _masked(view)
     params = agent.llm
     where = f"agent '{agent.id}'"
     system_parts: list[str] = []
@@ -245,7 +256,9 @@ async def llm_engine(agent: Any, view: dict[str, Any], ctx: EngineContext) -> Ag
 
     response_cls = response_model(agent, ctx.resolver)
     schema = structured_schema(response_cls)
-    messages = build_messages(agent, view, schema)
+    messages = build_messages(
+        agent, view, schema, mask_secure=not ctx.workflow.spec.policy.allow_secure_to_llm
+    )
     remembered = await recall_into(agent, view, ctx, messages)
     try:
         model, _timeout, extra = resolve_call_params({"model": agent.llm.model}, agent.id)

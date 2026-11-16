@@ -163,6 +163,7 @@ def load_all_configs(
         MODEL_REGISTRY,
         MODEL_RELATIONS,
         MODEL_VERSION_REGISTRY,
+        SECURE_BY_MODEL,
         SECURE_FIELDS,
     )
     from tuvl.core.models.schemas import SCHEMA_REGISTRY
@@ -177,6 +178,7 @@ def load_all_configs(
     MODEL_DATASOURCE_MAP.clear()
     MODEL_RELATIONS.clear()
     SECURE_FIELDS.clear()
+    SECURE_BY_MODEL.clear()
     SCHEMA_REGISTRY.clear()
     EMBEDDING_REGISTRY.clear()
     COLLECTION_REGISTRY.clear()

@@ -93,7 +93,10 @@ def _make_schema_class(
     *,
     input_only: bool = False,
     force_optional: bool = False,
+    secure_scope: str | None = None,
 ) -> type[BaseModel]:
+    """*secure_scope* marks a read schema: its ``secure`` fields are optional (the API leaves them out
+    unless the caller holds that scope) and say so."""
     annotations: dict[str, Any] = {}
     namespace: dict[str, Any] = {}
 
@@ -108,8 +111,20 @@ def _make_schema_class(
         # expected key and JSON input is still accepted under that key.
         field_alias = orig_name if fname != orig_name else None
 
+        is_secure_read = secure_scope is not None and bool(field_spec.get("secure"))
+        spec = (
+            {
+                **field_spec,
+                "description": (
+                    f"{field_spec.get('description', '')} Omitted unless the caller holds "
+                    f"`{secure_scope}`."
+                ).strip(),
+            }
+            if is_secure_read
+            else field_spec
+        )
         annotation, field_info = _build_field(
-            field_spec, force_optional=force_optional, alias=field_alias
+            spec, force_optional=force_optional or is_secure_read, alias=field_alias
         )
         annotations[fname] = annotation
         namespace[fname] = field_info
@@ -132,7 +147,11 @@ def generate_schemas(
             f"{model_name}Create", fields, input_only=True, force_optional=False
         ),
         "read": _make_schema_class(
-            f"{model_name}Read", fields, input_only=False, force_optional=False
+            f"{model_name}Read",
+            fields,
+            input_only=False,
+            force_optional=False,
+            secure_scope=f"{model_name.lower()}:read_secure",
         ),
         "update": _make_schema_class(
             f"{model_name}Update", fields, input_only=True, force_optional=True

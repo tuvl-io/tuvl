@@ -297,9 +297,16 @@ spec:
 ```
 
 - are **redacted** (`"*****"`) in journal events, SSE streams, run exports, pinned fixtures and the
-  Insight views; checkpoints keep real values because they are the resume state;
+  Insight views; checkpoints and a run's input keep real values because they are the resume state;
 - are never span attributes (tuvl puts no context values on spans);
-- are **not sent to models** (`llm`, `loop`, judges, decision models) unless
-  `policy.allow_secure_to_llm: true` — a secure field in a model agent's inputs is a V020 error.
+- are **left out of CRUD responses** unless the caller holds `<model>:read_secure` or `iam:admin`, in the
+  record and in related records an `?include=` embeds (`docs/auth.md`);
+- are **not sent to models** (`llm`, `loop`) unless `policy.allow_secure_to_llm: true`: a secure field in a
+  model agent's inputs is a V020 error, and at run time the value is replaced by `*****` in the prompt (its
+  template and its input block) and in every tool result a loop agent reads. This masks by field *name*, because
+  the data a prompt or a tool result carries has no model attached: a key that shares a secure field's name is
+  masked wherever it appears. The CRUD API uses the per-model registry, so there a field is hidden only in the model
+  that declares it `secure`.
 
-The secure-field registry is built at startup from every loaded `ModelDefinition`.
+Two registries are built at startup from every loaded `ModelDefinition`: `SECURE_FIELDS` (the names) and
+`SECURE_BY_MODEL` (model → names).
