@@ -30,7 +30,7 @@ jobs:
     runs-on: ${{ github.event.repository.private && fromJSON(vars.CI_RUNS_ON || '"ubuntu-latest"') || 'ubuntu-latest' }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
         with:
           fetch-depth: 0 # the tag is checked against main
 
@@ -66,13 +66,13 @@ jobs:
           fi
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86  # v5
         with:
-          version: "latest"
+          version: "0.13.8"
 
       - name: Set up Python
         if: runner.environment != 'self-hosted'
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
         with:
           python-version: "3.13"
 
@@ -105,8 +105,7 @@ jobs:
     needs: quality
 
     steps:
-      - uses: actions/checkout@v4
-
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
       - name: Stamp version from tag
         run: |
           # Resolve the tag from whichever trigger fired.  workflow_dispatch
@@ -149,13 +148,13 @@ jobs:
           find . -name '*.bak' -not -path './ui/node_modules/*' -delete
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86  # v5
         with:
-          version: "latest"
+          version: "0.13.8"
 
       - name: Set up Python
         if: runner.environment != 'self-hosted'
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
         with:
           python-version: "3.13"
 
@@ -187,7 +186,7 @@ jobs:
           "$SMOKE/bin/python" scripts/import_sweep.py
 
       - name: Upload tuvl artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
         with:
           name: dist-tuvl
           path: dist/
@@ -198,7 +197,7 @@ jobs:
     needs: quality
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
         with:
           # UI assets are gitignored and built fresh below (bundle_ui.py) —
           # this job only needs the source tree, not full git history.
@@ -220,25 +219,25 @@ jobs:
           find . -name '*.bak' -not -path './ui/node_modules/*' -delete
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86  # v5
         with:
-          version: "latest"
+          version: "0.13.8"
 
       - name: Set up Python
         if: runner.environment != 'self-hosted'
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
         with:
           python-version: "3.13"
 
       - name: Set up pnpm
         if: runner.environment != 'self-hosted'
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1  # v4
         with:
           version: 10
 
       - name: Set up Node.js
         if: runner.environment != 'self-hosted'
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4
         with:
           node-version: "22"
           cache: "pnpm"
@@ -254,7 +253,7 @@ jobs:
         run: uv build --package tuvl-insight --no-sources
 
       - name: Upload tuvl-insight artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
         with:
           name: dist-insight
           path: dist/
@@ -270,21 +269,20 @@ jobs:
       id-token: write  # OIDC Trusted Publishing — no API token needed
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
         with:
           # only the provenance check script is needed here
           sparse-checkout: scripts/check_provenance.sh
           sparse-checkout-cone-mode: false
 
       - name: Download tuvl artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4
         with:
           name: dist-tuvl
           path: dist/
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@v5
-
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86  # v5
       - name: Sign the files (PEP 740 attestations)
         # uv publish uploads attestations that sit next to the files but does not create them;
         # without them PyPI shows "Loss of provenance" on a project whose earlier releases had them
@@ -314,7 +312,7 @@ jobs:
       id-token: write  # OIDC Trusted Publishing — no API token needed
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
         with:
           # only the provenance check script is needed here
           sparse-checkout: scripts/check_provenance.sh
@@ -330,14 +328,13 @@ jobs:
             || { echo "::error::tuvl ${VERSION} is not on PyPI; run without skip_tuvl"; exit 1; }
 
       - name: Download tuvl-insight artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4
         with:
           name: dist-insight
           path: dist/
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@v5
-
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86  # v5
       - name: Sign the files (PEP 740 attestations)
         # uv publish uploads attestations that sit next to the files but does not create them;
         # without them PyPI shows "Loss of provenance" on a project whose earlier releases had them

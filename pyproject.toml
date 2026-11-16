@@ -79,6 +79,7 @@ dev = [
     "pytest>=9.0.0",
     "pytest-asyncio>=1.0.0",
     "pytest-timeout>=2.3.0",
+    "pytest-cov>=6.0.0",  # coverage floors for runtime/ and core/auth/ in CI
     "aiosqlite>=0.20.0",  # core tests run the engine against in-memory SQLite
 ]
 
@@ -136,8 +137,12 @@ select = [
     "G",   # flake8-logging-format — bans f-strings + .format() + % in logger calls
     "LOG", # flake8-logging — catches misuse of the stdlib logging module
     "ANN", # flake8-annotations — ratchet: new code must be annotated
+    "ASYNC", # flake8-async — blocking calls and timeouts in coroutines
+    "S",   # flake8-bandit — security patterns; accepted ones are listed by file below
 ]
 ignore = [
+    "S101",   # assert: internal invariants and type narrowing, not input checks
+    "ASYNC109", # a `timeout` parameter is part of these public signatures; they apply asyncio.timeout inside
     "E501",   # line too long — handled by ruff formatter
     "B008",   # do not perform function calls in default argument (FastAPI Depends pattern)
     "ANN401", # Any is a deliberate choice in this dict-driven engine
@@ -162,7 +167,45 @@ line-ending = "auto"
 "insight/src/tuvl_insight/api/dev_core_router.py" = ["ANN"]
 "src/tuvl/core/dev/artifacts.py" = ["ANN"]
 # The annotation ratchet is for src/ — test signatures stay lightweight.
-"tests/**" = ["ANN", "N806"]  # N806: generated model classes bound to capitalised locals
+"tests/**" = ["ANN", "N806", "S", "ASYNC"]  # N806: generated model classes bound to capitalised locals; S, ASYNC: tests hold fake secrets, start processes and poll
+"scripts/**" = ["S607"]  # developer scripts run pnpm and git from PATH
+# Accepted S (flake8-bandit) findings, by file, so a new one anywhere else is flagged. Reasons:
+#   S105  the name of an environment variable, an alphabet, a URL or a placeholder, not a secret
+#   S603 S605 S606 S607  fixed command lines (git, gh, uvicorn, the user's editor) from our own arguments
+#   S608  a quoted identifier from our own models, never a value
+#   S314  XML answered by the object store or page the operator pointed at; expat refuses entity-expansion bombs
+#   S104  0.0.0.0 is the documented default of the server inside a container
+#   S110 S112  best-effort cleanup that must not mask the error being handled
+#   S311  retry jitter, not a secret
+"insight/src/tuvl_insight/api/dev/jobs.py" = ["S603", "S607"]
+"insight/src/tuvl_insight/api/dev/telemetry.py" = ["S105"]
+"insight/src/tuvl_insight/cli/cloud.py" = ["S105"]
+"insight/src/tuvl_insight/cli/commands/dev.py" = ["S104", "S110", "S603"]
+"insight/src/tuvl_insight/cli/commands/devtelemetry.py" = ["S105"]
+"insight/src/tuvl_insight/cli/commands/ship.py" = ["S603"]
+"insight/src/tuvl_insight/cli/commands/validate.py" = ["S112"]
+"insight/src/tuvl_insight/cli/nest.py" = ["S105"]
+"insight/src/tuvl_insight/cli/select.py" = ["S605", "S607"]
+"insight/src/tuvl_insight/coding_agents/detect.py" = ["S603"]
+"insight/src/tuvl_insight/coding_agents/runner.py" = ["S603"]
+"insight/src/tuvl_insight/devtelemetry.py" = ["S105"]
+"insight/src/tuvl_insight/gitflow.py" = ["S603"]
+"insight/src/tuvl_insight/gitutil.py" = ["S603", "S607"]
+"insight/src/tuvl_insight/review/static.py" = ["S603"]
+"insight/src/tuvl_insight/shipgate.py" = ["S603"]
+"insight/src/tuvl_insight/spec/ideas.py" = ["S314"]
+"src/tuvl/api/runs.py" = ["S608"]
+"src/tuvl/cli/commands/run.py" = ["S104", "S603", "S606"]
+"src/tuvl/core/auth/iam_service.py" = ["S105"]
+"src/tuvl/core/auth/router.py" = ["S105"]
+"src/tuvl/core/config.py" = ["S105"]
+"src/tuvl/core/datasources/postgres.py" = ["S110", "S608"]
+"src/tuvl/core/project_info.py" = ["S603", "S607"]
+"src/tuvl/runtime/builtins.py" = ["S608"]
+"src/tuvl/storage/azure.py" = ["S314"]
+"src/tuvl/storage/creds.py" = ["S105", "S314"]
+"src/tuvl/storage/s3.py" = ["S314"]
+"src/tuvl/storage/store.py" = ["S311"]
 
 # ── Mypy ──────────────────────────────────────────────────────────────────────
 [tool.mypy]

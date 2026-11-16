@@ -41,6 +41,19 @@ project) and `docs/tuvl-agentic-manual.md`.
   guardrail judges fail closed.
 - **Dev surfaces are dev-only:** `/dev/*`, Insight, `tuvl serve mcp`, breakpoints and step mode never run
   with `TUVL_ENV=production`.
+- **Background loops handle their own errors.** A task that runs a `while` loop (the worker poll, the heartbeat,
+  the scheduler, the webhook dispatcher) catches and logs a failing iteration, backs off, and records when it last ran
+  so `/health` can say it is stuck; follow `Worker.run_forever` and `scheduler_loop`. A loop that can die silently
+  is a defect.
+- **Outbound HTTP to a destination someone else can influence goes through `tuvl.webhooks.guard`.** A host the
+  workflow's author wrote is trusted; one that arrives through `{{ }}` (a caller or a model chose it) must resolve to
+  a public address and the connection goes to the address that was checked. A cloud-metadata address is never a
+  destination.
+- **Expand the environment before rendering.** `${VAR}` is read from the workflow's own text only; never from text
+  that a caller's input has been rendered into.
+- **One rule per input, enforced where it is written.** A password goes through `iam_service.validate_password`, a
+  role or scope name through `validate_role_name` / `validate_scope_name`, an email through `normalize_email`;
+  every path that writes one (REST, `tuvl iam`, the seed) uses them.
 - **Security:** Ed25519-signed JWTs; workflow triggers default-deny (`public: true` opt-in); scopes per
   `docs/auth.md`; `secure: true` fields never reach models, logs or exports.
 
@@ -48,7 +61,7 @@ project) and `docs/tuvl-agentic-manual.md`.
 
 - Python 3.13 or 3.14, `uv`. Run tests with Postgres: `TUVL_TEST_PG_URL=postgresql+asyncpg://… uv run pytest`.
   Tests that need Postgres skip without it.
-- Before pushing: `make check` (ruff format + lint on `src/`) and `make typecheck` (mypy on all of `src/`, which must
+- Before pushing: `make check` (ruff format + lint on `src/`; includes the `S` security and `ASYNC` rules, whose accepted findings are listed by file in `pyproject.toml`) and `make typecheck` (mypy on all of `src/`, which must
   stay clean). Format and fix only files you touched.
 - Performance: `uv run python scripts/bench_steps.py` (a disposable Postgres database in `TUVL_TEST_PG_URL`: it drops and recreates the runtime tables; local stub model server) prints runs/s, steps/s, step latency and SQL statements per step; run it before and after a change to the runner, journal or engines.
 - UI: `cd ui && pnpm exec tsc -b && pnpm test`; browser tests with `scripts/insight-smoke.sh`.
