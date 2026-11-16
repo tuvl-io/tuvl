@@ -19,6 +19,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import contextvars
 import json
 import uuid
@@ -39,7 +40,7 @@ from tuvl.contract.schema import WorkflowDocument
 from tuvl.contract.surface import end_schema, input_schema, workflow_effect
 from tuvl.core.auth.schemas import TokenUser
 from tuvl.extras import require
-from tuvl.runtime import journal, queue
+from tuvl.runtime import journal, queue, wakeup
 from tuvl.runtime.host import InputError, RuntimeHost, WorkflowUnavailableError, get_host
 from tuvl.runtime.models import SystemRun
 
@@ -53,7 +54,7 @@ logger = structlog.get_logger(__name__)
 
 MCP_CONNECT = "mcp:connect"
 CALL_WINDOW_SECONDS = 120.0
-_POLL_SECONDS = 0.25
+_POLL_SECONDS = 1.0  # fallback poll: commits made in this process wake the call at once
 _WAITING = ("waiting_human", "waiting_approval", "paused")
 
 _USER: contextvars.ContextVar[TokenUser | None] = contextvars.ContextVar("mcp_user", default=None)
@@ -201,17 +202,20 @@ def build_server() -> Server[Any, Any]:
             if host.role != "worker"
             else None
         )
-        cursor, waited = 0, 0.0
-        while True:
-            cursor = await _progress(server, host, run_id, cursor)
-            run = await host.get(run_id)
-            if (
-                run.status not in ("queued", "running", "compensating")
-                or waited >= CALL_WINDOW_SECONDS
-            ):
-                break
-            await asyncio.sleep(_POLL_SECONDS)
-            waited += _POLL_SECONDS
+        cursor = 0
+        loop = asyncio.get_running_loop()
+        started = loop.time()
+        with wakeup.listen(run_id) as woken:
+            while True:
+                cursor = await _progress(server, host, run_id, cursor)
+                run = await host.get(run_id)
+                left = CALL_WINDOW_SECONDS - (loop.time() - started)
+                if run.status not in ("queued", "running", "compensating") or left <= 0:
+                    break
+                # a commit here wakes it at once; one made by another process is found by the poll
+                with contextlib.suppress(TimeoutError):
+                    await asyncio.wait_for(woken.wait(), min(_POLL_SECONDS, left))
+                woken.clear()
         if task is not None and task.done():
             task.result()
         return await _answer(host, run)

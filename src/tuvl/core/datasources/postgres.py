@@ -448,8 +448,19 @@ def _tables_for_datasource(ds_name: str) -> list[sa.Table]:
 #: Indexes on system tables that can already be large when an upgrade adds the index. They are
 #: built with ``CREATE INDEX CONCURRENTLY`` outside any transaction, so writes go on meanwhile.
 #: A runtime index is also declared on its model, so a fresh database gets it from ``create_all``.
-RUNTIME_INDEXES: tuple[tuple[str, str], ...] = (
+RUNTIME_INDEXES: tuple[tuple[str, str] | tuple[str, str, bool], ...] = (
     ("ix_tuvl_run_deltas_created", "ON tuvl_system_run_deltas (created_at)"),
+    (
+        "ix_tuvl_runs_queued_created",
+        "ON tuvl_system_runs (created_at) WHERE status = 'queued'",
+    ),
+    ("ix_tuvl_runs_principal_created", "ON tuvl_system_runs (principal, created_at DESC)"),
+    ("ix_tuvl_runs_created", "ON tuvl_system_runs (created_at DESC)"),
+    (
+        "uq_tuvl_runs_schedule",
+        "ON tuvl_system_runs (workflow, trigger) WHERE trigger LIKE 'schedule:%'",
+        True,
+    ),
 )
 VECTOR_INDEXES: tuple[tuple[str, str], ...] = (
     ("ix_svs_created_at", "ON tuvl_system_vector_store (created_at)"),
@@ -472,9 +483,14 @@ _INDEX_LOCK = 0x7475766C_69647800
 
 
 async def ensure_indexes(
-    engine: AsyncEngine, indexes: tuple[tuple[str, str], ...], *, unique: bool = False
+    engine: AsyncEngine,
+    indexes: tuple[tuple[str, str] | tuple[str, str, bool], ...],
+    *,
+    unique: bool = False,
 ) -> None:
-    """Create the missing *indexes* concurrently (unique ones with *unique*); rebuild one left invalid by a build that died.
+    """Create the missing *indexes* concurrently; rebuild one left invalid by a build that died.
+
+    An entry is ``(name, body)``, or ``(name, body, True)`` for a unique index (or pass *unique* for all).
 
     One process at a time, on an advisory lock: another would see an index still being built (it
     exists, not yet valid) and drop it. A process that finds the lock taken skips the work rather
@@ -490,7 +506,8 @@ async def ensure_indexes(
             logger.info("db.index.skipped", reason="another process is building indexes")
             return
         try:
-            for name, body in indexes:
+            for name, body, *flags in indexes:
+                is_unique = unique or bool(flags and flags[0])
                 try:
                     valid = (
                         await conn.execute(
@@ -505,7 +522,7 @@ async def ensure_indexes(
                     if valid is False:
                         await conn.execute(text(f"DROP INDEX CONCURRENTLY IF EXISTS {name}"))
                     logger.info("db.index.building", index=name)
-                    kind = "UNIQUE INDEX" if unique else "INDEX"
+                    kind = "UNIQUE INDEX" if is_unique else "INDEX"
                     await conn.execute(
                         text(f"CREATE {kind} CONCURRENTLY IF NOT EXISTS {name} {body}")
                     )

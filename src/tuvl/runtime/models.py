@@ -59,6 +59,25 @@ class SystemRun(DynamicTenantModel, table=True):
     __table_args__ = (
         sa.Index("ix_tuvl_runs_claim", "status", "lease_expires_at"),
         sa.Index("ix_tuvl_runs_workflow_created", "workflow", "created_at"),
+        # the queue: oldest queued runs first, without sorting the backlog
+        sa.Index(
+            "ix_tuvl_runs_queued_created",
+            "created_at",
+            postgresql_where=sa.text("status = 'queued'"),
+            sqlite_where=sa.text("status = 'queued'"),
+        ),
+        # GET /api/runs: a caller's newest runs, and an administrator's
+        sa.Index("ix_tuvl_runs_principal_created", "principal", sa.text("created_at DESC")),
+        sa.Index("ix_tuvl_runs_created", sa.text("created_at DESC")),
+        # one run per scheduled fire (the trigger names the fire time and tenant)
+        sa.Index(
+            "uq_tuvl_runs_schedule",
+            "workflow",
+            "trigger",
+            unique=True,
+            postgresql_where=sa.text("trigger LIKE 'schedule:%'"),
+            sqlite_where=sa.text("trigger LIKE 'schedule:%'"),
+        ),
     )
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)

@@ -39,7 +39,7 @@ from tuvl.contract.types import ModelResolver, build_model, registry_resolver
 from tuvl.core.engine.hooks import emit_hooks
 from tuvl.runtime import code as _code  # noqa: F401 — registers the code engine
 from tuvl.runtime import decide as _decide  # noqa: F401 — registers the decide engine
-from tuvl.runtime import deltas, journal, queue
+from tuvl.runtime import deltas, journal, queue, wakeup
 from tuvl.runtime import human as _human  # noqa: F401 — registers the human engine
 from tuvl.runtime import llm as _llm  # noqa: F401 — registers the llm engine
 from tuvl.runtime import loop as _loop  # noqa: F401 — registers the loop engine
@@ -891,22 +891,29 @@ class Runner:
         await queue.run_inline(worker, child, timeout_seconds=24 * 3600)
         return await self._settled(child)
 
-    async def _settled(self, run_id: uuid.UUID, poll: float = 0.25) -> SystemRun:
+    async def _settled(self, run_id: uuid.UUID) -> SystemRun:
         """*run_id* once it has ended or is waiting for a person. A run another worker still holds
-        (a re-run parent found its child mid-flight) is followed until it gets there."""
-        deadline = asyncio.get_running_loop().time() + 24 * 3600
-        while True:
+        (a re-run parent found its child mid-flight) is followed until it gets there: woken by a
+        commit made here, and by a poll that slows to once a second for one made elsewhere."""
+
+        async def look() -> SystemRun | None:
             async with AsyncSession(self.engine, expire_on_commit=False) as s:
                 run = await s.get(SystemRun, run_id)
             assert run is not None
-            if (
-                run.status in queue.TERMINAL_STATUSES
+            return (
+                run
+                if run.status in queue.TERMINAL_STATUSES
                 or run.status.startswith("waiting_")
                 or run.status == "paused"
-                or asyncio.get_running_loop().time() > deadline
-            ):
-                return run
-            await asyncio.sleep(poll)
+                else None
+            )
+
+        settled = await wakeup.wait_until(run_id, look, timeout=24 * 3600, first=0.05)
+        if settled is None:  # a day: give back whatever it is
+            async with AsyncSession(self.engine, expire_on_commit=False) as s:
+                settled = await s.get(SystemRun, run_id)
+            assert settled is not None
+        return settled
 
     async def call_engine(
         self, state: RunState, agent: Any, view: dict[str, Any], key: str

@@ -36,10 +36,13 @@ logger = structlog.get_logger(__name__)
 LEASE_SECONDS = 30.0
 HEARTBEAT_SECONDS = 10.0
 POLL_SECONDS = 1.0
+SWEEP_SECONDS = 15.0
 
 _RUNS = SystemRun.__table__  # type: ignore[attr-defined]
 #: Statuses a worker holds a lease in; ``compensating`` is a run undoing its completed agents.
 _LEASED = ("running", "compensating")
+#: Statuses of a run that has not settled: it is waiting for a worker or being executed.
+_LIVE = ("queued", "running", "compensating")
 #: Statuses a resume or retry may move back to ``queued``.
 _RESUMABLE = frozenset({"waiting_human", "waiting_approval", "paused"})
 
@@ -170,12 +173,41 @@ async def claim(
 ) -> list[uuid.UUID]:
     """Lease up to *limit* claimable runs (queued, or running with an expired
     lease) to *owner*, oldest first; or exactly *run_id* if it is claimable.
-    The caller commits."""
-    claimable = sa.or_(
-        _RUNS.c.status == "queued",
-        sa.and_(_RUNS.c.status.in_(_LEASED), _RUNS.c.lease_expires_at < _now(session)),
-    )
-    pick = sa.select(_RUNS.c.id).where(claimable)
+    The caller commits.
+
+    A crashed worker's runs (expired leases, few and found by ``(status, lease_expires_at)``) are taken
+    first, then queued ones, oldest first off the partial index on queued runs: the two are asked
+    separately because one query over both would have to sort the whole backlog.
+    """
+    expired = sa.and_(_RUNS.c.status.in_(_LEASED), _RUNS.c.lease_expires_at < _now(session))
+    queued = _RUNS.c.status == "queued"
+    if run_id is not None:
+        return await _lease(
+            session,
+            owner,
+            sa.or_(queued, expired),
+            run_id=run_id,
+            limit=limit,
+            lease_seconds=lease_seconds,
+        )
+    taken = await _lease(session, owner, expired, limit=limit, lease_seconds=lease_seconds)
+    if len(taken) < limit:
+        taken += await _lease(
+            session, owner, queued, limit=limit - len(taken), lease_seconds=lease_seconds
+        )
+    return taken
+
+
+async def _lease(
+    session: AsyncSession,
+    owner: str,
+    where: Any,
+    *,
+    limit: int,
+    lease_seconds: float,
+    run_id: uuid.UUID | None = None,
+) -> list[uuid.UUID]:
+    pick = sa.select(_RUNS.c.id).where(where)
     if run_id is not None:
         pick = pick.where(_RUNS.c.id == run_id)
     pick = pick.order_by(_RUNS.c.created_at).limit(limit).with_for_update(skip_locked=True)
@@ -278,8 +310,11 @@ class Worker:
     lease_seconds: float = LEASE_SECONDS
     heartbeat_seconds: float = HEARTBEAT_SECONDS
     poll_seconds: float = POLL_SECONDS
+    #: housekeeping sweeps (approval expiry, retention) run at most this often, not before every claim
+    sweep_seconds: float = SWEEP_SECONDS
     #: ``time.monotonic()`` when the poll loop last finished an attempt, whether or not it worked
     last_poll: float | None = None
+    _last_sweep: float | None = None
     _active: dict[uuid.UUID, asyncio.Task[None]] = field(default_factory=dict)
     _stopping: asyncio.Event = field(default_factory=asyncio.Event)
 
@@ -325,15 +360,18 @@ class Worker:
         if free <= 0:
             return 0
         async with AsyncSession(self.engine, expire_on_commit=False) as s:
-            for sweep in SWEEPS:
-                try:
-                    await sweep(s)
-                    await s.commit()
-                except Exception:  # one failing sweep must not stop the others, or the claim
-                    logger.exception(
-                        "runtime.sweep.failed", sweep=getattr(sweep, "__name__", sweep)
-                    )
-                    await s.rollback()
+            now = time.monotonic()
+            if self._last_sweep is None or now - self._last_sweep >= self.sweep_seconds:
+                self._last_sweep = now
+                for sweep in SWEEPS:
+                    try:
+                        await sweep(s)
+                        await s.commit()
+                    except Exception:  # one failing sweep must not stop the others, or the claim
+                        logger.exception(
+                            "runtime.sweep.failed", sweep=getattr(sweep, "__name__", sweep)
+                        )
+                        await s.rollback()
             ids = await claim(s, self.owner, limit=free, lease_seconds=self.lease_seconds)
             await s.commit()
         for run_id in ids:
@@ -461,10 +499,10 @@ async def wait_settled(engine: AsyncEngine, run_id: uuid.UUID, timeout_seconds: 
 
     For a run the background worker claimed before the HTTP request could: the request still owes
     its caller the finished answer, not a 202 for a run that takes milliseconds."""
-    deadline = time.monotonic() + timeout_seconds
-    while time.monotonic() < deadline:
+
+    async def settled() -> bool | None:
         async with AsyncSession(engine) as s:
             run = await s.get(SystemRun, run_id)
-        if run is None or run.status not in ("queued", "running", "compensating"):
-            return
-        await asyncio.sleep(0.02)
+        return True if run is None or run.status not in _LIVE else None
+
+    await wakeup.wait_until(run_id, settled, timeout=timeout_seconds)

@@ -15,7 +15,10 @@ run, because run state lives in Postgres, not in worker memory.
 | `run_deltas` | The **live draft** of an agent's answer while it is still being written: text pieces and resets, written in batches by the worker and read by the event stream. Not part of the journal. Rows stay for a minute after the run ends (a client may still be reading the last pieces) and a sweep then removes them; a run that never finished loses them after a day |
 
 On boot tuvl builds the indexes on the vector store, and `run_deltas (created_at)` for the draft sweep, including the partial indexes agent memory
-uses (by `memory_key` and by `step`). They are built with
+uses (by `memory_key` and by `step`), and four on `runs`: the queued runs by age (`WHERE status = 'queued'`, so a claim reads
+the head of the backlog instead of sorting it), a caller's runs and all runs by newest first (`GET /api/runs`), and a unique one on
+`(workflow, trigger) WHERE trigger LIKE 'schedule:%'`, which makes a scheduled fire one run for good (a process that loses the race
+is told it was already fired). They are built with
 `CREATE INDEX CONCURRENTLY IF NOT EXISTS`, so upgrading a deployment with a large table does not block writes. One process builds them (an
 advisory lock; the others skip) and an index an interrupted build left invalid is rebuilt.
 
@@ -57,6 +60,11 @@ Statuses: `queued`, `running`, `waiting_human`, `waiting_approval`, `paused`, `c
   does not answer within two seconds, and once shutdown has begun, so the load balancer stops sending traffic first.
   In production the body says only `ready` or `unavailable`. The Helm chart's `readinessProbe` uses it and the
   `livenessProbe` uses `/health`.
+
+The housekeeping sweeps (expiring approvals, draft and memory retention) run every 15 seconds, not before every claim.
+A request or a parent run waiting for another run is woken by the commit that ends it when that happens in the same process,
+and otherwise asks again after 20 ms, 40 ms, 80 ms ... up to once a second (it used to open a session every 20 to 250 ms).
+A claim takes a crashed worker's runs (expired leases) first, then the oldest queued ones.
 
 A failing claim, sweep or heartbeat is logged and retried; it never ends the poll loop or the heartbeat for good. A
 sweep that fails is skipped and the others still run. A heartbeat that fails is retried sooner than the lease runs

@@ -118,6 +118,7 @@ def schedule_trigger(fire_at: datetime, tenant: str | None = None) -> str:
 async def enqueue_scheduled(name: str, fire_at: datetime, tenant: str | None = None) -> bool:
     """Enqueue the 2.0 run for this fire (and tenant) unless one exists. True when enqueued."""
     import sqlalchemy as sa
+    from sqlalchemy.exc import IntegrityError
     from sqlalchemy.ext.asyncio import AsyncSession
 
     from tuvl.runtime.host import InputError, WorkflowUnavailableError, get_host
@@ -141,13 +142,21 @@ async def enqueue_scheduled(name: str, fire_at: datetime, tenant: str | None = N
             existing = await lock_session.execute(
                 sa.select(sa.func.count())
                 .select_from(SystemRun)
-                .where(SystemRun.workflow == name, SystemRun.trigger == trigger)  # type: ignore[arg-type]
+                .where(
+                    SystemRun.workflow == name,  # type: ignore[arg-type]
+                    SystemRun.trigger == trigger,  # type: ignore[arg-type]
+                    SystemRun.trigger.like("schedule:%"),  # type: ignore[attr-defined]  # the index's predicate
+                )
             )
             if existing.scalar_one():
                 return False
             try:
                 with tenant_scope(tenant) if tenant else contextlib.nullcontext():
                     run_id = await host.enqueue(doc, payload, principal=None, trigger=trigger)
+            except IntegrityError:
+                return (
+                    False  # the unique index on (workflow, trigger): another process fired it first
+                )
             except InputError as exc:
                 logger.error("workflow.scheduled_input_invalid", workflow=name, errors=exc.errors)
                 return False
