@@ -1,0 +1,13 @@
+{
+  "recorded_with": "tuvl 2.0.3 (2.1.0b5 gives the same values)",
+  "hashes": {
+    "batch_screening.yaml": "1ee5f6d1a52964275cdcbbc5ccb981622c8b356f45b7e109043af7f33f2415a8",
+    "concierge_chat.yaml": "1277b8fd492f65c7b6ff9d3c7e05325ab6a09b60c23a56350bee06cfd16fb561",
+    "content_moderation.yaml": "b64675233fa587720c9a35a94933e99fa8ab43d7922f1a70acbf9d02ec41dd0e",
+    "kyc_onboarding.yaml": "f8b5ac55b5d6f505a20e460539cd003e4f53a6f44c3fe4d426064e6b0560be5a",
+    "mcp_research.yaml": "52accbe1d83afab62ce486610f3d767dcac1e2ee5b007673efc20f7b7742e453",
+    "refund_flow.yaml": "a531b7fc120473d420ad505ffeae359a45cf09834f9ae45a31697e721d07dbfc",
+    "scheduled_digest.yaml": "4c2c540dd4b8c97466227ac64a4a51d92e54d583364c35894a51c04e5e691876",
+    "support_triage.yaml": "2db76d30b19015802d6692967a82ce167688884ef5bbf0716cd74aff4f374dde"
+  }
+}

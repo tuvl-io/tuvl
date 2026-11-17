@@ -1,0 +1,120 @@
+kind: Workflow
+version: tuvl/v2
+metadata:
+  name: research
+  description: >-
+    Bounded research agent — fetches sources over MCP, summarizes them, and
+    returns a cited research brief.
+spec:
+  models: [ResearchBrief]
+  trigger:
+    http: { path: /api/research, method: POST }
+    input:
+      question: str
+
+  agents:
+    - id: investigate
+      description: Research the question across fetched web sources
+      engine: loop
+      inputs: { question: str }
+      outputs: { research: json }
+      budget: { max_iterations: 8, max_tokens: 40000, max_tool_calls: 6, timeout: 4m }
+      loop:
+        model: default
+        steering: artifact://research-method@2
+        skills: [artifact://citation-style@1]
+        tools:
+          - mcp: artifact://fetch-web@1
+            allow: [fetch]                    # the server's only tool we let the model use
+            max_calls: 4
+          - agent: summarize_source
+        supervisor:
+          rules:
+            - { when: tool_repeated, count: 2, then: steer }
+            - { when: budget_fraction, gt: 0.8, then: steer }
+          steer_message: You are repeating yourself or running out of budget — finish with what you have.
+      routes:
+        answered: compose
+        insufficient_sources: persist_partial
+        max_iterations: persist_partial
+        budget_exceeded: persist_partial
+        timeout: persist_partial
+        aborted: persist_partial
+        error: persist_partial
+
+    - id: summarize_source
+      description: Summarize one fetched page into a title and a two-sentence takeaway with its URL
+      engine: code
+      effect: read
+      code: { run: summarize_source }
+      inputs: { url: str, content: str }
+      outputs: { summary: json }
+      routes: { default: END }
+
+    - id: compose
+      description: Compose a concise, cited brief from the research notes
+      engine: llm
+      inputs: { question: str, research: json }
+      outputs:
+        brief: str
+        sources: "list[json]"                # [{url, title, takeaway}]
+      budget:
+        timeout: 45s
+        max_tokens: 1500
+        retry: { attempts: 2, errors: [parse_error, timeout] }
+      llm:
+        model: default
+        system: |
+          You compose a concise, cited research brief from an agent's research
+          notes. Ground every claim in the fetched sources; list each source you
+          relied on as {url, title, takeaway}.
+        prompt: Write the research brief that answers the question.
+      routes:
+        default: persist
+        parse_error: persist_partial
+        timeout: persist_partial
+        budget_exceeded: persist_partial
+        error: persist_partial
+
+    - id: persist
+      description: Store the brief
+      engine: tool
+      inputs: { question: str, brief: str, sources: "list[json]" }
+      outputs: { saved: ResearchBrief }
+      tool:
+        use: db
+        model: ResearchBrief
+        op: create
+        values: { question: "{{ question }}", brief: "{{ brief }}", sources: "{{ sources }}", outcome: answered }
+      routes: { default: END, conflict: END.failed, error: END.failed }
+
+    - id: persist_partial
+      description: Store a capped, partial result
+      engine: tool
+      inputs: { question: str }
+      outputs: { saved: ResearchBrief }
+      tool:
+        use: db
+        model: ResearchBrief
+        op: create
+        values:
+          question: "{{ question }}"
+          brief: Research stopped before a complete answer was reached.
+          outcome: capped
+      routes: { default: END.partial, conflict: END.failed, error: END.failed }
+
+  outputs:
+    default:
+      status: 200
+      body:
+        id: "{{ saved.id }}"
+        question: "{{ saved.question }}"
+        outcome: "{{ saved.outcome }}"
+        brief: "{{ saved.brief }}"
+        sources: "{{ saved.sources }}"
+    partial:
+      status: 200
+      body: { id: "{{ saved.id }}", question: "{{ saved.question }}", outcome: "{{ saved.outcome }}", brief: "{{ saved.brief }}" }
+    failed:
+      status: 502
+      body: { error: the research could not be completed }

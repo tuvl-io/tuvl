@@ -1,0 +1,208 @@
+kind: Workflow
+version: tuvl/v2
+metadata:
+  name: onboard_applicant
+  description: >-
+    Compliance-grade KYC onboarding — PII-safe intake, sanctions screening,
+    policy-grounded investigation, risk assessment, group-gated human approval.
+  tags: [kyc]
+  required_scope: kyc:submit
+spec:
+  models: [Applicant, RiskAssessment@v1]
+  trigger:
+    http: { path: /api/kyc/apply, method: POST }
+    input:
+      full_name: str
+      dob: date
+      national_id: str
+      email: str
+      country: "enum[us, gb, de, in, sg]"
+
+  agents:
+    - id: persist_applicant
+      description: Record the applicant
+      engine: tool
+      inputs: { full_name: str, dob: date, national_id: str, email: str, country: "enum[us, gb, de, in, sg]" }
+      outputs: { applicant: Applicant }
+      tool:
+        use: db
+        model: Applicant
+        op: create
+        values:
+          full_name: "{{ full_name }}"
+          dob: "{{ dob }}"
+          national_id: "{{ national_id }}"
+          email: "{{ email }}"
+          country: "{{ country }}"
+          status: received
+      compensate: discard_applicant
+      routes:
+        default: applicant_ref
+        conflict: END.duplicate
+        error: END.failed
+
+    - id: applicant_ref
+      description: Keep only the applicant id for the investigator
+      engine: code
+      effect: read
+      code: { run: applicant_ref }
+      inputs: { applicant: Applicant }
+      outputs: { applicant_id: uuid }
+      routes: { default: sanctions_screen, error: END.failed }
+
+    - id: sanctions_screen
+      description: Screen the applicant against the sanctions provider (stubbed echo endpoint)
+      engine: tool
+      effect: read                          # a lookup sent as POST
+      inputs: { full_name: str, dob: date, country: "enum[us, gb, de, in, sg]" }
+      outputs: { screened_country: str }
+      tool:
+        use: http
+        method: POST
+        url: "${KYC_SCREENING_URL:https://postman-echo.com/post}"
+        body: { full_name: "{{ full_name }}", dob: "{{ dob }}", country: "{{ country }}" }
+        map: { screened_country: response.body.json.country }
+      routes:
+        default: policy_context
+        error: review                       # a screening outage goes to a human — never auto-clear
+
+    - id: policy_context
+      description: Retrieve the compliance policies for the applicant's country
+      engine: code
+      effect: read
+      inputs: { country: "enum[us, gb, de, in, sg]" }
+      outputs: { policies: "list[json]" }
+      code:
+        run: tuvl.data_search
+        with:
+          collection: compliance_policies
+          query: "Sanctions and KYC onboarding policy for country {{ country }}"
+          top_k: 5
+      routes:
+        default: investigate
+        error: review
+
+    - id: investigate
+      description: Investigate red flags with the watchlist tool, under a supervisor
+      engine: loop
+      inputs: { applicant_id: uuid, country: "enum[us, gb, de, in, sg]", policies: "list[json]" }
+      outputs: { investigation: str }
+      budget: { max_iterations: 6, max_tokens: 30000, max_tool_calls: 4, timeout: 2m }
+      loop:
+        model: default
+        steering: artifact://investigation-policy@2
+        skills: [artifact://red-flags@1]
+        tools:
+          - agent: check_watchlist
+        supervisor:
+          rules:
+            - { when: iteration_reached, gte: 5, then: abort }
+            - { when: tool_repeated, count: 3, then: pause }
+          judge: artifact://supervisor-judge@1
+          every_n_iterations: 2
+          on_violation: pause
+          on_judge_error: abort        # fail-closed: a dead judge stops the investigation
+      routes:
+        clear: assess
+        elevated: review
+        refer_human: review
+        max_iterations: review
+        budget_exceeded: review
+        timeout: review
+        aborted: review
+        error: review
+
+    - id: check_watchlist
+      description: Check the applicant against the sanctions/PEP watchlist (by applicant id)
+      engine: code
+      effect: read
+      code: { run: check_watchlist }
+      inputs: { applicant_id: uuid }
+      outputs: { hit: bool, checked: bool, source: "str?" }
+      routes: { default: END }
+
+    - id: assess
+      description: Score the risk, grounded in the policies
+      engine: llm
+      inputs: { investigation: str, policies: "list[json]" }
+      outputs: { score: int, rationale: str }
+      budget:
+        timeout: 30s
+        max_tokens: 600
+        retry: { attempts: 2, errors: [parse_error, timeout] }
+      llm:
+        model: default
+        system: |
+          You are a KYC risk analyst. Score the applicant's risk from 0 to 100 using
+          the investigation and the compliance policies, and pick the outcome band:
+          low, medium or high. Ground the rationale in the policies and cite at
+          least one of them by title.
+        prompt: Assess this applicant's onboarding risk.
+      routes:
+        low: finalize
+        medium: review
+        high: review
+        parse_error: review
+        timeout: review
+        budget_exceeded: review
+        error: review
+
+    - id: review
+      description: A compliance officer decides
+      engine: human
+      inputs:
+        applicant: Applicant
+        investigation: str?
+        score: int?
+        rationale: str?
+      outputs:
+        decision: "enum[approve, reject]"
+        band: "enum[low, medium, high]"
+        note: str?
+      human:
+        title: KYC compliance review
+        instruction: "Review and decide onboarding for applicant {{ applicant.id }}."
+        show: [investigation, score, rationale]     # PII stays off the review payload
+        required_group: compliance
+        expires: 72h
+        route_on: decision
+      routes:
+        approve: finalize
+        reject: finalize
+        expired: END.failed
+        error: END.failed
+
+    - id: finalize
+      description: Record the assessment and the applicant's final status
+      engine: code
+      code: { run: apply_decision }
+      inputs:
+        applicant: Applicant
+        score: int?
+        rationale: str?
+        decision: "enum[approve, reject]?"
+        band: "enum[low, medium, high]?"
+        note: str?
+      outputs: { status: "enum[approved, rejected]", final_band: "enum[low, medium, high]" }
+      routes:
+        default: END
+        error: END.failed
+
+    - id: discard_applicant                 # off-spine compensator
+      description: Delete a half-onboarded applicant so no PII is left behind
+      engine: tool
+      inputs: { applicant: Applicant }
+      tool: { use: db, model: Applicant, op: delete, where: { id: "{{ applicant.id }}" } }
+      routes: { default: END, not_found: END, error: END }
+
+  outputs:
+    default:
+      status: 200
+      body: { applicant_id: "{{ applicant.id }}", status: "{{ status }}", band: "{{ final_band }}" }
+    duplicate:
+      status: 409
+      body: { error: an applicant with this national id already exists }
+    failed:
+      status: 502
+      rollback: true
+      body: { error: the application could not be processed }
