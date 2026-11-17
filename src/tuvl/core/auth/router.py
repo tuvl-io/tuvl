@@ -286,9 +286,8 @@ async def refresh_token(
 ) -> TokenResponse:
     """Exchange a valid token for a fresh one with a new expiry.
 
-    The old token is immediately added to the revocation blacklist so it
-    cannot be reused.  The caller should discard the old token after calling
-    this endpoint.
+    The old token is revoked at once, on every worker, so it cannot be reused.
+    The caller should discard it after calling this endpoint.
     """
     current_user_info: TokenUser = user_from_claims(claims)
 
@@ -316,9 +315,9 @@ async def logout(
 ) -> None:
     """Invalidate the current bearer token.
 
-    After calling this endpoint the token will be rejected by all tuvl
-    workers that share the Redis blacklist.  Clients should discard the
-    token immediately.
+    After calling this endpoint every tuvl worker rejects the token (the
+    revocation is kept in Redis where a Redis datasource is deployed, in the
+    database otherwise).  Clients should discard the token immediately.
     """
     await iam_service.revoke_token(raw_token, claims, session=session)
     await session.commit()

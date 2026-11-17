@@ -145,7 +145,7 @@ spec:
 - An origin is `scheme://host[:port]` exactly as the browser sends it: no path, no trailing slash. `tuvl lint project` rejects anything else; the server leaves a bad entry out, so a mistake narrows access.
 - Nothing is allowed by default, in dev too: a web page you open could otherwise call your dev server. Add `http://localhost:5173` yourself if you want to skip the proxy.
 - `*` allows every website; the API still needs a token, but `tuvl lint project` warns and the server logs a warning. Prefer a list.
-- Allowed: methods `GET POST PUT PATCH DELETE`, request headers `Authorization`, `Content-Type`, `Accept`, `Last-Event-ID`. Credentials mode is off: tokens travel in the `Authorization` header, never in cookies. The response header `X-Tuvl-Run-Id` is exposed, because `@tuvl/client` reads it.
+- Allowed: methods `GET POST PUT PATCH DELETE`, request headers `Authorization`, `Content-Type`, `Accept`, `Last-Event-ID`. Credentials mode is off: tokens travel in the `Authorization` header, never in cookies. The response headers `X-Tuvl-Run-Id` and `Retry-After` are exposed, because `@tuvl/client` reads them (the second is how long a throttled sign-in must wait).
 - It is not a login. CORS only decides which pages the browser lets read a response; scopes and groups still decide who may do what.
 - The setting is read at boot: restart after changing it. The IP allowlist (`TUVL_ALLOWED_HOSTS`) is a separate gate on the client's address.
 
