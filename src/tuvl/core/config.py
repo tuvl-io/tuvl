@@ -201,11 +201,10 @@ class Settings(BaseSettings):
     #   "production"  → structlog JSONRenderer (strict JSONL, one line per event)
     tuvl_env: str = "production"
 
-    # Token revocation, OAuth state, and any other cross-worker shared state
-    # require Redis in multi-worker deployments — without it, ``token_blacklist``
-    # falls back to per-process memory and revocations don't propagate.  Set
-    # this to ``true`` in production to fail the boot if a configured Redis
-    # datasource is unreachable, instead of silently degrading.
+    # Token revocation, session end and OAuth state live in Redis where a Redis
+    # datasource is deployed and in the primary database otherwise, so they reach
+    # every worker either way.  Set this to ``true`` in production to fail the boot
+    # if a configured Redis datasource is unreachable, instead of using the database.
     tuvl_require_redis: bool = False
 
     # In-process cron scheduler for workflows with ``trigger.schedule``.

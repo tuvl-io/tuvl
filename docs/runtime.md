@@ -123,7 +123,7 @@ Every event: `{ run_id, seq, ts, type, agent_id, engine, tokens, latency_ms, pay
 
 `run_queued` · `run_started` · `agent_started` · `agent_completed` · `signal` · `llm_turn` ·
 `tool_call` · `tool_result` · `map_started` · `map_item` · `map_finished` · `parallel_started` · `parallel_branch` · `parallel_finished` ·
-`memory_recalled` · `memory_written` · `memory_compacted` · `decision` · `judge_verdict` · `approval_requested` ·
+`memory_recalled` · `memory_written` · `memory_compacted` · `decision` · `judge_verdict` · `supervisor` · `approval_requested` ·
 `approval_decided` · `paused` · `resumed` · `checkpoint` · `compensation_started` ·
 `compensation_completed` · `run_completed` · `run_failed` · `run_aborted`
 

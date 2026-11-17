@@ -12,8 +12,9 @@ from tuvl.core.system_config import cors_origins
 ALLOW_HEADERS = ["Authorization", "Content-Type", "Accept", "Last-Event-ID"]
 ALLOW_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"]
 #: a browser hides every response header but the simple ones unless it is listed here;
-#: the client reads this one to tell a finished run from a refused request
-EXPOSE_HEADERS = ["X-Tuvl-Run-Id"]
+#: the client reads the run id to tell a finished run from a refused request, and the wait
+#: after a throttled sign-in (429) to say when to try again
+EXPOSE_HEADERS = ["X-Tuvl-Run-Id", "Retry-After"]
 
 
 def install_cors(app: FastAPI) -> tuple[str, ...]:
