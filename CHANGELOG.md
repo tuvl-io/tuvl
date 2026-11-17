@@ -10,7 +10,33 @@ release below is the current one.
 
 ---
 
-## [Unreleased]
+## [2.1.0-beta.6] — 2026-11-17
+
+**Security and reliability fixes from the 2.1 pre-release review.** `tuvl` and `tuvl-insight` release together as `2.1.0b6`.
+This is a beta and the release candidate for 2.1.0: only fixes follow. Install it by pinning both packages, **without** `--prerelease allow`:
+
+```bash
+uv tool install "tuvl==2.1.0b6" --with "tuvl-insight==2.1.0b6"      # the CLI and Insight
+pip install "tuvl==2.1.0b6" "tuvl-insight==2.1.0b6"                  # or into an environment
+pip install "tuvl==2.1.0b6"                                          # the production engine only
+```
+
+**Read before upgrading** (each point is explained in its entry below):
+
+- **Sign-in.** Wrong passwords are slowed per login and per address (`429` with `Retry-After`); one password rule everywhere (8 to 72 bytes, `422`);
+  emails are case-insensitive; a browser sign-in through a provider must finish in the browser that started it (a cookie, and PKCE for Google and Microsoft).
+- **The API.** A JSON body over 1 MiB is `413`; a protected trigger answers `401` before it reads the body; an anonymous caller of a public trigger gets
+  the kind of error and the run id, no message, and no `status_url`; `runs:read` reads any run of its tenant.
+- **Data.** Fields marked `secure: true` are left out of CRUD responses unless the token has `<model>:read_secure` (or `iam:admin`) and are masked in prompts
+  and tool results; `PATCH` with `null` clears a field; lists have a stable order; a refused write is `409` or `422`.
+- **The `http` tool.** `${VAR}` is read from the workflow's own text only; a host that arrives through `{{ }}` must be public (`allow_private: true` allows an inside one); a response is read up to 10 MiB.
+- **Operations.** `GET /ready` is the readiness probe (the Helm chart uses it); logout, refresh and session end work without Redis; four tables
+  (`tuvl_system_iam_login_attempts`, `_iam_revoked_tokens`, `_iam_session_ends`, `_oauth_states`) and four run indexes (built concurrently) are created at the next boot.
+  A run waiting while its workflow changes still fails with `workflow_changed`; boot now logs how many.
+
+Upgrading from 2.1.0b5 or 2.0.x: nothing in your YAML changes, and a run that waits on a person resumes (the fingerprint of a workflow is unchanged; checked
+with databases made by 2.0.3 and 2.1.0b5). In a project created by `tuvl init`, change the `tuvl-insight` pin in the `dev` group to `>=2.1.0b6` and run
+`uv lock --upgrade`. The Microsoft sign-in change (the email now comes from `userinfo`) has been tested against a stub provider, not yet a live tenant.
 
 ### Added
 
