@@ -514,6 +514,16 @@ async def test_a_reset_tells_the_client_to_drop_the_draft(
     assert names == [("token_delta", "bad"), ("token_reset", None), ("token_delta", "good")]
 
 
+async def _draft_so_far(host: RuntimeHost, run_id: str) -> str:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from tuvl.runtime import deltas
+
+    async with AsyncSession(host.engine) as s:
+        text, _ = await deltas.draft(s, uuid.UUID(run_id), "streamer")
+    return text
+
+
 async def test_a_client_that_joins_mid_agent_gets_the_draft_so_far(
     client: httpx.AsyncClient, host: RuntimeHost
 ) -> None:
@@ -522,7 +532,11 @@ async def test_a_client_that_joins_mid_agent_gets_the_draft_so_far(
         "run_id"
     ]
     worker = asyncio.create_task(drain(host))
-    await asyncio.sleep(0.6)  # "Hel" is written and the agent is still running
+    # join once "Hel" is written, however slowly this machine starts the run
+    async with asyncio.timeout(10):
+        while not (written := await _draft_so_far(host, run_id)):
+            await asyncio.sleep(0.02)
+    assert written == "Hel"  # and the agent is still in its one-second nap
     async with asyncio.timeout(15):
         joined = await client.get(f"/api/runs/{run_id}/events?drafts=true", headers=ADMIN)
     await worker
