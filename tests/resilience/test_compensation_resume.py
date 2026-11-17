@@ -124,8 +124,8 @@ async def test_a_compensating_run_keeps_its_lease(
         lease_seconds=0.5,
         heartbeat_seconds=0.1,
     )
-    robbing = asyncio.create_task(thief())
     assert await worker.claim_some() == 1
+    robbing = asyncio.create_task(thief())  # after the claim: a thief that gets there first leaves the worker nothing to hold
     await worker.drain()
     await robbing
     assert stolen == []
