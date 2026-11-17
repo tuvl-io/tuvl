@@ -1682,6 +1682,16 @@
           ],
           "default": null
         },
+        "tool_choice": {
+          "default": "auto",
+          "description": "'required' makes every model turn call a tool (one of the loop's tools or finish), for models that tend to answer in text. A provider that does not accept it fails the agent with llm_error.",
+          "enum": [
+            "auto",
+            "required"
+          ],
+          "title": "Tool Choice",
+          "type": "string"
+        },
         "tools": {
           "items": {
             "anyOf": [

@@ -76,6 +76,17 @@ def _convert(messages: list[dict[str, Any]]) -> tuple[str, list[dict[str, Any]]]
     return "\n\n".join(s for s in system if s), turns
 
 
+def _tool_choice(choice: Any) -> dict[str, Any]:
+    """The OpenAI-style choice in Anthropic's terms: ``required`` is ``any``, a named function is a named tool."""
+    if choice == "required":
+        return {"type": "any"}
+    if isinstance(choice, dict) and choice.get("type") == "function":
+        name = (choice.get("function") or {}).get("name")
+        if name:
+            return {"type": "tool", "name": str(name)}
+    return {"type": "auto"}
+
+
 def chat_request(route: Route, params: dict[str, Any]) -> tuple[str, dict[str, Any]]:
     system, turns = _convert(params["messages"])
     body: dict[str, Any] = {
@@ -107,7 +118,7 @@ def chat_request(route: Route, params: dict[str, Any]) -> tuple[str, dict[str, A
         ]
         body["tool_choice"] = {"type": "tool", "name": _JSON_TOOL}
     elif tools:
-        body["tool_choice"] = {"type": "auto"}
+        body["tool_choice"] = _tool_choice(params.get("tool_choice"))
     if tools:
         body["tools"] = tools
     if params.get("stream"):

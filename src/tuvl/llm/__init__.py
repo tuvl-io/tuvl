@@ -142,7 +142,7 @@ async def acompletion(
     max_tokens: int | None = None,
     response_format: dict[str, Any] | None = None,
     tools: list[dict[str, Any]] | None = None,
-    tool_choice: str | None = None,
+    tool_choice: str | dict[str, Any] | None = None,
     logprobs: bool | None = None,
 ) -> Completion:
     """One chat completion in the OpenAI response shape."""
@@ -232,7 +232,7 @@ async def astream(
     max_tokens: int | None = None,
     response_format: dict[str, Any] | None = None,
     tools: list[dict[str, Any]] | None = None,
-    tool_choice: str | None = None,
+    tool_choice: str | dict[str, Any] | None = None,
     logprobs: bool | None = None,
 ) -> AsyncIterator[StreamEvent]:
     """A chat completion as it is produced: ``TextDelta`` events, then one ``StreamEnd`` holding

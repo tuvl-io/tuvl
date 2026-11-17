@@ -169,6 +169,15 @@ def test_start_overrides_entry() -> None:
             },
         ),
         agent(
+            "loop",
+            loop={
+                "model": "default",
+                "steering": "s",
+                "tools": [{"agent": "lookup_order"}],
+                "tool_choice": "required",
+            },
+        ),
+        agent(
             "human",
             outputs={"approved": "bool", "note": "str?"},
             human={
@@ -291,6 +300,18 @@ def test_agent_shape_errors(mutate: Any, fragment: str) -> None:
             "less than or equal to 1",
         ),
         (agent("loop", loop={"model": "m", "steering": "s", "tools": []}), "at least 1 item"),
+        (
+            agent(
+                "loop",
+                loop={
+                    "model": "m",
+                    "steering": "s",
+                    "tools": [{"agent": "x"}],
+                    "tool_choice": "any",
+                },
+            ),
+            "Input should be 'auto' or 'required'",
+        ),
         (
             agent(
                 "loop", loop={"model": "m", "steering": "s", "tools": [{"mcp": "artifact://z@1"}]}

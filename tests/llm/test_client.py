@@ -633,3 +633,57 @@ def test_each_event_loop_gets_its_own_client() -> None:
     del loops, loop
     gc.collect()
     assert all(ref() is None for ref in dead)
+
+
+FINISH_CHOICE = {"type": "function", "function": {"name": "finish"}}
+FINISH_TOOL = [
+    {"type": "function", "function": {"name": "finish", "description": "d", "parameters": {}}}
+]
+
+
+@pytest.mark.parametrize("choice", ["required", FINISH_CHOICE])
+async def test_an_openai_compatible_endpoint_gets_the_tool_choice_as_given(
+    http: Http, choice: Any
+) -> None:
+    serve(http, lambda r: httpx.Response(200, json=chat_json()))
+    await llm.acompletion(
+        model="acme/m-1",
+        messages=[],
+        api_base="https://gw.example/v1",
+        tools=FINISH_TOOL,
+        tool_choice=choice,
+    )
+    assert body(http[0])["tool_choice"] == choice
+
+
+@pytest.mark.parametrize(
+    ("choice", "sent"),
+    [
+        (None, {"type": "auto"}),
+        ("auto", {"type": "auto"}),
+        ("required", {"type": "any"}),
+        (FINISH_CHOICE, {"type": "tool", "name": "finish"}),
+    ],
+)
+async def test_anthropic_gets_the_tool_choice_in_its_own_terms(
+    http: Http, choice: Any, sent: dict[str, Any]
+) -> None:
+    serve(
+        http,
+        lambda r: httpx.Response(
+            200,
+            json={
+                "stop_reason": "end_turn",
+                "content": [{"type": "text", "text": "ok"}],
+                "usage": {"input_tokens": 1, "output_tokens": 1},
+            },
+        ),
+    )
+    await llm.acompletion(
+        model="anthropic/claude-x",
+        messages=[{"role": "user", "content": "go"}],
+        api_key="k",
+        tools=FINISH_TOOL,
+        tool_choice=choice,
+    )
+    assert body(http[0])["tool_choice"] == sent

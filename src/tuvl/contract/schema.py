@@ -25,8 +25,10 @@ from pydantic import (
     ConfigDict,
     Field,
     JsonValue,
+    SerializerFunctionWrapHandler,
     StringConstraints,
     field_validator,
+    model_serializer,
     model_validator,
 )
 
@@ -570,6 +572,22 @@ class LoopParams(_Strict):
     supervisor: Supervisor | None = None
     #: Remember across runs: recalled text opens the conversation, the result is stored afterwards.
     memory: MemoryParams | None = None
+    tool_choice: Literal["auto", "required"] = Field(
+        default="auto",
+        description=(
+            "'required' makes every model turn call a tool (one of the loop's tools or finish), for models that "
+            "tend to answer in text. A provider that does not accept it fails the agent with llm_error."
+        ),
+    )
+
+    @model_serializer(mode="wrap")
+    def _leave_the_default_out(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        # The dump is what workflow_hash hashes: a key present in every loop's dump would change the hash of
+        # every loop workflow and fail the runs waiting on one with workflow_changed.
+        data: dict[str, Any] = handler(self)
+        if data.get("tool_choice") == "auto":
+            del data["tool_choice"]
+        return data
 
 
 class LoopAgent(_AgentBase):

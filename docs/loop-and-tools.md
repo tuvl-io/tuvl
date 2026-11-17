@@ -25,6 +25,7 @@ derived from contracts, never hand-written.
         allow: [add_comment, set_status]        # required allow-list
         max_calls: 3
     supervisor: { rules: [...], judge: artifact://resolution-judge@1 }
+    tool_choice: auto                           # or required: every turn must call a tool (see Outcome)
   guardrails: { tools: [artifact://no-secrets-in-observations@1] }
   routes: { resolved: reply, escalate: human_queue, error: ops_alert,
             max_iterations: human_queue, budget_exceeded: human_queue,
@@ -78,6 +79,29 @@ The final turn must return the `outputs` schema plus `outcome: enum[<normal rout
 outcome is the signal. A bad parse gets one repair attempt, then `error` (`parse_error`). Budgets end
 the loop with `max_iterations`, `budget_exceeded` or `timeout`; the supervisor or an operator abort
 ends it with `aborted`.
+
+The repair attempt is a turn in which the model is asked for `finish` **by name** (`tool_choice` names the
+function on the wire). It follows a turn with no tool call, or a `finish` that does not fit the outputs.
+A provider that refuses a named choice is asked again with the loop's own, once; the `llm_turn` event of that
+turn says so (`tool_choice_rejected`).
+
+### Models that answer in text
+
+Every valid turn of a loop is a tool call: one of its tools, or `finish`. A model that tends to end with a
+text answer can be held to that with `loop.tool_choice`:
+
+| Value | The model is asked |
+|---|---|
+| `auto` (default) | to decide. A turn with no tool call gets the repair turn above |
+| `required` | to call a tool on every turn (`tool_choice: "required"`; Anthropic's `any`). The repair turn still names `finish`. A provider that does not accept it fails the agent with `llm_error`: the choice is not dropped quietly |
+
+Providers differ in which choices they honour. A provider that ignores the choice leaves the loop as it was
+under `auto`.
+
+Each `llm_turn` event records `iteration`, `model`, `total_tokens`, `tool_calls`, `tool_choice` (`auto`,
+`required`, or `finish` on the repair turn), `text_chars` (the length of the text in the reply) and, when the
+provider reports it, `finish_reason`. A reply cut off by `length` is a model that ran out of tokens, not one that
+chose to answer in text: set or raise `max_tokens` on the AgentModel instead.
 
 ## Supervisor
 

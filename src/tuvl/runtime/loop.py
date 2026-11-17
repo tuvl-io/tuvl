@@ -79,6 +79,8 @@ from tuvl.runtime.tool import mcp_session, mcp_value
 logger = structlog.get_logger(__name__)
 
 FINISH = "finish"
+#: What the repair turn is held to: a model that answered in text has to call finish.
+_FINISH_CHOICE = {"type": "function", "function": {"name": FINISH}}
 _APPROVALS = SystemApproval.__table__  # type: ignore[attr-defined]
 _EFFECT_RANK = {"read": 0, "write": 1, "destructive": 2}
 _OBSERVATION_CHARS = 20_000
@@ -109,6 +111,8 @@ class LoopState:
     calls_by_tool: dict[str, int] = field(default_factory=dict)
     effects: dict[str, int] = field(default_factory=dict)
     repairs: int = 0
+    #: The next model turn is the repair turn: it is asked to call ``finish`` by name.
+    repair_pending: bool = False
     #: Tool calls of the last model turn still to run (the first may await approval).
     queue: list[dict[str, Any]] = field(default_factory=list)
     #: ``tool(args)`` → times called (supervisor ``tool_repeated``).
@@ -454,6 +458,71 @@ def _assistant_message(message: Any) -> dict[str, Any]:
     return out
 
 
+@dataclass
+class _Turn:
+    response: Any
+    #: What the model was held to: ``auto``, ``required``, or ``finish`` on the repair turn.
+    choice: str
+    #: The provider refused the named ``finish`` and the loop's own choice was used instead.
+    rejected: bool = False
+
+
+async def _ask_model(
+    model: str,
+    messages: list[dict[str, Any]],
+    tool_specs: list[dict[str, Any]],
+    configured: str,
+    named: bool,
+    extra: dict[str, Any],
+) -> _Turn | None:
+    """One model turn with one transport retry (tools are not re-run); ``None`` when it timed out twice.
+
+    The repair turn (*named*) asks for ``finish`` by name. A provider that refuses a named choice is asked
+    again with the loop's own; that one is never dropped, so a refused ``required`` is an error."""
+    from tuvl import llm
+
+    options: list[tuple[str, Any]] = [(configured, configured)]
+    if named:
+        options.insert(0, (FINISH, _FINISH_CHOICE))
+    response: Any = None
+    for position, (label, choice) in enumerate(options):
+        for attempt in (1, 2):
+            try:
+                response = await asyncio.wait_for(
+                    llm.acompletion(
+                        model=model,
+                        messages=messages,
+                        tools=tool_specs,
+                        tool_choice=choice,
+                        **extra,
+                    ),
+                    _TURN_TIMEOUT_SECONDS,
+                )
+                break
+            except TimeoutError:
+                if attempt == 2:
+                    return None
+            except Exception as exc:
+                if isinstance(exc, llm.BadRequestError) and position + 1 < len(options):
+                    logger.warning(
+                        "loop.tool_choice.refused",
+                        choice=label,
+                        status=getattr(exc, "status_code", None),
+                    )
+                    break
+                classified = _classify(exc)
+                if attempt == 2 or classified.error_type not in (
+                    "transient",
+                    "rate_limit",
+                    "timeout",
+                ):
+                    raise classified from exc
+        if response is not None:
+            break
+    assert response is not None
+    return _Turn(response, label, rejected=position > 0)
+
+
 def _system_prompt(agent: Any) -> str:
     params = agent.loop
     parts = [_prose(params.steering, "steering", f"agent '{agent.id}' loop.steering")]
@@ -468,7 +537,6 @@ def _system_prompt(agent: Any) -> str:
 
 
 async def _loop_engine(agent: Any, view: dict[str, Any], ctx: EngineContext) -> AgentResult:
-    from tuvl import llm
     from tuvl.core.engine.guardrails import GuardrailViolationError
     from tuvl.core.models.agent_models import resolve_call_params
 
@@ -597,41 +665,23 @@ async def _loop_engine(agent: Any, view: dict[str, Any], ctx: EngineContext) -> 
                     tokens=state.tokens,
                     message=f"no result after {state.iterations} iterations",
                 )
-            response = None
-            for attempt in (1, 2):  # one transport retry per turn; tools are not re-run
-                try:
-                    response = await asyncio.wait_for(
-                        llm.acompletion(
-                            model=model,
-                            messages=state.messages,
-                            tools=tool_specs,
-                            tool_choice="auto",
-                            **extra,
-                        ),
-                        _TURN_TIMEOUT_SECONDS,
-                    )
-                    break
-                except TimeoutError:
-                    if attempt == 2:
-                        return AgentResult(
-                            "timeout",
-                            tokens=state.tokens,
-                            message=f"model turn {state.iterations + 1} took over {_TURN_TIMEOUT_SECONDS}s twice",
-                        )
-                except Exception as exc:
-                    classified = _classify(exc)
-                    if attempt == 2 or classified.error_type not in (
-                        "transient",
-                        "rate_limit",
-                        "timeout",
-                    ):
-                        raise classified from exc
-            assert response is not None
+            turn = await _ask_model(
+                model, state.messages, tool_specs, params.tool_choice, state.repair_pending, extra
+            )
+            if turn is None:
+                return AgentResult(
+                    "timeout",
+                    tokens=state.tokens,
+                    message=f"model turn {state.iterations + 1} took over {_TURN_TIMEOUT_SECONDS}s twice",
+                )
+            state.repair_pending = False
+            response = turn.response
             usage = getattr(response, "usage", None)
             turn_tokens = int(getattr(usage, "total_tokens", 0) or 0)
             state.tokens += turn_tokens
             state.iterations += 1
             message = response.choices[0].message
+            reason = getattr(response.choices[0], "finish_reason", None)
             assistant = _assistant_message(message)
             state.messages.append(assistant)
             await ctx.emit(
@@ -641,6 +691,10 @@ async def _loop_engine(agent: Any, view: dict[str, Any], ctx: EngineContext) -> 
                     "iteration": state.iterations,
                     "total_tokens": turn_tokens,
                     "tool_calls": [c["function"]["name"] for c in assistant.get("tool_calls", [])],
+                    "tool_choice": turn.choice,
+                    "text_chars": len(assistant["content"]),
+                    **({"tool_choice_rejected": True} if turn.rejected else {}),
+                    **({"finish_reason": str(reason)} if reason else {}),
                 },
             )
             if budget.max_tokens and state.tokens > budget.max_tokens:
@@ -658,6 +712,7 @@ async def _loop_engine(agent: Any, view: dict[str, Any], ctx: EngineContext) -> 
                         message="the model never called finish",
                     )
                 state.repairs += 1
+                state.repair_pending = True
                 state.messages.append(
                     {"role": "user", "content": f"Call `{FINISH}` with your result now."}
                 )
@@ -698,6 +753,7 @@ async def _dispatch(
                     message=f"finish: {str(exc)[:400]}",
                 )
             state.repairs += 1
+            state.repair_pending = True
             state.messages.append(
                 {
                     "role": "tool",

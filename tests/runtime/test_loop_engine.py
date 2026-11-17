@@ -116,6 +116,7 @@ def workflows(
     tools: list[dict[str, Any]] | None = None,
     budget: dict[str, Any] | None = None,
     extra: dict[str, WorkflowDocument] | None = None,
+    loop_params: dict[str, Any] | None = None,
 ) -> dict[str, WorkflowDocument]:
     loop = {
         "id": "resolve",
@@ -133,6 +134,7 @@ def workflows(
                 {"agent": "lookup_order"},
                 {"agent": "issue_refund", "approval": {"when": "args.amount > 200"}},
             ],
+            **(loop_params or {}),
         },
         "routes": {
             "resolved": "END",
