@@ -306,6 +306,15 @@ class HttpTool(_Strict):
         ),
     )
 
+    @model_serializer(mode="wrap")
+    def _leave_the_default_out(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        # The dump is what workflow_hash hashes: a key present in every http tool's dump would change the hash of
+        # every workflow with an http tool and fail the runs waiting on one with workflow_changed.
+        data: dict[str, Any] = handler(self)
+        if data.get("allow_private") is False:
+            del data["allow_private"]
+        return data
+
     @model_validator(mode="after")
     def _no_body_on_safe_methods(self) -> HttpTool:
         if self.method in ("GET", "HEAD") and self.body is not None:

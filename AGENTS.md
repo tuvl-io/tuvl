@@ -49,6 +49,10 @@ project) and `docs/tuvl-agentic-manual.md`.
   workflow's author wrote is trusted; one that arrives through `{{ }}` (a caller or a model chose it) must resolve to
   a public address and the connection goes to the address that was checked. A cloud-metadata address is never a
   destination.
+- **An upgrade must not change a workflow's hash.** `workflow_hash` hashes the whole dump of the document, so a new
+  field with a default changes the hash of every workflow that holds the model, and a run waiting on one fails with
+  `workflow_changed`. Leave the default out of the dump (a `model_serializer(mode="wrap")`, as on `HttpTool` and
+  `LoopParams`); `tests/contract/test_workflow_hash.py` compares real workflows with what 2.0.3 computed.
 - **Expand the environment before rendering.** `${VAR}` is read from the workflow's own text only; never from text
   that a caller's input has been rendered into.
 - **One rule per input, enforced where it is written.** A password goes through `iam_service.validate_password`, a
