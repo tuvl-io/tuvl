@@ -5,10 +5,13 @@ from typing import Any, cast
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import Response
+from sqlalchemy.exc import IntegrityError
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from tuvl.core.auth.access import bind_principal_context, require_access
+from tuvl.core.auth.schemas import TokenUser
 from tuvl.core.datasources.postgres import model_session
+from tuvl.core.models import secure
 from tuvl.core.models.schemas import SCHEMA_REGISTRY
 from tuvl.core.repositories.registry import get_repository
 from tuvl.core.system_config import expose_model_crud
@@ -20,6 +23,22 @@ _NO_INCLUDE: frozenset[str] = frozenset()
 
 # Matches filter[field_name] bracket-notation query params.
 _FILTER_RE = re.compile(r"^filter\[([A-Za-z_][A-Za-z0-9_]*)\]$")
+
+
+def _constraint(exc: IntegrityError) -> HTTPException:
+    """The answer to a write the database refused: the kind of constraint, never the values it names."""
+    text = str(exc.orig).lower()
+    if "unique" in text or "duplicate key" in text:
+        return HTTPException(status_code=409, detail="A record with the same value already exists.")
+    if "foreign key" in text:
+        return HTTPException(
+            status_code=409, detail="The record refers to, or is used by, another record."
+        )
+    if "not null" in text or "null value" in text:
+        return HTTPException(status_code=422, detail="A required field is missing.")
+    return HTTPException(
+        status_code=409, detail="The change conflicts with the data already stored."
+    )
 
 
 def _norm_groups(value: Any) -> list[str] | None:
@@ -101,25 +120,75 @@ def _make_crud_router(model_name: str) -> APIRouter:
     # Automatically routes to the datasource declared in the model's YAML.
     _session = model_session(model_name)
 
+    def _check_include(incl: frozenset[str], user: TokenUser) -> None:
+        """An include embeds records of the related model, so the caller needs what that model asks of a
+        reader (its read scope, and its read groups when it has them); ``iam:admin`` passes."""
+        from tuvl.core.models.loader import MODEL_RELATIONS
+
+        if "iam:admin" in user.scopes:
+            return
+        for rel in MODEL_RELATIONS.get(model_name, ()):
+            if rel["name"] not in incl:
+                continue
+            related = rel["model"]
+            related_access: dict = (SCHEMA_REGISTRY.get(related) or {}).get("access") or {}
+            scope = str(related_access.get("read_scope") or f"{related.lower()}:read")
+            groups = _norm_groups(related_access.get("read_groups"))
+            if scope not in user.scopes or (groups and not set(groups) & set(user.groups)):
+                needs = f"scope '{scope}'" + (f" and one of the groups {groups}" if groups else "")
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"Embedding '{rel['name']}' needs read access to {related}: {needs}.",
+                )
+
+    def _present(value: Any, user: TokenUser, cls: Any, incl: frozenset[str] = _NO_INCLUDE) -> Any:
+        """*value* (a record, or a list of them) as *user* may see it: the ``secure`` fields they may not
+        read are left out, in the record and in the related records an include embeds."""
+        if not secure.needs_redaction(model_name, user.scopes, incl):
+            return value
+        rows = value if isinstance(value, list) else [value]
+        dumped = [
+            secure.strip_hidden(
+                model_name, cls.model_validate(r).model_dump(by_alias=True), user.scopes
+            )
+            for r in rows
+        ]
+        return dumped if isinstance(value, list) else dumped[0]
+
     @router.post(
         "/",
         response_model=ReadCls,
         response_model_by_alias=True,
+        response_model_exclude_unset=True,
         status_code=201,
         summary=f"Create a new {model_name}",
         dependencies=[_auth_write],
     )
-    async def create(body: CreateCls, session: AsyncSession = Depends(_session)) -> Any:  # type: ignore[valid-type]
+    async def create(
+        body: CreateCls,  # type: ignore[valid-type]
+        session: AsyncSession = Depends(_session),
+        user: TokenUser = _auth_write,
+    ) -> Any:
         repo = get_repository(model_name, session)
-        record = await repo.add(cast("Any", body).model_dump(exclude_none=False))
-        await session.commit()
+        try:
+            record = await repo.add(cast("Any", body).model_dump(exclude_none=False))
+            await session.commit()
+        except IntegrityError as exc:
+            await session.rollback()
+            raise _constraint(exc) from exc
         await session.refresh(record)
-        return record
+        return _present(record, user, ReadCls)
+
+    # With relations declared the read endpoints answer with the expanded schema (the relations are
+    # optional and only present when ?include= asked for them); answering with the plain read schema
+    # dropped every embedded record.
+    ReadOrExpanded = ExpandedCls or ReadCls
 
     @router.get(
         "/",
-        response_model=list[ReadCls],  # type: ignore[valid-type]
+        response_model=list[ReadOrExpanded],  # type: ignore[valid-type]
         response_model_by_alias=True,
+        response_model_exclude_unset=True,
         summary=f"List {model_name} records",
         dependencies=[_auth_read],
     )
@@ -136,6 +205,7 @@ def _make_crud_router(model_name: str) -> APIRouter:
             ),
         ),
         session: AsyncSession = Depends(_session),
+        user: TokenUser = _auth_read,
     ) -> Any:
         repo = get_repository(model_name, session)
         incl = _parse_include(include)
@@ -145,17 +215,21 @@ def _make_crud_router(model_name: str) -> APIRouter:
             raise HTTPException(status_code=422, detail=f"Cannot filter on: {', '.join(refused)}.")
 
         if incl and ExpandedCls is not None:
+            _check_include(incl, user)
             rows = await repo.list_expanded(
                 include=incl, criteria=criteria, limit=limit, offset=offset
             )
-            return [ExpandedCls.model_validate(r) for r in rows]
+            return _present([ExpandedCls.model_validate(r) for r in rows], user, ExpandedCls, incl)
 
-        return await repo.list(criteria=criteria, limit=limit, offset=offset)
+        return _present(
+            await repo.list(criteria=criteria, limit=limit, offset=offset), user, ReadCls
+        )
 
     @router.get(
         "/{record_id}",
-        response_model=ReadCls,
+        response_model=ReadOrExpanded,
         response_model_by_alias=True,
+        response_model_exclude_unset=True,
         summary=f"Get a {model_name} by ID",
         dependencies=[_auth_read],
     )
@@ -168,25 +242,28 @@ def _make_crud_router(model_name: str) -> APIRouter:
             ),
         ),
         session: AsyncSession = Depends(_session),
+        user: TokenUser = _auth_read,
     ) -> Any:
         repo = get_repository(model_name, session)
         incl = _parse_include(include)
 
         if incl and ExpandedCls is not None:
+            _check_include(incl, user)
             result = await repo.get_expanded(record_id, incl)
             if result is None:
                 raise HTTPException(status_code=404, detail=f"{model_name} '{record_id}' not found")
-            return ExpandedCls.model_validate(result)
+            return _present(ExpandedCls.model_validate(result), user, ExpandedCls, incl)
 
         record = await repo.get(record_id)
         if record is None:
             raise HTTPException(status_code=404, detail=f"{model_name} '{record_id}' not found")
-        return record
+        return _present(record, user, ReadCls)
 
     @router.patch(
         "/{record_id}",
         response_model=ReadCls,
         response_model_by_alias=True,
+        response_model_exclude_unset=True,
         summary=f"Partially update a {model_name}",
         dependencies=[_auth_write],
     )
@@ -194,17 +271,26 @@ def _make_crud_router(model_name: str) -> APIRouter:
         record_id: uuid.UUID,
         body: UpdateCls,  # type: ignore[valid-type]
         session: AsyncSession = Depends(_session),
+        user: TokenUser = _auth_write,
     ) -> Any:
         repo = get_repository(model_name, session)
-        patch_data = cast("Any", body).model_dump(exclude_none=True)
+        # a field the body names is changed, even to null; one it leaves out is not touched
+        patch_data = cast("Any", body).model_dump(exclude_unset=True)
         if not patch_data:
             raise HTTPException(status_code=422, detail="No fields provided to update")
-        record = await repo.update(record_id, patch_data)
-        if record is None:
-            raise HTTPException(status_code=404, detail=f"{model_name} '{record_id}' not found")
-        await session.commit()
+        cleared = sorted(k for k, v in patch_data.items() if v is None and not repo.is_nullable(k))
+        if cleared:
+            raise HTTPException(status_code=422, detail=f"Cannot be null: {', '.join(cleared)}.")
+        try:
+            record = await repo.update(record_id, patch_data)
+            if record is None:
+                raise HTTPException(status_code=404, detail=f"{model_name} '{record_id}' not found")
+            await session.commit()
+        except IntegrityError as exc:
+            await session.rollback()
+            raise _constraint(exc) from exc
         await session.refresh(record)
-        return record
+        return _present(record, user, ReadCls)
 
     @router.delete(
         "/{record_id}",
@@ -214,10 +300,14 @@ def _make_crud_router(model_name: str) -> APIRouter:
     )
     async def delete(record_id: uuid.UUID, session: AsyncSession = Depends(_session)) -> Response:
         repo = get_repository(model_name, session)
-        deleted = await repo.remove(record_id)
-        if not deleted:
-            raise HTTPException(status_code=404, detail=f"{model_name} '{record_id}' not found")
-        await session.commit()
+        try:
+            deleted = await repo.remove(record_id)
+            if not deleted:
+                raise HTTPException(status_code=404, detail=f"{model_name} '{record_id}' not found")
+            await session.commit()
+        except IntegrityError as exc:
+            await session.rollback()
+            raise _constraint(exc) from exc
         return Response(status_code=204)
 
     endpoint_ops: dict[Any, str] = {

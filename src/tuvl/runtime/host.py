@@ -10,11 +10,13 @@ from __future__ import annotations
 import asyncio
 import os
 import socket
+import time
 import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
+import structlog
 from pydantic import BaseModel, ValidationError
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
@@ -24,6 +26,8 @@ from tuvl.contract.types import build_model
 from tuvl.runtime import queue
 from tuvl.runtime.models import SystemRun
 from tuvl.runtime.runner import Runner, workflow_hash
+
+logger = structlog.get_logger(__name__)
 
 Role = Literal["all", "api", "worker"]
 
@@ -91,6 +95,26 @@ class RuntimeHost:
     def start(self) -> None:
         if self.role in ("all", "worker") and self._poller is None:
             self._poller = asyncio.create_task(self.worker.run_forever())
+            self._poller.add_done_callback(self._poller_ended)
+
+    @staticmethod
+    def _poller_ended(task: asyncio.Task[None]) -> None:
+        if not task.cancelled():
+            logger.error("runtime.worker.ended", error=repr(task.exception()))
+
+    def worker_state(self, stall_seconds: float) -> str:
+        """``ok``; ``starting`` (the poll loop has not been started yet); ``stopped`` (it is gone);
+        ``stalled`` (no poll attempt for *stall_seconds*); ``none`` (this process runs no poller)."""
+        if self.role == "api":
+            return "none"
+        if self._poller is None:
+            return "starting"
+        if self._poller.done():
+            return "stopped"
+        last = self.worker.last_poll
+        if last is not None and time.monotonic() - last > stall_seconds:
+            return "stalled"
+        return "ok"
 
     async def stop(self) -> None:
         await self.worker.stop()
@@ -121,6 +145,42 @@ class RuntimeHost:
                 [{"loc": list(e["loc"]), "msg": e["msg"]} for e in exc.errors(include_url=False)]
             ) from exc
         return model.model_dump(mode="json", by_alias=True)
+
+    async def stale_runs(self) -> list[tuple[str, str, int]]:
+        """Unfinished runs whose workflow is no longer the one they started on, as ``(workflow, error_type,
+        count)``: each fails with ``workflow_changed`` (or ``workflow_not_found`` when the workflow is gone)
+        the next time a worker claims it."""
+        import sqlalchemy as sa
+
+        runs = queue._RUNS
+        unfinished = (
+            "queued",
+            "running",
+            "waiting_human",
+            "waiting_approval",
+            "paused",
+            "compensating",
+        )
+        async with AsyncSession(self.engine) as s:
+            rows = (
+                await queue._execute(
+                    s,
+                    sa.select(runs.c.workflow, runs.c.workflow_hash, sa.func.count())
+                    .where(runs.c.status.in_(unfinished))
+                    .group_by(runs.c.workflow, runs.c.workflow_hash),
+                )
+            ).all()
+        current = {name: workflow_hash(doc) for name, doc in self.registry().items()}
+        counts: dict[tuple[str, str], int] = {}
+        for workflow, digest, n in rows:
+            if workflow not in current:
+                key = (workflow, "workflow_not_found")
+            elif digest != current[workflow]:
+                key = (workflow, "workflow_changed")
+            else:
+                continue
+            counts[key] = counts.get(key, 0) + int(n)
+        return [(workflow, error, n) for (workflow, error), n in sorted(counts.items())]
 
     def unavailable(self) -> dict[str, list[str]]:
         """Workflows that cannot run now, with the reasons."""

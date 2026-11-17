@@ -32,6 +32,9 @@ description: "Implement a loop agent: a model that investigates with tools, unde
 ```
 - The model finishes by choosing an outcome (a route signal) with the outputs; required routes:
   `max_iterations`, `budget_exceeded`, `timeout`, `aborted` (+ `guardrail_violation`).
+- A model that answers in text instead of calling `finish` gets one repair turn that asks for `finish` by name, then `error`
+  (`parse_error`). To hold every turn to a tool call set `loop.tool_choice: required`; a provider that refuses it fails the agent
+  with `llm_error`. A reply cut off by `length` (see `finish_reason` on the `llm_turn` event) needs a larger `max_tokens`, not this.
 - Tool arguments are validated before execution; writes behind `approval:` pause the run for a
   person (approve / edit / reject). Human and loop agents cannot be tools (V014).
 - A `collection:` tool is offered to the model as `search_<collection>(query)` (or the `name:` you give it) and returns

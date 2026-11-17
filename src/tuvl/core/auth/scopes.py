@@ -11,8 +11,9 @@ def scope_catalogue() -> dict[str, Any]:
     Needs the project loaded (models, schemas and workflows registered).
     """
     from tuvl.contract.registry import WORKFLOWS
-    from tuvl.core.models.loader import CRUD_OPERATIONS
+    from tuvl.core.models.loader import CRUD_OPERATIONS, SECURE_BY_MODEL
     from tuvl.core.models.schemas import SCHEMA_REGISTRY
+    from tuvl.core.models.secure import read_secure_scope
     from tuvl.core.system_config import expose_model_crud
 
     # ── CRUD model scopes ─────────────────────────────────────────────────
@@ -33,6 +34,9 @@ def scope_catalogue() -> dict[str, Any]:
                 for tier in ("read", "write", "delete")
                 if tier in tiers
             ]
+            if "read" in tiers and SECURE_BY_MODEL.get(model_name):
+                # without it a caller's responses leave the model's `secure` fields out
+                crud[model_name].append(read_secure_scope(model_name))
 
     # ── Workflow trigger scopes ───────────────────────────────────────────
     workflows: dict[str, list[str]] = {}

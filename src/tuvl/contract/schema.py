@@ -25,8 +25,10 @@ from pydantic import (
     ConfigDict,
     Field,
     JsonValue,
+    SerializerFunctionWrapHandler,
     StringConstraints,
     field_validator,
+    model_serializer,
     model_validator,
 )
 
@@ -296,6 +298,22 @@ class HttpTool(_Strict):
     expect: HttpExpect = HttpExpect()
     map: dict[str, str] = Field(default={}, description="Declared output key → response path.")
     idempotency: Literal["auto", "none"] = "none"
+    allow_private: bool = Field(
+        default=False,
+        description=(
+            "Let a host that arrives through {{ }} be a loopback, private or link-local address. "
+            "A host written in the url is trusted and needs no flag; the cloud-metadata address is refused either way."
+        ),
+    )
+
+    @model_serializer(mode="wrap")
+    def _leave_the_default_out(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        # The dump is what workflow_hash hashes: a key present in every http tool's dump would change the hash of
+        # every workflow with an http tool and fail the runs waiting on one with workflow_changed.
+        data: dict[str, Any] = handler(self)
+        if data.get("allow_private") is False:
+            del data["allow_private"]
+        return data
 
     @model_validator(mode="after")
     def _no_body_on_safe_methods(self) -> HttpTool:
@@ -563,6 +581,22 @@ class LoopParams(_Strict):
     supervisor: Supervisor | None = None
     #: Remember across runs: recalled text opens the conversation, the result is stored afterwards.
     memory: MemoryParams | None = None
+    tool_choice: Literal["auto", "required"] = Field(
+        default="auto",
+        description=(
+            "'required' makes every model turn call a tool (one of the loop's tools or finish), for models that "
+            "tend to answer in text. A provider that does not accept it fails the agent with llm_error."
+        ),
+    )
+
+    @model_serializer(mode="wrap")
+    def _leave_the_default_out(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        # The dump is what workflow_hash hashes: a key present in every loop's dump would change the hash of
+        # every loop workflow and fail the runs waiting on one with workflow_changed.
+        data: dict[str, Any] = handler(self)
+        if data.get("tool_choice") == "auto":
+            del data["tool_choice"]
+        return data
 
 
 class LoopAgent(_AgentBase):

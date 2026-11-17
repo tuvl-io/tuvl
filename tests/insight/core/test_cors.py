@@ -46,6 +46,12 @@ def _app() -> FastAPI:
     def runs() -> None:
         raise HTTPException(401, "Not authenticated")
 
+    @app.post("/auth/token")
+    def login() -> JSONResponse:
+        return JSONResponse(
+            {"detail": "Too many failed attempts"}, 429, headers={"Retry-After": "2"}
+        )
+
     install_cors(app)
     return app
 
@@ -142,6 +148,13 @@ def test_the_run_id_header_is_readable_by_the_browser(tmp_path):
     response = TestClient(_app()).post("/api/workflows/w/runs", headers={"Origin": APP})
     assert response.headers["access-control-allow-origin"] == APP
     assert "x-tuvl-run-id" in response.headers["access-control-expose-headers"].lower()
+
+
+def test_the_wait_after_a_throttled_login_is_readable_by_the_browser(tmp_path):
+    _yaml(tmp_path, [APP])
+    response = TestClient(_app()).post("/auth/token", headers={"Origin": APP})
+    assert response.status_code == 429 and response.headers["retry-after"] == "2"
+    assert "retry-after" in response.headers["access-control-expose-headers"].lower()
 
 
 def test_a_refusal_still_carries_the_headers(tmp_path):

@@ -140,7 +140,16 @@ tool:
 `GET`/`HEAD` are `read`; other methods are `write` (override to `destructive` allowed). Without
 `map`, a single output receives the body. An unexpected status emits `http_<status>` when that
 signal is routed; otherwise `error` (`rate_limit` for 429 and `transient` for 5xx are retryable,
-`http_error` otherwise). `${VAR}` reads the environment.
+`http_error` otherwise). `${VAR}` in `url` and `headers` reads the environment from the workflow's own text; a value that
+arrives through `{{ }}` is data and is never read as a reference. The journal and error messages show the URL with `${VAR}`
+as written, not the value.
+
+`url` may carry a query string; `query:` is added to it. A **host written in the `url`** is trusted, so an in-cluster
+service (`http://orders.internal:8080/…`) is a fine target. A **host that arrives through `{{ }}`** (a caller or a model
+chose it) must resolve to a public address, and the request goes to the address that was checked; `allow_private: true`
+admits loopback, private and link-local ones for that host. The cloud-metadata address (`169.254.169.254` and its kin) is
+refused either way, with `destination_refused`. The response is read up to `TUVL_HTTP_TOOL_MAX_BYTES` (10 MiB); a larger
+one ends the step with `too_large` (route that signal, or it is an `error`).
 
 ### `use: storage`
 
@@ -218,7 +227,8 @@ calls get a stable `Idempotency-Key`; MCP calls are at-least-once, so give write
   only a preview. When the answer is then rejected (`parse_error`, a cut-off `budget_exceeded`, an error in the stream) or the agent runs
   again, the client receives `token_reset` and discards the draft. Not allowed together with `guardrails.output` (V039): the text would
   reach a user before a guardrail could refuse it. A model that reasons before it answers sends nothing until its answer starts.
-- Secure model fields can't be inputs unless `policy.allow_secure_to_llm: true` (V020).
+- Secure model fields can't be inputs unless `policy.allow_secure_to_llm: true` (V020); without it a value that
+  reaches the prompt or a tool result anyway (a `json` input, a row a tool returned) is replaced by `*****` at run time.
 
 ---
 

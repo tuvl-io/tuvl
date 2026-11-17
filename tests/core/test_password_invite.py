@@ -17,9 +17,12 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from tuvl.core.auth import router as auth_router
 from tuvl.core.auth.blacklist import token_blacklist
 from tuvl.core.auth.models import (
+    IAMLoginAttempt,
     IAMPasswordToken,
+    IAMRevokedToken,
     IAMRole,
     IAMRoleScope,
+    IAMSessionEnd,
     IAMUser,
     IAMUserRole,
 )
@@ -37,11 +40,9 @@ NOT_ADMIN = {
 
 @pytest.fixture(autouse=True)
 def _clean_store():
-    token_blacklist._memory.clear()
-    token_blacklist._sessions.clear()
+    token_blacklist.reset_cache()
     yield
-    token_blacklist._memory.clear()
-    token_blacklist._sessions.clear()
+    token_blacklist.reset_cache()
 
 
 @pytest.fixture
@@ -62,6 +63,9 @@ async def env(monkeypatch):
         IAMRoleScope.__table__,
         IAMUserRole.__table__,
         IAMPasswordToken.__table__,
+        IAMSessionEnd.__table__,
+        IAMRevokedToken.__table__,
+        IAMLoginAttempt.__table__,
     ]
     async with engine.begin() as conn:
         await conn.run_sync(SQLModel.metadata.create_all, tables=tables)

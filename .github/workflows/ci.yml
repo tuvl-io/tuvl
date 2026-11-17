@@ -23,7 +23,7 @@ jobs:
     outputs:
       insight: ${{ steps.diff.outputs.insight }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
         with:
           fetch-depth: 0
       - id: diff
@@ -60,9 +60,7 @@ jobs:
       POSTGRES_PASSWORD: tuvl
 
     steps:
-      - uses: actions/checkout@v4
-
-      # Each self-hosted runner has its own Postgres (TUVL_CI_PG_PORT in its .env), so jobs on two runners never share a database.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
       - name: Use this runner's Postgres
         if: runner.environment == 'self-hosted'
         run: |
@@ -79,9 +77,9 @@ jobs:
         run: scripts/ci_services.sh tuvl_test
 
       - name: Set up uv (with cache)
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86  # v5
         with:
-          version: "latest"
+          version: "0.13.8"
           enable-cache: true
           cache-dependency-glob: "uv.lock"
 
@@ -89,7 +87,7 @@ jobs:
       # there uv finds the interpreter that is already installed.
       - name: Set up Python
         if: runner.environment != 'self-hosted'
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
         with:
           python-version: ${{ matrix.python }}
 
@@ -103,8 +101,16 @@ jobs:
         run: make typecheck
 
       - name: Run tests
-        # No -q so failure context is captured in the CI log.
-        run: uv run pytest tests/
+        # No -q so failure context is captured in the CI log. Coverage is measured on one interpreter.
+        run: uv run pytest tests/ ${{ matrix.python == '3.13' && '--cov=src/tuvl --cov-report=' || '' }}
+
+      # Floors, not targets: a few points under what the suite measures today (runtime 91%, core/auth 82%),
+      # so a change that stops exercising the durable runtime or the auth code is noticed.
+      - name: Coverage floors (runtime, auth)
+        if: matrix.python == '3.13'
+        run: |
+          uv run coverage report --include='src/tuvl/runtime/*' --fail-under=88
+          uv run coverage report --include='src/tuvl/core/auth/*' --fail-under=78
 
       # The engine is the production wheel: its tests must pass with no tuvl-insight installed.
       # (tests/insight/ is then not collected and tests marked requires_insight are skipped.)
@@ -120,9 +126,9 @@ jobs:
     name: Fresh install (no lockfile)
     runs-on: ${{ github.event.repository.private && fromJSON(vars.CI_RUNS_ON || '"ubuntu-latest"') || 'ubuntu-latest' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
       - name: Set up uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86  # v5
       - name: Build the wheels
         run: |
           uv build --package tuvl --no-sources
@@ -156,9 +162,9 @@ jobs:
     name: Windows (install and start)
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
       - name: Set up uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86  # v5
       - name: Build the wheels
         run: |
           uv build --package tuvl --no-sources
@@ -179,15 +185,14 @@ jobs:
     runs-on: ${{ github.event.repository.private && fromJSON(vars.CI_RUNS_ON || '"ubuntu-latest"') || 'ubuntu-latest' }}
 
     steps:
-      - uses: actions/checkout@v4
-
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
       - name: Set up pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1  # v4
         with:
           version: "10"
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4
         with:
           node-version: "20"
           cache: pnpm
@@ -209,6 +214,36 @@ jobs:
         working-directory: ui
         run: pnpm test
 
+  audit:
+    name: Dependency audit (informational)
+    runs-on: ${{ github.event.repository.private && fromJSON(vars.CI_RUNS_ON || '"ubuntu-latest"') || 'ubuntu-latest' }}
+    # Reports known vulnerabilities in what uv.lock and ui/pnpm-lock.yaml pin. Not a required check yet: a new
+    # advisory against an unchanged lockfile must not block unrelated pull requests.
+    continue-on-error: true
+
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86  # v5
+        with:
+          version: "0.13.8"
+
+      - name: Audit the Python dependencies in uv.lock
+        run: |
+          uv export --frozen --no-dev --no-hashes --no-emit-workspace --all-extras --format requirements-txt \
+            --output-file "$RUNNER_TEMP/requirements.txt"
+          uvx pip-audit --requirement "$RUNNER_TEMP/requirements.txt" --no-deps --disable-pip --progress-spinner off
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1  # v4
+        with:
+          version: "10"
+
+      - name: Audit the UI's production dependencies
+        working-directory: ui
+        run: pnpm audit --prod
+
   insight-smoke:
     name: Insight smoke (Playwright)
     needs: changes
@@ -222,9 +257,7 @@ jobs:
       POSTGRES_PASSWORD: tuvl
 
     steps:
-      - uses: actions/checkout@v4
-
-      # Each self-hosted runner has its own Postgres (TUVL_CI_PG_PORT in its .env), so jobs on two runners never share a database.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
       - name: Use this runner's Postgres
         if: runner.environment == 'self-hosted'
         run: |
@@ -238,9 +271,9 @@ jobs:
         run: scripts/ci_services.sh tuvl_smoke
 
       - name: Set up uv (with cache)
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86  # v5
         with:
-          version: "latest"
+          version: "0.13.8"
           enable-cache: true
           cache-dependency-glob: "uv.lock"
 
@@ -248,7 +281,7 @@ jobs:
       # there uv finds the interpreter that is already installed.
       - name: Set up Python
         if: runner.environment != 'self-hosted'
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
         with:
           python-version: "3.13"
 
@@ -258,12 +291,12 @@ jobs:
           echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
 
       - name: Set up pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1  # v4
         with:
           version: "10"
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4
         with:
           node-version: "20"
           cache: pnpm
@@ -281,7 +314,7 @@ jobs:
 
       - name: Upload Playwright report
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
         with:
           name: playwright-report
           path: ui/playwright-report
@@ -311,7 +344,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
         with:
           fetch-depth: 0
       - name: Check the pushed commit came from develop

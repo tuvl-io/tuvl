@@ -195,7 +195,7 @@ def _dev_renderer(_logger: Any, _method: str, event_dict: dict[str, Any]) -> str
 
 # ── Renderer selection ────────────────────────────────────────────────────────
 
-_tuvl_env: str = os.environ.get("TUVL_ENV", "production").lower()
+_tuvl_env: str = os.environ.get("TUVL_ENV", "production").strip().lower()
 
 _renderer: Any = (
     _dev_renderer if _tuvl_env == "development" else structlog.processors.JSONRenderer()

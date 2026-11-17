@@ -36,8 +36,13 @@ logger = structlog.get_logger(__name__)
 LEASE_SECONDS = 30.0
 HEARTBEAT_SECONDS = 10.0
 POLL_SECONDS = 1.0
+SWEEP_SECONDS = 15.0
 
 _RUNS = SystemRun.__table__  # type: ignore[attr-defined]
+#: Statuses a worker holds a lease in; ``compensating`` is a run undoing its completed agents.
+_LEASED = ("running", "compensating")
+#: Statuses of a run that has not settled: it is waiting for a worker or being executed.
+_LIVE = ("queued", "running", "compensating")
 #: Statuses a resume or retry may move back to ``queued``.
 _RESUMABLE = frozenset({"waiting_human", "waiting_approval", "paused"})
 
@@ -168,12 +173,41 @@ async def claim(
 ) -> list[uuid.UUID]:
     """Lease up to *limit* claimable runs (queued, or running with an expired
     lease) to *owner*, oldest first; or exactly *run_id* if it is claimable.
-    The caller commits."""
-    claimable = sa.or_(
-        _RUNS.c.status == "queued",
-        sa.and_(_RUNS.c.status == "running", _RUNS.c.lease_expires_at < _now(session)),
-    )
-    pick = sa.select(_RUNS.c.id).where(claimable)
+    The caller commits.
+
+    A crashed worker's runs (expired leases, few and found by ``(status, lease_expires_at)``) are taken
+    first, then queued ones, oldest first off the partial index on queued runs: the two are asked
+    separately because one query over both would have to sort the whole backlog.
+    """
+    expired = sa.and_(_RUNS.c.status.in_(_LEASED), _RUNS.c.lease_expires_at < _now(session))
+    queued = _RUNS.c.status == "queued"
+    if run_id is not None:
+        return await _lease(
+            session,
+            owner,
+            sa.or_(queued, expired),
+            run_id=run_id,
+            limit=limit,
+            lease_seconds=lease_seconds,
+        )
+    taken = await _lease(session, owner, expired, limit=limit, lease_seconds=lease_seconds)
+    if len(taken) < limit:
+        taken += await _lease(
+            session, owner, queued, limit=limit - len(taken), lease_seconds=lease_seconds
+        )
+    return taken
+
+
+async def _lease(
+    session: AsyncSession,
+    owner: str,
+    where: Any,
+    *,
+    limit: int,
+    lease_seconds: float,
+    run_id: uuid.UUID | None = None,
+) -> list[uuid.UUID]:
+    pick = sa.select(_RUNS.c.id).where(where)
     if run_id is not None:
         pick = pick.where(_RUNS.c.id == run_id)
     pick = pick.order_by(_RUNS.c.created_at).limit(limit).with_for_update(skip_locked=True)
@@ -182,7 +216,8 @@ async def claim(
         sa.update(_RUNS)
         .where(_RUNS.c.id.in_(pick))
         .values(
-            status="running",
+            # a run found half way through compensation goes on compensating, it does not start over
+            status=sa.case((_RUNS.c.status == "compensating", "compensating"), else_="running"),
             lease_owner=owner,
             lease_expires_at=_later(session, lease_seconds),
             claims=_RUNS.c.claims + 1,
@@ -202,7 +237,7 @@ async def heartbeat(
     result = await _execute(
         session,
         sa.update(_RUNS)
-        .where(_RUNS.c.id == run_id, _RUNS.c.lease_owner == owner, _RUNS.c.status == "running")
+        .where(_RUNS.c.id == run_id, _RUNS.c.lease_owner == owner, _RUNS.c.status.in_(_LEASED))
         .values(lease_expires_at=_later(session, lease_seconds), updated_at=_now(session)),
     )
     return bool(result.rowcount)
@@ -225,7 +260,7 @@ async def release(
     result = await _execute(
         session,
         sa.update(_RUNS)
-        .where(_RUNS.c.id == run_id, _RUNS.c.lease_owner == owner, _RUNS.c.status == "running")
+        .where(_RUNS.c.id == run_id, _RUNS.c.lease_owner == owner, _RUNS.c.status.in_(_LEASED))
         .values(**values),
     )
     wakeup.mark(session, run_id)
@@ -260,7 +295,10 @@ class Lease:
 
     run_id: uuid.UUID
     owner: str
+    #: set by whoever learns the lease is gone: the heartbeat, or the runner when a fenced write matches no row
     lost: asyncio.Event = field(default_factory=asyncio.Event)
+    #: set by the heartbeat alone; the executor is then cancelled, because the run is no longer this worker's
+    revoked: asyncio.Event = field(default_factory=asyncio.Event)
 
 
 @dataclass
@@ -272,16 +310,33 @@ class Worker:
     lease_seconds: float = LEASE_SECONDS
     heartbeat_seconds: float = HEARTBEAT_SECONDS
     poll_seconds: float = POLL_SECONDS
+    #: housekeeping sweeps (approval expiry, retention) run at most this often, not before every claim
+    sweep_seconds: float = SWEEP_SECONDS
+    #: ``time.monotonic()`` when the poll loop last finished an attempt, whether or not it worked
+    last_poll: float | None = None
+    _last_sweep: float | None = None
     _active: dict[uuid.UUID, asyncio.Task[None]] = field(default_factory=dict)
     _stopping: asyncio.Event = field(default_factory=asyncio.Event)
 
     async def run_forever(self) -> None:
         logger.info("runtime.worker.started", worker=self.owner, concurrency=self.concurrency)
+        failures = 0
         while not self._stopping.is_set():
-            claimed = await self.claim_some()
+            try:
+                claimed = await self.claim_some()
+                failures = 0
+            except Exception:
+                # a dropped connection or a failover must not end the poll loop for good
+                failures += 1
+                claimed = 0
+                logger.exception("runtime.worker.poll_failed", worker=self.owner, failures=failures)
+            self.last_poll = time.monotonic()
             if not claimed:
+                delay = (
+                    min(self.poll_seconds * 2**failures, 30.0) if failures else self.poll_seconds
+                )
                 with contextlib.suppress(TimeoutError):
-                    await asyncio.wait_for(self._stopping.wait(), self.poll_seconds)
+                    await asyncio.wait_for(self._stopping.wait(), delay)
         await self.drain()
 
     async def stop(self) -> None:
@@ -305,8 +360,18 @@ class Worker:
         if free <= 0:
             return 0
         async with AsyncSession(self.engine, expire_on_commit=False) as s:
-            for sweep in SWEEPS:
-                await sweep(s)
+            now = time.monotonic()
+            if self._last_sweep is None or now - self._last_sweep >= self.sweep_seconds:
+                self._last_sweep = now
+                for sweep in SWEEPS:
+                    try:
+                        await sweep(s)
+                        await s.commit()
+                    except Exception:  # one failing sweep must not stop the others, or the claim
+                        logger.exception(
+                            "runtime.sweep.failed", sweep=getattr(sweep, "__name__", sweep)
+                        )
+                        await s.rollback()
             ids = await claim(s, self.owner, limit=free, lease_seconds=self.lease_seconds)
             await s.commit()
         for run_id in ids:
@@ -328,7 +393,7 @@ class Worker:
         lease = Lease(run_id, self.owner)
         beat = asyncio.create_task(self.keep_alive(lease))
         try:
-            await self._run_as_tenant(run_id, lease)
+            await self._until_revoked(run_id, lease)
         except Exception as exc:
             logger.exception("runtime.run.crashed", run_id=str(run_id))
             async with AsyncSession(self.engine) as s:
@@ -344,6 +409,23 @@ class Worker:
         finally:
             beat.cancel()
 
+    async def _until_revoked(self, run_id: uuid.UUID, lease: Lease) -> None:
+        """Run the executor, and cancel it the moment the heartbeat finds the run is no longer ours:
+        a step that carries on would repeat its outside effects next to the worker that owns the run now."""
+        work = asyncio.create_task(self._run_as_tenant(run_id, lease))
+        revoked = asyncio.create_task(lease.revoked.wait())
+        try:
+            await asyncio.wait({work, revoked}, return_when=asyncio.FIRST_COMPLETED)
+            if work.done():
+                work.result()
+                return
+            logger.warning("runtime.lease.cancelled", run_id=str(run_id), worker=self.owner)
+        finally:
+            revoked.cancel()
+            if not work.done():
+                work.cancel()
+                await asyncio.gather(work, return_exceptions=True)
+
     async def _run_as_tenant(self, run_id: uuid.UUID, lease: Lease) -> None:
         """Execute under the tenant that owns the run (multi-tenant mode); a plain call otherwise."""
         async with AsyncSession(self.engine) as s:
@@ -357,17 +439,40 @@ class Worker:
             await self.executor(run_id, lease)
 
     async def keep_alive(self, lease: Lease) -> None:
+        interval = self.heartbeat_seconds
+        last_good = time.monotonic()
         while True:
-            await asyncio.sleep(self.heartbeat_seconds)
-            async with AsyncSession(self.engine) as s:
-                alive = await heartbeat(
-                    s, lease.run_id, lease.owner, lease_seconds=self.lease_seconds
-                )
-                await s.commit()
+            await asyncio.sleep(interval)
+            attempt = time.monotonic()
+            try:
+                async with AsyncSession(self.engine) as s:
+                    alive = await heartbeat(
+                        s, lease.run_id, lease.owner, lease_seconds=self.lease_seconds
+                    )
+                    await s.commit()
+            except Exception:
+                logger.warning("runtime.heartbeat.failed", run_id=str(lease.run_id), exc_info=True)
+                if time.monotonic() - last_good >= self.lease_seconds:
+                    # a whole lease without a good beat: the database has already given the run away
+                    logger.error(
+                        "runtime.lease.expired", run_id=str(lease.run_id), worker=lease.owner
+                    )
+                    self._revoke(lease)
+                    return
+                interval = max(
+                    self.heartbeat_seconds / 3, 0.05
+                )  # try again sooner than the lease runs out
+                continue
             if not alive:
                 logger.warning("runtime.lease.lost", run_id=str(lease.run_id), worker=lease.owner)
-                lease.lost.set()
+                self._revoke(lease)
                 return
+            last_good, interval = attempt, self.heartbeat_seconds
+
+    @staticmethod
+    def _revoke(lease: Lease) -> None:
+        lease.lost.set()
+        lease.revoked.set()
 
 
 async def run_inline(
@@ -394,10 +499,10 @@ async def wait_settled(engine: AsyncEngine, run_id: uuid.UUID, timeout_seconds: 
 
     For a run the background worker claimed before the HTTP request could: the request still owes
     its caller the finished answer, not a 202 for a run that takes milliseconds."""
-    deadline = time.monotonic() + timeout_seconds
-    while time.monotonic() < deadline:
+
+    async def settled() -> bool | None:
         async with AsyncSession(engine) as s:
             run = await s.get(SystemRun, run_id)
-        if run is None or run.status not in ("queued", "running"):
-            return
-        await asyncio.sleep(0.02)
+        return True if run is None or run.status not in _LIVE else None
+
+    await wakeup.wait_until(run_id, settled, timeout=timeout_seconds)

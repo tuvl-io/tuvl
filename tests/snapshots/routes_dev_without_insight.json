@@ -53,6 +53,7 @@
  "GET /docs/oauth2-redirect": "swagger_ui_redirect",
  "GET /health": "health",
  "GET /openapi.json": "openapi",
+ "GET /ready": "ready",
  "GET /redoc": "redoc_html",
  "GET /registry": "registry",
  "PATCH /admin/models/{name}/{version}/toggle": "admin_toggle_model",

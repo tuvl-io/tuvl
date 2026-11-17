@@ -18,6 +18,8 @@ os.environ.setdefault("TUVL_DEV_MODE", "true")
 os.environ.setdefault("TUVL_ENV", "development")
 # Layer-2 acknowledgement sentinel.
 os.environ.setdefault("TUVL_ALLOW_DEV_AUTH", "true")
+# No cache of session checks in tests: a revocation must show at once.
+os.environ.setdefault("TUVL_SESSION_CACHE_SECONDS", "0")
 
 import stat
 import uuid

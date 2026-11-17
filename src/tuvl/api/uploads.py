@@ -22,7 +22,7 @@ from fastapi.responses import JSONResponse
 from starlette.datastructures import UploadFile
 from starlette.formparsers import MultiPartException, MultiPartParser
 
-from tuvl.api.auth import trigger_user
+from tuvl.api.auth import UNSET, trigger_user
 from tuvl.contract.facts import field_types
 from tuvl.contract.files import FileRef
 from tuvl.contract.schema import Upload, WorkflowDocument
@@ -235,7 +235,12 @@ async def _store_one(store: Any, upload: Upload, item: UploadFile) -> FileRef:
 
 
 async def start_upload_run(
-    request: Request, doc: WorkflowDocument, *, trigger: str = "http", wait: bool = True
+    request: Request,
+    doc: WorkflowDocument,
+    *,
+    trigger: str = "http",
+    wait: bool = True,
+    user: Any = UNSET,
 ) -> JSONResponse:
     from tuvl.api.runs import start_run
 
@@ -244,11 +249,12 @@ async def start_upload_run(
         raise HTTPException(
             status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, "this trigger does not accept file uploads"
         )
-    await trigger_user(request, doc)
+    if user is UNSET:
+        user = await trigger_user(request, doc)
     received = await receive(request, doc, http.upload, path_params=trigger == "http")
     try:
         return await start_run(
-            request, doc, received.payload, trigger=trigger, wait=wait, uploaded=True
+            request, doc, received.payload, trigger=trigger, wait=wait, uploaded=True, user=user
         )
     except BaseException:
         await received.discard()

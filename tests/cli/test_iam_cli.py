@@ -7,6 +7,7 @@ PostgreSQL, so each invocation is a separate process-like session.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from pathlib import Path
 
 import pytest
@@ -20,7 +21,16 @@ from tuvl.cli import app
 from tuvl.cli.commands import iam as iam_cli
 from tuvl.core.auth import iam_service
 from tuvl.core.auth.blacklist import token_blacklist
-from tuvl.core.auth.models import IAMPasswordToken, IAMRole, IAMRoleScope, IAMUser, IAMUserRole
+from tuvl.core.auth.models import (
+    IAMLoginAttempt,
+    IAMPasswordToken,
+    IAMRevokedToken,
+    IAMRole,
+    IAMRoleScope,
+    IAMSessionEnd,
+    IAMUser,
+    IAMUserRole,
+)
 from tuvl.core.auth.seed import parse_role_seed
 from tuvl.core.config import settings
 
@@ -31,9 +41,9 @@ runner = CliRunner()
 
 @pytest.fixture(autouse=True)
 def _clean():
-    token_blacklist._memory.clear()
+    token_blacklist.reset_cache()
     yield
-    token_blacklist._memory.clear()
+    token_blacklist.reset_cache()
 
 
 @pytest.fixture
@@ -51,6 +61,9 @@ def db(monkeypatch, tmp_path):
                     IAMUserRole.__table__,
                     IAMRoleScope.__table__,
                     IAMPasswordToken.__table__,
+                    IAMSessionEnd.__table__,
+                    IAMRevokedToken.__table__,
+                    IAMLoginAttempt.__table__,
                 ],
             )
         await engine.dispose()
@@ -178,6 +191,54 @@ def test_a_short_password_is_refused(db):
     assert result.exit_code == 1 and "at least" in result.output
 
 
+def test_a_name_a_token_cannot_carry_is_refused(db):
+    scope = iam("roles", "create", "ops", "-s", "orders:*")
+    assert scope.exit_code == 1 and "scope" in scope.output.lower()
+    name = iam("roles", "create", "two words")
+    assert name.exit_code == 1
+    assert "ops" not in iam("roles", "list").output
+
+
+def test_reset_admin_applies_the_password_rule_too(db):
+    result = runner.invoke(
+        app, ["iam", "reset-admin", ADMIN], env={"TUVL_IAM_NEW_PASSWORD": "short"}
+    )
+    assert result.exit_code == 1 and "at least 8 characters" in result.output
+    too_long = runner.invoke(
+        app, ["iam", "reset-admin", ADMIN], env={"TUVL_IAM_NEW_PASSWORD": "x" * 73}
+    )
+    assert too_long.exit_code == 1 and "at most 72 bytes" in too_long.output
+    assert iam("roles", "list").exit_code == 0  # the old password still works
+
+
+def test_unlock_clears_a_user_made_to_wait(db):
+    assert (
+        iam("users", "create", "ann@example.com", TUVL_IAM_NEW_PASSWORD="ann-pw-12345").exit_code
+        == 0
+    )
+
+    async def guess(session):
+        for _ in range(7):
+            with contextlib.suppress(iam_service.AuthenticationError):
+                await iam_service.login(
+                    session, login_str="ann@example.com", password="nope-nope-1"
+                )
+
+    db.run(guess)
+    refused = iam("roles", "list", email="ann@example.com", password="ann-pw-12345")
+    assert refused.exit_code == 1 and "Too many" in refused.output
+
+    assert iam("users", "unlock", "ann@example.com").exit_code == 0
+    # unlocked: she is judged again (and, not being an administrator, is refused for that reason)
+    again = iam("roles", "list", email="ann@example.com", password="ann-pw-12345")
+    assert again.exit_code == 1 and "does not hold iam:admin" in again.output
+
+
+def test_unlock_of_a_user_who_is_not_waiting_says_so(db):
+    result = iam("users", "unlock", "nobody@example.com")
+    assert result.exit_code == 0 and "was not waiting" in result.output
+
+
 def test_a_role_with_members_needs_force(db):
     iam("roles", "create", "ops")
     iam("users", "create", "ann@example.com", "-r", "ops", TUVL_IAM_NEW_PASSWORD="ann-pw-12345")
@@ -257,8 +318,9 @@ def test_export_writes_a_role_seed_the_loader_accepts(db, monkeypatch, tmp_path)
 
 
 @pytest.mark.requires_insight
-def test_export_in_production_asks_for_the_login(db, monkeypatch):
-    monkeypatch.setattr(settings, "tuvl_env", "production")
+@pytest.mark.parametrize("value", ["production", "Production", " PRODUCTION "])
+def test_export_in_production_asks_for_the_login(db, monkeypatch, value):
+    monkeypatch.setattr(settings, "tuvl_env", value)
     assert (
         runner.invoke(app, ["iam", "export"], env={"TUVL_IAM_EMAIL": ADMIN}, input="\n").exit_code
         == 1
@@ -315,3 +377,12 @@ def test_invite_without_a_url_prints_just_the_token_and_checks_the_inputs(db):
     bad_url = iam("users", "invite", "wes@example.com", "--url", "https://app.test/set")
     assert bad_url.exit_code == 2 and "{token}" in bad_url.output
     assert iam("users", "invite", "wes@example.com", "--hours", "0").exit_code == 1
+
+
+def test_a_redis_that_is_configured_but_unreachable_stops_the_command(db, monkeypatch):
+    import tuvl.core.infra.redis as redis_infra
+
+    monkeypatch.setattr(redis_infra, "redis_configured", lambda: True)
+    result = iam("roles", "list")
+    assert result.exit_code == 1
+    assert "Redis datasource is configured" in result.output

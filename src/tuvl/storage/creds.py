@@ -127,7 +127,7 @@ class AwsCredentialSource:
 
     async def _web_identity(self, token_file: Path, role: str) -> AwsCreds:
         try:
-            token = token_file.read_text().strip()
+            token = (await asyncio.to_thread(token_file.read_text)).strip()
         except OSError as exc:
             raise ConfigError(f"cannot read AWS_WEB_IDENTITY_TOKEN_FILE: {exc}") from exc
         host = f"sts.{self._region}.amazonaws.com" if self._region else "sts.amazonaws.com"
@@ -161,7 +161,7 @@ class AwsCredentialSource:
         auth = os.environ.get("AWS_CONTAINER_AUTHORIZATION_TOKEN")
         auth_file = os.environ.get("AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE")
         if auth_file:
-            auth = Path(auth_file).read_text().strip()
+            auth = (await asyncio.to_thread(Path(auth_file).read_text)).strip()
         if auth:
             headers["Authorization"] = auth
         response = await self._meta.expect("GET", url, headers=headers)
@@ -204,7 +204,7 @@ def azure_token_source(http: Http, meta: Http | None = None) -> CachedToken:
         file = os.environ.get("AZURE_FEDERATED_TOKEN_FILE")
         tenant, client = os.environ.get("AZURE_TENANT_ID"), os.environ.get("AZURE_CLIENT_ID")
         if file and tenant and client:
-            assertion = Path(file).read_text().strip()
+            assertion = (await asyncio.to_thread(Path(file).read_text)).strip()
             authority = os.environ.get("AZURE_AUTHORITY_HOST", "https://login.microsoftonline.com")
             response = await http.expect(
                 "POST",

@@ -118,16 +118,14 @@ def test_cli_validate_import_does_not_construct_key_manager() -> None:
     assert proc.returncode == 0, f"stderr:\n{proc.stderr}"
 
 
-def test_blacklist_documents_multi_worker_requirement() -> None:
-    """The token blacklist module docstring must continue to warn operators
-    that Redis is required for multi-worker / multi-process deployments.
-    Operators rely on the module-level docstring (and the README) to size
-    their infrastructure; silently dropping the warning is unsafe.
+def test_blacklist_documents_where_workers_share_revocations() -> None:
+    """The token blacklist module docstring must say where revocations and session ends live (Redis
+    when a Redis datasource is deployed, Postgres otherwise) and that every worker sees them.
+    Operators rely on it to size their infrastructure; silently dropping it is unsafe.
     """
     from tuvl.core.auth import blacklist
 
     doc = (blacklist.__doc__ or "").lower()
-    assert "redis" in doc and "multi-worker" in doc, (
-        "blacklist module docstring must continue to warn that Redis is "
-        "required for multi-worker deployments."
+    assert "redis" in doc and "postgres" in doc and "every other worker" in doc, (
+        "blacklist module docstring must say where revocations live and that every worker sees them."
     )

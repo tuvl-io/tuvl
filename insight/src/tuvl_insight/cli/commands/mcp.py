@@ -19,7 +19,7 @@ def mcp_cmd(
     ] = False,
 ) -> None:
     """Serve development tools to a coding agent over MCP (stdio)."""
-    if os.environ.get("TUVL_ENV") == "production":
+    if os.environ.get("TUVL_ENV", "").strip().lower() == "production":
         typer.echo(
             "tuvl serve mcp is a development tool — it does not run with TUVL_ENV=production.",
             err=True,

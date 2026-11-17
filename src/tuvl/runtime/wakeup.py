@@ -15,7 +15,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import uuid
-from collections.abc import Iterator
+from collections.abc import Awaitable, Callable, Iterator
 from typing import Any
 
 from sqlalchemy import event
@@ -39,6 +39,38 @@ def listen(run_id: uuid.UUID) -> Iterator[asyncio.Event]:
             waiting.discard(entry)
             if not waiting:
                 del _listeners[run_id]
+
+
+async def wait_until[T](
+    run_id: uuid.UUID,
+    check: Callable[[], Awaitable[T | None]],
+    *,
+    timeout: float,
+    first: float = 0.02,
+    cap: float = 1.0,
+) -> T | None:
+    """Call *check* until it returns something, or *timeout* seconds have passed (then ``None``).
+
+    A commit for *run_id* in this process wakes it at once. A commit made by another process is found by
+    the poll in between, which starts at *first* seconds and doubles up to *cap*: a run that ends within
+    milliseconds is noticed within milliseconds, and a long wait asks about once a second instead of
+    opening a session every few milliseconds.
+    """
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout
+    delay = first
+    with listen(run_id) as woken:
+        while True:
+            found = await check()
+            if found is not None:
+                return found
+            left = deadline - loop.time()
+            if left <= 0:
+                return None
+            with contextlib.suppress(TimeoutError):
+                await asyncio.wait_for(woken.wait(), min(delay, left))
+            woken.clear()
+            delay = min(delay * 2, cap)
 
 
 def notify(run_id: uuid.UUID) -> None:

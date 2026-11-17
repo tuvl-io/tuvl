@@ -20,12 +20,13 @@ tenant tables, so it can run before any engine is built.
 
 from __future__ import annotations
 
+from typing import Any
+
 # System-level tables that carry tenant_id but are not user-defined.
 # Keep in sync with ``DynamicTenantModel`` subclasses in
 # ``tuvl.core.models.system``.
 _SYSTEM_TENANT_TABLES: tuple[str, ...] = (
     "tuvl_system_vector_store",
-    "tuvl_system_workflow_instances",
     "tuvl_system_artifacts",
 )
 
@@ -116,3 +117,54 @@ async def find_tables_missing_rls_policy() -> list[str]:
         if table not in present:
             missing.append(table)
     return missing
+
+
+async def rls_bypass_reason(conn: Any) -> str | None:
+    """Why the role *conn* runs as ignores row-level security, or ``None`` when the policies bind it.
+
+    A superuser and a role with ``BYPASSRLS`` skip every policy, so tenant isolation then rests on
+    nothing but the application."""
+    from sqlalchemy import text
+
+    row = (
+        await conn.execute(
+            text("SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user")
+        )
+    ).first()
+    if row is None:
+        return None
+    if row[0]:
+        return "it is a superuser"
+    if row[1]:
+        return "it has BYPASSRLS"
+    return None
+
+
+async def primary_role_bypass_reason() -> str | None:
+    """:func:`rls_bypass_reason` for the role the engine connects to the primary datasource as."""
+    from tuvl.core.datasources.postgres import _PRIMARY_DS, get_session_factory
+
+    factory = get_session_factory(_PRIMARY_DS, is_write=False)
+    async with factory() as session:
+        return await rls_bypass_reason(await session.connection())
+
+
+async def warn_if_role_bypasses_rls() -> str | None:
+    """At boot, in multi-tenant mode: say so loudly when the database role makes the policies moot."""
+    import tuvl.core.bootstrap as bootstrap
+    from tuvl.core.logger import logger
+
+    if bootstrap.LOCKED_DEPLOYMENT_MODE != "multi_tenant":
+        return None
+    try:
+        reason = await primary_role_bypass_reason()
+    except Exception:
+        logger.warning("rls.role_check_failed", exc_info=True)
+        return None
+    if reason:
+        logger.error(
+            "rls.role_bypasses",
+            detail=f"the database role ignores row-level security because {reason}, so the tenant "
+            "policies protect nothing; connect as a role that is neither a superuser nor BYPASSRLS",
+        )
+    return reason

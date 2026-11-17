@@ -11,6 +11,7 @@
  "GET /auth/oauth/{provider}/callback": "oauth_callback",
  "GET /auth/oauth/{provider}/start": "oauth_start",
  "GET /health": "health",
+ "GET /ready": "ready",
  "GET /registry": "registry",
  "POST /api/approvals/{approval_id}": "decide_approval",
  "POST /api/runs/{run_id}/human/{agent_id}": "submit_human",

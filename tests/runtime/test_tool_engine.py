@@ -3,6 +3,7 @@ mcp against a real stdio MCP server — all driven by the runner."""
 
 from __future__ import annotations
 
+import json
 import sys
 import textwrap
 from pathlib import Path
@@ -229,6 +230,10 @@ def http(monkeypatch: pytest.MonkeyPatch) -> list[httpx.Request]:
             return httpx.Response(201, json={"id": "rf_1", "amount": 10})
         if request.url.path == "/gone":
             return httpx.Response(410)
+        if request.url.path == "/big":
+            return httpx.Response(200, content=b"x" * 500)
+        if request.url.path == "/query":
+            return httpx.Response(200, json={"seen": dict(request.url.params)})
         return httpx.Response(503)
 
     client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
@@ -343,6 +348,148 @@ async def test_missing_env_var_is_an_error(db: AsyncEngine, http: list[httpx.Req
         {"default": {}, "failed": {"status": 500}},
     )
     assert (await execute(db, doc, {})).end_name == "failed" and http == []
+
+
+def _echo_agent(**tool: Any) -> dict[str, Any]:
+    return tool_agent(
+        {"use": "http", "method": "GET", **tool},
+        {"default": "END", "error": "END.failed"},
+    )
+
+
+async def test_http_input_is_never_read_as_an_environment_reference(
+    db: AsyncEngine, http: list[httpx.Request]
+) -> None:
+    doc = workflow(
+        _echo_agent(url="https://pay.test/items/{{ note }}", headers={"X-Note": "{{ note }}"}),
+        {"note": "str"},
+        HTTP_ENDS,
+    )
+    await execute(db, doc, {"note": "${PAY_KEY}"})
+    assert http[0].url.path == "/items/${PAY_KEY}"
+    assert http[0].headers["X-Note"] == "${PAY_KEY}"
+
+
+async def test_http_static_environment_references_still_expand(
+    db: AsyncEngine, http: list[httpx.Request]
+) -> None:
+    doc = workflow(
+        _echo_agent(
+            url="https://pay.test/bot${PAY_KEY}/send/{{ who }}",
+            headers={"Authorization": "Bearer ${PAY_KEY}", "X-Who": "{{ who }}"},
+        ),
+        {"who": "str"},
+        HTTP_ENDS,
+    )
+    await execute(db, doc, {"who": "ann"})
+    assert http[0].url.path == "/botsk_test/send/ann"
+    assert http[0].headers["Authorization"] == "Bearer sk_test"
+    assert http[0].headers["X-Who"] == "ann"
+
+
+async def test_http_journal_and_errors_do_not_hold_the_expanded_value(
+    db: AsyncEngine, http: list[httpx.Request]
+) -> None:
+    doc = workflow(_echo_agent(url="https://pay.test/down/${PAY_KEY}"), {}, HTTP_ENDS)
+    run = await execute(db, doc, {})
+    assert http[0].url.path == "/down/sk_test"
+    async with AsyncSession(db) as s:
+        events = await journal.events(s, run.id)
+    assert "sk_test" not in json.dumps([e.payload for e in events])
+    call = next(e for e in events if e.type == "tool_call")
+    assert call.payload["url"] == "https://pay.test/down/${PAY_KEY}"
+    assert "sk_test" not in json.dumps(run.error or {})
+
+
+async def test_http_keeps_a_query_string_written_in_the_url(
+    db: AsyncEngine, http: list[httpx.Request]
+) -> None:
+    doc = workflow(
+        _echo_agent(
+            url="https://pay.test/query?a=1",
+            query={"b": "{{ b }}"},
+            map={"seen": "response.body.seen"},
+        ),
+        {"b": "str"},
+        {"default": {"body": "{{ seen.a }}-{{ seen.b }}"}, "failed": {"status": 500}},
+    )
+    doc.spec.agents[0].outputs = {"seen": "json"}  # type: ignore[assignment]
+    run = await execute(db, doc, {"b": "2"})
+    assert dict(http[0].url.params) == {"a": "1", "b": "2"}
+    assert run.output == {"status": 200, "body": "1-2"}
+    alone = workflow(_echo_agent(url="https://pay.test/query?only=1"), {}, HTTP_ENDS)
+    await execute(db, alone, {})
+    assert dict(http[-1].url.params) == {"only": "1"}
+
+
+async def test_http_stops_reading_a_response_over_the_cap(
+    db: AsyncEngine, http: list[httpx.Request], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from tuvl.core.config import settings
+
+    monkeypatch.setattr(settings, "tuvl_http_tool_max_bytes", 100)
+    doc = workflow(_echo_agent(url="https://pay.test/big"), {}, HTTP_ENDS)
+    run = await execute(db, doc, {})
+    assert run.end_name == "failed"
+    async with AsyncSession(db) as s:
+        done = [e for e in await journal.events(s, run.id) if e.type == "agent_completed"]
+    assert done[0].payload["error_type"] == "too_large"
+    monkeypatch.setattr(settings, "tuvl_http_tool_max_bytes", 1000)
+    assert (await execute(db, doc, {})).end_name == "default"
+
+
+@pytest.mark.parametrize("host", ["127.0.0.1", "10.1.2.3", "169.254.169.254", "[::1]", "localhost"])
+async def test_http_refuses_a_host_the_caller_chose_when_it_is_inside(
+    db: AsyncEngine, http: list[httpx.Request], host: str
+) -> None:
+    doc = workflow(_echo_agent(url="http://{{ host }}/refunds"), {"host": "str"}, HTTP_ENDS)
+    run = await execute(db, doc, {"host": host})
+    assert run.end_name == "failed" and http == []  # nothing was sent
+    async with AsyncSession(db) as s:
+        done = [e for e in await journal.events(s, run.id) if e.type == "agent_completed"]
+    assert done[0].payload["error_type"] == "destination_refused"
+
+
+async def test_http_connects_to_the_address_it_checked_for_a_host_the_caller_chose(
+    db: AsyncEngine, http: list[httpx.Request], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from tuvl.webhooks import guard
+
+    async def resolved(host: str, port: int, *, allow_private: bool = False) -> list[str]:
+        return ["93.184.216.34"]
+
+    monkeypatch.setattr(guard, "resolve", resolved)
+    doc = workflow(_echo_agent(url="https://{{ host }}/refunds"), {"host": "str"}, HTTP_ENDS)
+    run = await execute(db, doc, {"host": "api.partner.test"})
+    assert run.end_name == "default"
+    assert http[0].url.host == "93.184.216.34"
+    assert http[0].headers["host"] == "api.partner.test"
+    assert http[0].extensions["sni_hostname"] == "api.partner.test"
+
+
+async def test_http_allow_private_admits_an_inside_host_but_never_the_metadata_address(
+    db: AsyncEngine, http: list[httpx.Request]
+) -> None:
+    doc = workflow(
+        _echo_agent(url="http://{{ host }}/refunds", allow_private=True),
+        {"host": "str"},
+        HTTP_ENDS,
+    )
+    assert (await execute(db, doc, {"host": "10.1.2.3"})).end_name == "default"
+    assert http[-1].url.host == "10.1.2.3"
+    http.clear()
+    assert (await execute(db, doc, {"host": "169.254.169.254"})).end_name == "failed"
+    assert http == []
+
+
+async def test_http_calls_a_host_the_workflow_names_even_when_it_is_inside(
+    db: AsyncEngine, http: list[httpx.Request]
+) -> None:
+    doc = workflow(_echo_agent(url="http://orders.internal:8080/refunds"), {}, HTTP_ENDS)
+    assert (await execute(db, doc, {})).end_name == "default"  # the author wrote it: trusted
+    assert http[0].url.host == "orders.internal"
+    metadata = workflow(_echo_agent(url="http://169.254.169.254/latest/meta-data"), {}, HTTP_ENDS)
+    assert (await execute(db, metadata, {})).end_name == "failed"  # but never the metadata address
 
 
 # ── mcp ─────────────────────────────────────────────────────────────────────

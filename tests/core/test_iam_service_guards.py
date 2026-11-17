@@ -15,16 +15,24 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from tuvl.core.auth import iam_service
 from tuvl.core.auth.blacklist import token_blacklist
 from tuvl.core.auth.iam_service import ConflictError, NotFoundError
-from tuvl.core.auth.models import IAMRole, IAMRoleScope, IAMUser, IAMUserRole
+from tuvl.core.auth.models import (
+    IAMLoginAttempt,
+    IAMRevokedToken,
+    IAMRole,
+    IAMRoleScope,
+    IAMSessionEnd,
+    IAMUser,
+    IAMUserRole,
+)
 
 pytestmark = pytest.mark.asyncio
 
 
 @pytest.fixture(autouse=True)
 def _clean_blacklist():
-    token_blacklist._memory.clear()
+    token_blacklist.reset_cache()
     yield
-    token_blacklist._memory.clear()
+    token_blacklist.reset_cache()
 
 
 @pytest.fixture
@@ -42,6 +50,9 @@ async def session():
                 IAMRole.__table__,
                 IAMUserRole.__table__,
                 IAMRoleScope.__table__,
+                IAMSessionEnd.__table__,
+                IAMRevokedToken.__table__,
+                IAMLoginAttempt.__table__,
             ],
         )
     async with AsyncSession(engine, expire_on_commit=False) as s:

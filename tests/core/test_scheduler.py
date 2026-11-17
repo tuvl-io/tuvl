@@ -291,3 +291,35 @@ def test_upcoming_lists_the_next_fires():
         datetime(2026, 7, 27, 9, tzinfo=UTC),
         datetime(2026, 7, 28, 9, tzinfo=UTC),
     ]
+
+
+async def test_a_schedule_that_cannot_advance_is_dropped_and_the_others_keep_firing(monkeypatch):
+    import asyncio
+
+    fired: list[str] = []
+    monkeypatch.setattr(sched, "schedulable", lambda: {"good": "good", "bad": "bad"})
+
+    async def fake_fire(name, fire_at):
+        fired.append(name)
+
+    class FakeSim:
+        def __init__(self, expr, now):
+            self.expr, self.calls = expr, 0
+
+        def __iter__(self):
+            return self
+
+        def __next__(self):
+            self.calls += 1
+            if self.expr == "bad" and self.calls > 1:
+                raise RuntimeError("no such day")
+            return datetime.now(UTC) + timedelta(seconds=0.05)
+
+    monkeypatch.setattr(sched, "_fire", fake_fire)
+    monkeypatch.setattr(sched, "CronSim", FakeSim)
+    loop = asyncio.create_task(sched.scheduler_loop())
+    await asyncio.sleep(0.6)
+    loop.cancel()
+    await asyncio.gather(loop, return_exceptions=True)
+    assert fired.count("bad") == 1
+    assert fired.count("good") >= 3

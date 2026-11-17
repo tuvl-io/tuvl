@@ -19,6 +19,10 @@ _PROJECT_DIR = Path(os.environ.get("TUVL_PROJECT_DIR", ".")).resolve()
 load_dotenv(_PROJECT_DIR / ".env", override=False)
 
 
+#: The values of ``TUVL_ENV`` the engine knows; any other is treated as not production.
+KNOWN_ENVS = ("production", "development", "test", "staging")
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=str(_PROJECT_DIR / ".env"),
@@ -108,10 +112,6 @@ class Settings(BaseSettings):
     postgres_user: str = "postgres"
     postgres_password: str = "postgres"
 
-    db_echo: bool = False
-    db_pool_min: int = 5
-    db_pool_max: int = 20
-
     @computed_field  # type: ignore[prop-decorator]
     @property
     def pg_database_url_rw(self) -> str:
@@ -149,6 +149,16 @@ class Settings(BaseSettings):
     # Access-token lifetime in seconds.  Set to 0 to disable expiry (not
     # recommended for production).  Default: 24 hours.
     tuvl_token_ttl_seconds: int = 86400
+    #: Failed password attempts one client address may make in 15 minutes before it waits; 0 turns the
+    #: per-address limit off (the per-login wait stays). Behind a proxy, set `--forwarded-allow-ips`.
+    tuvl_login_ip_failures: int = 30
+    #: A browser sign-in through a provider must finish in the browser that started it (a cookie bound to the
+    #: state); turn it off only for a client that cannot keep cookies between the two requests.
+    tuvl_oauth_state_cookie: bool = True
+
+    # How long a worker trusts its own answer to "is this token still good?" when revocations and session ends
+    # are kept in Postgres (no Redis datasource). 0 asks the database on every request.
+    tuvl_session_cache_seconds: float = 5.0
 
     # First administrator for a fresh production database (see ``tuvl.core.auth.seed``).
     # Used once: ignored when the IAM tables already hold a user or a role.
@@ -191,11 +201,10 @@ class Settings(BaseSettings):
     #   "production"  → structlog JSONRenderer (strict JSONL, one line per event)
     tuvl_env: str = "production"
 
-    # Token revocation, OAuth state, and any other cross-worker shared state
-    # require Redis in multi-worker deployments — without it, ``token_blacklist``
-    # falls back to per-process memory and revocations don't propagate.  Set
-    # this to ``true`` in production to fail the boot if a configured Redis
-    # datasource is unreachable, instead of silently degrading.
+    # Token revocation, session end and OAuth state live in Redis where a Redis
+    # datasource is deployed and in the primary database otherwise, so they reach
+    # every worker either way.  Set this to ``true`` in production to fail the boot
+    # if a configured Redis datasource is unreachable, instead of using the database.
     tuvl_require_redis: bool = False
 
     # In-process cron scheduler for workflows with ``trigger.schedule``.
@@ -213,6 +222,20 @@ class Settings(BaseSettings):
     #: without HTTP triggers mattering (worker).
     tuvl_role: Literal["all", "api", "worker"] = "all"
     tuvl_worker_concurrency: int = 8
+    #: Runs that ended more than this many days ago are removed, with their journal, checkpoints, approvals,
+    #: webhook deliveries and drafts, a batch at a time by the worker's sweep. 0 (the default): never.
+    #: Uploaded files are not touched (``tuvl prune runs --with-uploads``).
+    tuvl_run_retention_days: int = 0
+    #: ``/health`` fails when the worker has made no poll attempt for this long (a hung loop, not a database outage)
+    tuvl_worker_stall_seconds: float = 300.0
+    #: Largest request body (JSON, not multipart: those are bounded by the trigger's upload settings) in
+    #: bytes; larger is 413. 0 turns the cap off.
+    tuvl_max_body_bytes: int = 1_048_576
+    #: Whether a run's error text goes to an anonymous caller (no token, public trigger). Unset: only in dev
+    #: mode; otherwise the caller gets the error type and the run id, and the text stays in the journal.
+    tuvl_expose_errors: bool | None = None
+    #: Largest response body (bytes) a ``tool: http`` step reads; a larger one ends the step with ``too_large``.
+    tuvl_http_tool_max_bytes: int = 10 * 1024 * 1024
 
     # OTLP collector endpoint (Jaeger, Grafana Tempo, etc.). The default protocol
     # is OTLP over HTTP (port 4318); "grpc" needs the ``tuvl[otel-grpc]`` extra.
@@ -287,6 +310,15 @@ class Settings(BaseSettings):
     tuvl_oauth_microsoft_client_secret: str = ""
     # Tenant: "common" (any MS account), "organizations", or a specific tenant UUID.
     tuvl_oauth_microsoft_tenant_id: str = "common"
+
+    @property
+    def is_production(self) -> bool:
+        """``TUVL_ENV`` names production. Case and padding do not matter; anything else is not production."""
+        return self.tuvl_env.strip().lower() == "production"
+
+    @property
+    def env_is_known(self) -> bool:
+        return self.tuvl_env.strip().lower() in KNOWN_ENVS
 
 
 settings = Settings()

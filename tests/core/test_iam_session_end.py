@@ -17,7 +17,15 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from tuvl.core.auth import router as auth_router
 from tuvl.core.auth.blacklist import token_blacklist
-from tuvl.core.auth.models import IAMRole, IAMRoleScope, IAMUser, IAMUserRole
+from tuvl.core.auth.models import (
+    IAMLoginAttempt,
+    IAMRevokedToken,
+    IAMRole,
+    IAMRoleScope,
+    IAMSessionEnd,
+    IAMUser,
+    IAMUserRole,
+)
 from tuvl.core.auth.token import mint_token
 
 pytestmark = pytest.mark.asyncio
@@ -40,11 +48,9 @@ CREATE TABLE tuvl_system_iam_user_roles (
 
 @pytest.fixture(autouse=True)
 def _clean_store():
-    token_blacklist._memory.clear()
-    token_blacklist._sessions.clear()
+    token_blacklist.reset_cache()
     yield
-    token_blacklist._memory.clear()
-    token_blacklist._sessions.clear()
+    token_blacklist.reset_cache()
 
 
 async def _engine(*, legacy_links: bool):
@@ -58,7 +64,14 @@ async def _engine(*, legacy_links: bool):
     def _fks(dbapi_conn, _record):  # SQLite enforces foreign keys only when asked
         dbapi_conn.execute("PRAGMA foreign_keys=ON")
 
-    tables = [IAMUser.__table__, IAMRole.__table__, IAMRoleScope.__table__]
+    tables = [
+        IAMUser.__table__,
+        IAMRole.__table__,
+        IAMRoleScope.__table__,
+        IAMSessionEnd.__table__,
+        IAMRevokedToken.__table__,
+        IAMLoginAttempt.__table__,
+    ]
     if not legacy_links:
         tables.append(IAMUserRole.__table__)
     async with engine.begin() as conn:

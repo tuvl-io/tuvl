@@ -25,7 +25,7 @@ from fastapi import APIRouter, Body, HTTPException, Query, Request, status
 from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from tuvl.api.auth import ADMIN, current_user, has_scope, require, trigger_user
+from tuvl.api.auth import ADMIN, UNSET, current_user, has_scope, require, trigger_user
 from tuvl.api.uploads import is_multipart, reject_file_values, start_upload_run
 from tuvl.contract.schema import WorkflowDocument
 from tuvl.core.auth.schemas import TokenUser
@@ -128,6 +128,27 @@ async def _pending_approval(session: AsyncSession, run_id: uuid.UUID) -> SystemA
     return found
 
 
+def _anonymous(run: SystemRun) -> bool:
+    """A run no token started, outside dev mode: its caller can read nothing about it afterwards."""
+    from tuvl.core.config import settings
+
+    return run.principal is None and not settings.tuvl_dev_mode
+
+
+def _caller_error(run: SystemRun) -> Any:
+    """The error to put in a caller's answer. An anonymous caller learns the kind of error, never its text
+    (a message can name tables, hosts and values); the text stays in the journal for the run's owner and
+    for ``iam:admin``. ``TUVL_EXPOSE_ERRORS`` overrides."""
+    from tuvl.core.config import settings
+
+    expose = settings.tuvl_expose_errors
+    if expose is None:
+        expose = not _anonymous(run)
+    if expose or not isinstance(run.error, dict):
+        return run.error
+    return {"error_type": run.error.get("error_type")}
+
+
 async def respond(host: RuntimeHost, run: SystemRun) -> JSONResponse:
     """The HTTP answer for a run after the synchronous window (spec §14.3)."""
     headers = {"X-Tuvl-Run-Id": str(run.id)}
@@ -137,15 +158,17 @@ async def respond(host: RuntimeHost, run: SystemRun) -> JSONResponse:
         )
     if run.status in _RUN_TERMINAL_HTTP:
         return JSONResponse(
-            {"run_id": str(run.id), "status": run.status, "error": run.error},
+            {"run_id": str(run.id), "status": run.status, "error": _caller_error(run)},
             status_code=_RUN_TERMINAL_HTTP[run.status],
             headers=headers,
         )
     async with AsyncSession(host.engine) as s:
         approval = await _pending_approval(s, run.id)
-    return JSONResponse(
-        run_view(run, approval), status_code=status.HTTP_202_ACCEPTED, headers=headers
-    )
+    view = run_view(run, approval)
+    if _anonymous(run):  # nobody could read what they point to
+        view.pop("status_url", None)
+        view.pop("events_url", None)
+    return JSONResponse(view, status_code=status.HTTP_202_ACCEPTED, headers=headers)
 
 
 # ── starting runs ────────────────────────────────────────────────────────────
@@ -166,11 +189,13 @@ async def start_run(
     trigger: str,
     wait: bool = True,
     uploaded: bool = False,
+    user: Any = UNSET,
 ) -> JSONResponse:
     if not uploaded:
         reject_file_values(doc, payload)
     host = get_host()
-    user = await trigger_user(request, doc)
+    if user is UNSET:
+        user = await trigger_user(request, doc)
     try:
         run_id = await host.enqueue(
             doc, payload, principal=user.user_id if user else None, trigger=trigger
@@ -209,8 +234,9 @@ async def create_run(
     wait: bool = Query(default=True, description="Run inline up to trigger.http.sync_timeout."),
 ) -> JSONResponse:
     doc = _workflow(get_host(), name)
+    user = await trigger_user(request, doc)  # before the body is read
     if is_multipart(request):
-        return await start_upload_run(request, doc, trigger="api", wait=wait)
+        return await start_upload_run(request, doc, trigger="api", wait=wait, user=user)
     raw = await request.body()
     try:
         body = json.loads(raw) if raw else {}
@@ -221,7 +247,7 @@ async def create_run(
     payload = body.get("input", {})
     if not isinstance(payload, dict):
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "'input' must be an object")
-    return await start_run(request, doc, payload, trigger="api", wait=wait)
+    return await start_run(request, doc, payload, trigger="api", wait=wait, user=user)
 
 
 # ── reading runs ─────────────────────────────────────────────────────────────
@@ -244,8 +270,8 @@ async def _readable_run(request: Request, run_id: uuid.UUID, scope: str = RUNS_R
 
 
 def _authorise_run(user: TokenUser | None, run: SystemRun, scope: str) -> None:
-    """Control needs ``runs:control`` (any run). Reading is for the run's owner —
-    whoever started it may always follow it — or ``iam:admin``."""
+    """Control needs ``runs:control`` (any run). Reading is for the run's owner (whoever started it may
+    always follow it), or a token holding ``runs:read`` (any run in its tenant), or ``iam:admin``."""
     if scope == RUNS_CONTROL:
         require(user, RUNS_CONTROL)
         return
@@ -255,7 +281,7 @@ def _authorise_run(user: TokenUser | None, run: SystemRun, scope: str) -> None:
             "Not authenticated",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    if ADMIN in user.scopes:
+    if ADMIN in user.scopes or RUNS_READ in user.scopes:
         return
     if run.principal != user.user_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"run {run.id} not found")
@@ -268,8 +294,8 @@ async def list_runs(
     run_status: str | None = Query(None, alias="status"),
     limit: int = Query(20, ge=1, le=200),
 ) -> list[dict[str, Any]]:
-    """Newest first. Admins see every run; others see their own (anonymous
-    dev-mode callers see anonymous runs), as for ``GET /runs/{id}``."""
+    """Newest first. A caller with ``runs:read`` (or ``iam:admin``) sees every run of its tenant; others see
+    their own (anonymous dev-mode callers see anonymous runs), as for ``GET /runs/{id}``."""
     from tuvl.core.config import settings
 
     user = await current_user(request)
@@ -283,7 +309,7 @@ async def list_runs(
                 "Not authenticated",
                 headers={"WWW-Authenticate": "Bearer"},
             )
-        if ADMIN not in user.scopes:
+        if ADMIN not in user.scopes and RUNS_READ not in user.scopes:
             query = query.where(SystemRun.principal == user.user_id)  # type: ignore[arg-type]
         if _multi_tenant():
             query = query.where(SystemRun.__table__.c.tenant_id == (user.tenant_id or ""))  # type: ignore[attr-defined]

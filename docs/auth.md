@@ -46,7 +46,7 @@ Two planes, one token:
 Key properties:
 
 - **Stateless verification.** The IAM database is consulted only at mint time. A token is a snapshot of the user's roles and scopes; role changes take effect on the next mint (login or refresh).
-- **Revocation is the one stateful exception.** Logout and refresh push the token's SHA-256 hash onto a Redis-backed blacklist checked on every REST request, and narrowing a user's access ends their sessions (below).
+- **Revocation is the one stateful exception.** Logout and refresh refuse the token from then on, and narrowing a user's access ends their sessions (below). Both are kept in Redis when a Redis datasource is deployed and in Postgres otherwise, and checked on every authenticated request.
 - **One guard, every transport.** `verify_bearer_token` and `authorize_token` in `tuvl/core/auth/access.py` are the single source of truth for the FastAPI dependencies and MCP export.
 
 ---
@@ -89,8 +89,9 @@ verify_token / verify_bearer_token
     ├── 401 if no token
     ├── dev-mode shortcut: dev key → synthetic iam:admin claims   (§9)
     ├── decode_token: signature (EdDSA only), issuer, sub/iat/iss present, exp
-    ├── token_blacklist.is_revoked(token)        ← Redis / in-process
-    └── issued before the user's sessions ended? ← iat vs sessions_ended_at
+    ├── token_blacklist.refusal(token, claims)   ← Redis, or Postgres when no Redis is deployed
+    │     ├── revoked?                           ← jti (Postgres) / SHA-256 of the token (Redis)
+    │     └── issued before the user's sessions ended? ← iat vs sessions ended at
             │
             ▼
 get_current_user(claims) → TokenUser(user_id, groups, scopes, tenant_id)   (shape-checked)
@@ -118,7 +119,7 @@ Behavior is pinned by `tests/core/test_auth_router.py` and `tests/core/test_iam_
 
 ## 4. Login & Identity
 
-All identity endpoints live in `tuvl/core/auth/router.py` under `/auth`.
+All identity endpoints live under `/auth`: in `tuvl/core/auth/router.py`, except federated login and federation-provider admin, which are in `tuvl/core/auth/federation.py`.
 
 ### Bootstrap
 
@@ -132,6 +133,7 @@ It belongs to the `iam` API group, which a production server does not mount (see
 
 - **bcrypt off the event loop.** Hashing and verification run at cost factor 12 (~200–300 ms of pure CPU) and are always dispatched through `run_in_threadpool` (`aget_password_hash` / `averify_password` in `tuvl/core/auth/crypto.py`), so login never stalls the ASGI event loop. Passwords are truncated to bcrypt's 72-byte limit before hashing, matching bcrypt's own semantics.
 - **Login-timing equalisation.** When the account is missing, inactive, or passwordless, the handler still verifies the submitted password against a throwaway hash (`_DUMMY_PW_HASH`), so response timing cannot be used to enumerate which emails exist. All failure cases return the same generic 401.
+- **Login throttle.** Password guesses are slowed per login and per address. After **5 wrong passwords** a login waits 2, 4, 8 ... seconds (up to 15 minutes) before its next attempt is judged; meanwhile `POST /auth/token` answers `429` with `Retry-After`, and even the right password is refused (no password is checked while a login waits). The count is kept under a hash of the lower-cased login in `tuvl_system_iam_login_attempts`, so an unknown login waits exactly like a known one and the answer never says which exist; a successful sign-in deletes it, and a login with no failure for a day is forgotten. `tuvl iam` is throttled the same way. One **client address** may make `TUVL_LOGIN_IP_FAILURES` (30, `0` turns it off) failed attempts in 15 minutes, then waits out the window; that counter lives in the process, so each worker counts its own, and behind a proxy the address is the proxy's unless `--forwarded-allow-ips` names it (see `docs/runtime.md`). Failures are audited as `auth.login.failed` (a hash of the login, never the login or the password). A waiting user is released with `tuvl iam users unlock <email>`; `reset-admin` also clears the wait of the account it recovers.
 
 On success the handler loads the user's roles and the distinct union of their scopes, and mints a token (§6).
 
@@ -150,7 +152,14 @@ every token issued before that is refused (`401 Session ended — sign in again.
 mints a token with the current roles. Granting a role or adding scopes ends nothing; it arrives at
 the next sign-in. Tokens without `iat` (minted before this existed) count as older than any end.
 
-Revocation (`tuvl/core/auth/blacklist.py`) stores the SHA-256 hex digest of the raw token — never the token itself — with a TTL matching the token lifetime, in Redis when a redis datasource is configured, otherwise in an in-process dict. **Multi-worker deployments must configure Redis**: without it, a token revoked on one worker is still accepted by the others.
+Revocation and session end (`tuvl/core/auth/blacklist.py`) live in one of two places, chosen by the deployment:
+
+- **Redis**, when the project has a `type: redis` datasource and it is reachable: keys `tuvl:blacklist:<sha256 of the token>` and `tuvl:sessions-ended:<user id>`, with an expiry matching the token lifetime (none for a token that has no `exp`). A check is one round trip. Keep Redis persistent, or a restart forgets what it held.
+- **Postgres**, on the primary datasource, when there is no Redis datasource: tables `tuvl_system_iam_revoked_tokens` (the token's `jti`, removed once the token would have expired) and `tuvl_system_iam_session_ends` (one row per user, which outlives a deleted user). A write is made in the transaction of the change that caused it, so they commit or roll back together. A worker keeps its own answer for `TUVL_SESSION_CACHE_SECONDS` (default 5; `0` asks the database on every request); a change made in another worker or by `tuvl iam` is seen within that time, a change in the same process at once.
+
+Either way a revocation or session end made by one worker, by `tuvl iam` in a process of its own, or before a restart, is seen by every other worker. `tuvl iam` selects the store the same way the server does; if a Redis datasource is configured but cannot be reached from where the command runs it refuses to change access, rather than record the change where the server does not look. If the server cannot reach Redis at boot it logs `redis.unreachable.fallback_postgres` and uses Postgres (`TUVL_REQUIRE_REDIS=true` refuses to boot instead).
+
+When the store cannot be reached the token is refused with `503`, never let in. A process with no primary datasource at all has nothing to ask: the check is skipped and `auth.session_store.none` is logged once. With `TUVL_TOKEN_TTL_SECONDS=0` tokens never expire and so does a revocation; boot logs an error in production.
 
 There is no server-side session table; the token *is* the session.
 
@@ -175,19 +184,26 @@ spec:
   # allowed_domains: [example.com]
   # allowed_users: [octocat]   # github only: login handles, case-insensitive
   # default_role: member
+  # pkce: true                 # S256; on by default for google and microsoft, off for github
 ```
 
 `${VAR}` references are resolved from the environment at load time (`${VAR:default}` supports defaults); a provider whose variables are unset is skipped with a warning. Built-in URL defaults exist for Google, GitHub, and Microsoft. A legacy fallback reads `TUVL_OAUTH_<PROVIDER>_CLIENT_ID` / `_CLIENT_SECRET` settings when no YAML exists for a built-in provider.
 
 The flow is OAuth 2.0 authorization-code:
 
-1. `GET /auth/oauth/{provider}/start` — stores a one-time `state`, redirects to the IdP.
-2. `GET /auth/oauth/{provider}/callback` — consumes the state, exchanges the code, fetches the user profile, and upserts an IAM user keyed by `(federated_provider, federated_sub)`.
+1. `GET /auth/oauth/{provider}/start` — stores a one-time `state` (with a PKCE verifier where the provider takes one), sets the browser cookie below, redirects to the IdP.
+2. `GET /auth/oauth/{provider}/callback` — consumes the state, checks the cookie, exchanges the code (sending the PKCE `code_verifier`), fetches the user profile, and upserts an IAM user keyed by `(federated_provider, federated_sub)`.
+
+**The callback belongs to the browser that started it.** `start` sets `tuvl_oauth_state`, a short-lived (10 minutes) `HttpOnly`, `SameSite=Lax` cookie (`Secure` when `TUVL_OAUTH_BASE_URL` is https, scoped to `/auth/oauth`) holding a hash of the state, and the callback refuses a state whose cookie is missing or different (`400`, and the state is spent). Without it a link someone else started could be finished in a victim's browser, signing the victim in as the attacker. `TUVL_OAUTH_STATE_COOKIE=false` turns the check off for a client that cannot keep cookies between the two requests (it is also what a device flow does without). **PKCE** (S256) is on by default for Google and Microsoft and off for GitHub unless the file says `pkce: true`; set `pkce: false` for a custom provider that rejects it.
+
+**Where the state lives.** In Redis when a `type: redis` datasource is deployed and reachable, otherwise in `tuvl_system_oauth_states` in the primary database; either way a callback may land on a different worker or replica than the start. A state and a device handle are single-use (one `GETDEL`-style step in Redis, one `DELETE ... RETURNING` in Postgres), expire after 10 minutes, and expired rows are removed whenever a new one is stored.
+
+**Microsoft.** The built-in `userinfo_url` is the OIDC endpoint (`https://graph.microsoft.com/oidc/userinfo`), which carries `email` (grant the `email` scope). If an older file points `userinfo_url` at Graph's `/v1.0/me`, the email is taken from `mail`, or from `userPrincipalName` when it contains an `@`. Microsoft does not assert `email_verified`, so a Microsoft sign-in is never auto-linked to an existing password account: the person signs in with their credentials first, as for any unverified provider.
 
 Account-linking rules in the callback:
 
 - **`email_verified` is required for auto-link.** If an account with the same email already exists but the IdP did not assert the email as verified, the callback returns 403 instead of linking — otherwise an attacker registering an unverified IdP identity under a victim's email could take over the account. For GitHub, only addresses from the verified `/user/emails` list are trusted.
-- `allowed_domains`, when set, rejects any email outside the list (403). `allowed_users` (GitHub) rejects any login handle outside the list (403).
+- `allowed_domains`, when set, rejects any email outside the list (403). `allowed_users` (GitHub) rejects any login handle outside the list (403); a file that sets it for another provider is **refused at load** (`auth.federation.provider_refused` is logged), because no other provider has a login handle and it would turn everyone away.
 - New federated users are created passwordless; `default_role`, when set and existing in the IAM database, is auto-assigned so first-time users don't arrive with zero permissions.
 
 The callback returns the same kind of token as password login, or redirects to `TUVL_OAUTH_UI_REDIRECT_URL` with the token in the URL **fragment** (`#token=…`, so it never reaches a server log) when configured. `TUVL_OAUTH_BASE_URL` sets the redirect-URI origin registered with the IdP.
@@ -200,7 +216,7 @@ The callback returns the same kind of token as password login, or redirects to `
 
 Tick **Enable Device Flow** on the GitHub OAuth app. `tuvl register project` and Insight's Register dialog use this flow ([project](project.md)).
 
-Provider YAMLs can be managed at runtime via `/auth/admin/federation` (list/get/put/delete, `iam:admin` required); `client_secret` is redacted in read responses.
+Provider YAMLs can be managed at runtime via `/auth/admin/federation` (list/get/put/delete, `iam:admin` required). A `PUT` is checked against the document's shape (`kind`, `metadata.name` equal to the URL name, known fields only, `spec.provider` one of `google | github | microsoft | custom`, `client_id` and `client_secret` present, endpoint URLs `https://` (plain `http://` only to `localhost`), `allowed_users` for GitHub only) and answers `400` with what is wrong, writing nothing. `client_secret` is redacted (`***`) in read responses, and a `PUT` that sends `***` back keeps the secret that is stored, so an admin screen can edit a provider without ever seeing its secret. The files are local to the replica that served the request: with several replicas, make a change in the image or the mounted config, not through this API. Federation logs name the user by id, never by email.
 
 ---
 
@@ -231,6 +247,8 @@ tuvl_system_iam_users                 tuvl_system_iam_roles
 - A **role** is a named bundle of scope strings (e.g. `hr_manager` → `requisition:write`, `candidate:read`). Role names become the token's `groups` claim.
 - At mint time, the engine collects the user's roles and the **distinct union** of all their scopes; both are embedded in the token. Deleting a role cascades its scope rows.
 
+**Rules every IAM path applies** (REST, `tuvl iam`, the seed): a **password** is 8 characters at least and 72 bytes at most (bcrypt ignores the rest), wherever it is set: admin-created users, set-password links, the bootstrap and seeded administrators, `reset-admin`; a **role name** and a **scope** use letters, digits and `_ : . - /` only (the token minter refuses anything else, so `orders:*` or a name with a space is refused with `422` where it is written, and a `RoleSeed` with one fails `tuvl lint project`); an **email** is stored trimmed and lower case and compared without regard to case, with a unique index on `lower(email)` built at boot (users stored earlier that differ only by case log `iam.email.duplicates` and the index waits until they are merged; sign-in still works). A scope or role name stored before these rules that a token cannot carry is left out of that user's token and logged as `auth.token.invalid_entry_skipped`, so it cannot lock out every member of its role; remove it with `tuvl iam roles revoke`. The first administrator is created under the same advisory lock as the seed, so two `POST /auth/bootstrap` calls (or a bootstrap and a booting replica) make one.
+
 Users and roles are administered under `/auth/admin/users` and `/auth/admin/roles` (full CRUD plus role assignment/revocation), all guarded by `iam:admin`. Role scope sets are replaced atomically via `PATCH /auth/admin/roles/{id}/scopes`.
 
 **Set-password links.** An admin makes a one-time link token for a user with `POST /auth/admin/users/{id}/invite` (`iam:admin`; optional `{"ttl_hours": 72}`, 1 to 720; the answer is `{token, expires_at}`). The token is shown once: only its SHA-256 is stored. A user created without a `password` has no way to sign in until they use it. The user then calls the public `POST /auth/password/set` with `{token, password}` (8 to 72 bytes): `204` on success; `400` for a token that is wrong, already used or expired; `422` for a password that breaks the rules (the token is kept). The token works once, a newer link replaces the older unused one, an inactive user cannot be given one, and setting the password ends the sessions the user already held. Put the token in a link in your own UI (for example `https://app.example.com/#/set-password?token=...`) and send it by email.
@@ -244,7 +262,7 @@ Users and roles are administered under `/auth/admin/users` and `/auth/admin/role
 | Model CRUD | `/models/{model}/…` | Off unless the model opts in per operation with `spec.api.crud: [list, read, create, update, delete]`. Then `{model.lower()}:read` / `:write` / `:delete` by convention; overridable per model via `spec.access.{read,write,delete}_scope`, optionally pinned to IAM groups via `spec.access.{read,write,delete}_groups`; absent entirely when `spec.api.expose_model_crud: false` |
 | Workflow triggers | `spec.trigger.http.path`, and `POST /api/workflows/{name}/runs` | `metadata.required_scope` and/or `metadata.required_group`; a valid bearer token is required even when both are omitted, unless the workflow opts into `spec.trigger.http.public: true` |
 | MCP export | `/mcp` | `mcp:connect`, plus each exported workflow's own trigger gates (`tools/list` hides what the caller can't run) |
-| Runs | `GET /api/runs*` | signed in: your own runs (whoever started a run may follow it); `iam:admin` reads all |
+| Runs | `GET /api/runs*` | signed in: your own runs (whoever started a run may follow it); `runs:read` reads (and lists) **any** run of the caller's tenant, which is what a webhook receiver or a dashboard holds; `iam:admin` reads all |
 | Run control | `POST /api/runs/{id}/pause\|resume\|abort\|steer` | `runs:control` |
 | Approvals | `GET /api/approvals`, `POST /api/approvals/{id}`, `POST /api/runs/{id}/human/{agent}` | `approvals:decide` plus the agent's or tool's `required_group`; never the triggering principal when a group is required ([engines](engines.md#human-a-person-fills-a-form)) |
 | Engine admin | `/admin/*` (scope catalogue, model versions, …) | `iam:admin` |
@@ -255,6 +273,7 @@ Users and roles are administered under `/auth/admin/users` and `/auth/admin/role
 Notes:
 
 - **CRUD scope derivation** happens in `tuvl/core/api/crud_router.py`: `read_scope = spec.access.read_scope or f"{model_name.lower()}:read"`, and likewise for write (POST/PATCH) and delete. Every CRUD route also runs `bind_principal_context`, so all requests are authenticated even for read.
+- **`secure` fields and `<model>:read_secure`.** **`?include=` needs the related model's read access.** Embedding a relation returns that model's records, so the caller needs what the related model asks of a reader (its `:read` scope, or `spec.access.read_scope`, and its `read_groups` when it pins any; `iam:admin` passes), or the request is `403` naming the scope. A model field declared `secure: true` is left out of every CRUD response (list, read, create and update, and the records an `?include=` embeds) unless the token holds `<model>:read_secure` (the model name in lower case, for the model whose field it is, so an embedded record needs its own model's scope) or `iam:admin`. `<model>:read` alone returns the record without them; `<model>:read_secure` alone grants nothing. They are optional in the read schema (OpenAPI and `@tuvl/client` types say so). The scope is listed in `tuvl iam check` and Insight for models that have secure fields. Filtering on a secure field is refused for everyone. See `docs/observability.md` §10 for the rest of the rule.
 - **CRUD group pinning.** `spec.access.read_groups` / `write_groups` / `delete_groups` (a list, or a bare group name) add an IAM-group requirement alongside the scope — both must be satisfied; `require_access(scope, groups)` in `access.py` is the dependency factory each CRUD route depends on, wrapping `authorize_token`. A tier left undeclared cascades from the next-more-privileged tier (`write_groups` falls back to `read_groups`, `delete_groups` falls back to `write_groups`), so pinning only `read_groups` never leaves mutations open to a wider audience than reads. Declaring no groups at all is scope-only. `iam:admin` bypasses every scope and group.
 - **Workflow gates are metadata-only.** Exactly `metadata.required_scope` and `metadata.required_group` gate a workflow — nothing inside `agents:` changes trigger auth. `required_group` names an IAM role; membership in that single group is required (alongside the scope, when both are declared). `iam:admin` bypasses both.
 - **Trigger default-deny.** Every way of starting a run — the workflow's HTTP route, `POST /api/workflows/{name}/runs`, and MCP export — requires a valid bearer token by default, even for a workflow that declares neither `required_scope` nor `required_group`. Anonymous access is an explicit opt-in via `spec.trigger.http.public: true`; `tuvl lint project` rejects `public: true` combined with a declared scope or group (V019), and a declared scope/group always wins over `public` at runtime, so a contradictory config fails closed. The decision is one function, `run_denial` in `tuvl/api/auth.py` (over `WorkflowAuthPolicy`, `tuvl/core/auth/workflow_policy.py`), shared by the REST and MCP paths so the enforcement sites can't drift.
@@ -289,9 +308,9 @@ The entire IAM surface — bootstrap, login, session lifecycle, user/role CRUD, 
 
 What the dev key does:
 
-- **Gates the dev surfaces.** `/dev/*` (the dev API Insight uses: project files, validate, codegen, specs, dev runs, breakpoints, judges) is mounted only in dev mode and guarded by a pure-ASGI middleware (`tuvl/core/dev/middleware.py`) enforcing an IP allowlist plus the dev key as bearer token. An unset key fails closed — an empty key never authenticates. Breakpoints, step mode and context editing exist only there.
+- **Gates the dev surfaces.** `/dev/*` (the dev API Insight uses: project files, validate, codegen, specs, dev runs, breakpoints, judges) is mounted only in dev mode and guarded by a pure-ASGI middleware (`tuvl/core/dev/middleware.py`) enforcing an IP allowlist plus the dev key as bearer token. `--allow-host` (`TUVL_ALLOWED_HOSTS`) applies to every route of the dev server, not only `/dev/*`. An unset key fails closed — an empty key never authenticates. Breakpoints, step mode and context editing exist only there.
 - **Acts as a superuser credential.** In dev mode, `verify_token` accepts the raw dev key — compared with `hmac.compare_digest` — and map it to synthetic claims for user `dev`, group `dev`, scope `iam:admin`, minted once per process. The same key therefore works for `/dev/*`, `/auth/admin/*`, and every scoped route.
-- **`--auto-login`** sets `TUVL_DEV_AUTO_LOGIN=1`, which makes the Insight index page embed the key in a `<meta name="tuvl-dev-key">` tag so the UI skips its security screen. Off by default.
+- **`--auto-login`** sets `TUVL_DEV_AUTO_LOGIN=1`, which makes the Insight index page embed the key in a `<meta name="tuvl-dev-key">` tag so the UI skips its security screen. Off by default. The key is embedded only when the request comes from this machine (a loopback client address) and is addressed as `localhost` or by a loopback address; a browser on another machine, or a page that reaches the server through a DNS name, pastes the key instead.
 
 Two boot-time refusals in `tuvl/core/auth/access.py` keep the shortcut out of production: `TUVL_DEV_MODE=true` with `TUVL_ENV=production` aborts the process unconditionally, and outside production dev mode still requires the explicit `TUVL_ALLOW_DEV_AUTH=true` acknowledgement (which `tuvl dev` sets for you).
 
@@ -345,7 +364,7 @@ It asks for an administrator's email and password (prompted, `--password-stdin`,
 | `users create <email> [--no-password]` · `users invite <email> [--url ...{token}...] [--hours N]` | A user with no password and a one-time set-password link for them (see *Set-password links*). `invite` prints only the link, or the bare token without `--url`, so it can be captured and sent to the user yourself; it works once and a newer one replaces an older unused one. |
 | `roles grant <role> <scope>` · `revoke` | One scope at a time. Revoking signs the holders out. |
 | `roles add-user <role> <email>` · `remove-user` | Who holds the role. |
-| `users list` · `create` · `enable` · `disable` | The users. `create` prompts for the password (or `TUVL_IAM_NEW_PASSWORD`). |
+| `users list` · `create` · `enable` · `disable` · `unlock` | The users. `create` prompts for the password (or `TUVL_IAM_NEW_PASSWORD`). `unlock <email>` lets a user who is made to wait after failed sign-ins try again now. |
 | `scopes list` | The scopes this project enforces and what each guards. |
 | `check` | Is every scope the project enforces granted by an active role? Exits 1 if not. Run it after a release that adds a scope. |
 | `reset-admin <email>` | Break-glass: makes the user an active administrator with a new password and restores the `superadmin` role. Asks for no login, so only use it when no administrator can sign in. |
@@ -405,8 +424,16 @@ tuvl generate key --write
 
 - `TUVL_SIGNING_KEY` holds the hex-encoded 32-byte Ed25519 private key (64 hex chars), loaded once per process.
 - The derived public key verifies every incoming token; the private key is used only for minting.
-- Keep the key secret and stable: rotating it invalidates every outstanding token (all users re-login). There is no multi-key rollover; rotation is a hard cutover.
-- Because verification is offline, any process holding only the *public* key can verify tuvl tokens — fetch it from `GET /auth/jwks.json` (the `kid` in each token's header names it). Such a verifier can't see logouts or ended sessions.
+- Keep the key secret. Changing `TUVL_SIGNING_KEY` on its own invalidates every outstanding token (all users sign in again); rotate with `TUVL_SIGNING_KEY_PREVIOUS` instead (below).
+- Because verification is offline, any process holding only the *public* key can verify tuvl tokens — fetch them from `GET /auth/jwks.json` (the `kid` in each token's header names the one to use). Such a verifier can't see logouts or ended sessions.
+
+**Rotating the signing key without signing anyone out.** `TUVL_SIGNING_KEY_PREVIOUS` takes one or more retired private keys (64 hex characters each, comma-separated). They sign nothing; their public keys verify tokens already issued and are published at `/auth/jwks.json` after the current key. Because a rolling deploy runs old and new pods side by side, rotate in three steps:
+
+1. Make a key (`tuvl generate key`) and deploy with it in `TUVL_SIGNING_KEY_PREVIOUS` while `TUVL_SIGNING_KEY` still holds the current one. Every pod can now verify the new key; none signs with it yet.
+2. Deploy again with the two swapped: `TUVL_SIGNING_KEY` is the new key, `TUVL_SIGNING_KEY_PREVIOUS` the old one. New tokens carry the new `kid`; tokens issued earlier still verify.
+3. After the longest token lifetime has passed (`TUVL_TOKEN_TTL_SECONDS`, 24 hours by default), remove `TUVL_SIGNING_KEY_PREVIOUS`. A token still signed by the retired key is refused from then on.
+
+A value that is not 64 hex characters stops the boot naming the variable. Revocations and session ends do not depend on the key: a token revoked before the rotation stays revoked.
 
 ---
 
@@ -417,7 +444,9 @@ tuvl generate key --write
 | 401 / `UNAUTHENTICATED` | Not (or no longer) authenticated | missing/malformed token; bad signature; expired token; `alg` other than `EdDSA`; wrong issuer; revoked (blacklisted) token; token issued before its user's sessions were ended; token missing `sub`/`iat` or carrying a malformed claim; wrong password (generic message, timing-equalised) |
 | 403 / `PERMISSION_DENIED` | Authenticated but not allowed | missing required scope or group; federated email domain not in `allowed_domains`; unverified-email auto-link refusal; disabled account at federated login |
 | 404 / `NOT_FOUND` | Resource absent — or deliberately indistinguishable from absent | unknown user/role id in admin CRUD; unknown workflow; another principal's or tenant's run (existence not leaked) |
-| 409 / `ALREADY_EXISTS` | State conflict | bootstrap after first user exists; duplicate user email or role name |
+| 409 / `ALREADY_EXISTS` | State conflict | bootstrap after first user exists; duplicate user email (in any case) or role name |
+| 429 | Too many failed sign-ins | `POST /auth/token` for a login (or an address) that has to wait; `Retry-After` says how long |
+| 422 | Input the IAM rules refuse | a password under 8 characters or over 72 bytes; a role name or scope a token cannot carry |
 | 501 | Provider declared but unusable | federation provider missing `client_id`/`client_secret` |
 
 Rules of thumb: 401 always carries `WWW-Authenticate: Bearer` and means "re-authenticate"; 403 means "re-authenticating as yourself won't help"; login failures never distinguish unknown-user from wrong-password.
@@ -433,9 +462,10 @@ Rules of thumb: 401 always carries `WWW-Authenticate: Bearer` and means "re-auth
 | `tuvl/core/auth/keys.py` | `TuvlKeyManager` — `TUVL_SIGNING_KEY` loading (legacy name too), key id + JWK, ephemeral dev key, fail-closed production check |
 | `tuvl/core/auth/models.py` | The four `tuvl_system_iam_*` tables |
 | `tuvl/core/auth/crypto.py` | bcrypt hashing/verification + threadpool wrappers |
-| `tuvl/core/auth/blacklist.py` | Token revocation store (Redis / in-process) |
+| `tuvl/core/auth/blacklist.py` | Token revocation and session-end store (Redis, or Postgres when no Redis is deployed) |
 | `tuvl/core/auth/iam_service.py` | Transport-neutral IAM service — the one implementation of bootstrap, login, refresh/logout, user & role CRUD, and federation-provider admin; `router.py` is a thin adapter over it |
-| `tuvl/core/auth/router.py` | `/auth` REST surface: bootstrap, login, me/refresh/logout, user & role admin, OAuth federation flow — a thin adapter over `iam_service.py` |
+| `tuvl/core/auth/router.py` | `/auth` REST surface: bootstrap, login, me/refresh/logout, user & role admin — a thin adapter over `iam_service.py` |
+| `tuvl/core/auth/federation.py` | Federated login (OAuth authorization-code and device flows) and the `/auth/admin/federation` provider admin |
 | `tuvl/core/auth/seed.py` | `kind: RoleSeed` and the once-only first-boot seed (roles + `TUVL_BOOTSTRAP_ADMIN_*` administrator) |
 | `tuvl/cli/commands/iam.py` | `tuvl iam`: the production IAM command line |
 | `tuvl/core/auth/federation_loader.py` | `kind: FederationProvider` YAML loader and registry |

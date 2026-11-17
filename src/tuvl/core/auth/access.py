@@ -50,7 +50,7 @@ def _enforce_dev_mode_sentinel() -> None:
         return
 
     # Layer 1: production + dev_mode is *never* allowed, ack flag or not.
-    if _settings.tuvl_env.strip().lower() == "production":
+    if _settings.is_production:
         _auth_logger.critical(
             "🚨 TUVL_DEV_MODE=true is set in a TUVL_ENV=production process. "
             "The dev-mode auth shortcut grants iam:admin to anyone with "
@@ -114,9 +114,10 @@ def decode_token(token: str) -> Claims:
     key), issuer, required claims and expiry; return its claims. Raises PyJWT's
     ``InvalidTokenError`` (``ExpiredSignatureError`` when expired). Doesn't
     consult the revocation list or session ends — :func:`verify_bearer_token` does."""
+    keys = get_key_manager()
     claims: Claims = jwt.decode(
         token,
-        get_key_manager().public_key,
+        keys.verification_key(jwt.get_unverified_header(token).get("kid")),
         algorithms=[ALGORITHM],
         issuer=ISSUER,
         options={"require": ["iss", "sub", "iat"]},
@@ -162,25 +163,21 @@ async def verify_bearer_token(token: str | None) -> Claims:
     except jwt.InvalidTokenError as exc:
         raise _unauthorized("Invalid or expired token.") from exc
 
-    from tuvl.core.auth.blacklist import token_blacklist
+    from tuvl.core.auth.blacklist import SessionStoreUnavailableError, token_blacklist
 
-    if await token_blacklist.is_revoked(token):
-        raise _unauthorized("Token has been revoked.")
-    await _refuse_ended_session(claims)
+    # revoked (logout, refresh), or issued before the user's sessions ended (deactivated, deleted,
+    # a role or scope taken away): see tuvl.core.auth.blacklist for where that is kept
+    try:
+        refused = await token_blacklist.refusal(token, claims)
+    except SessionStoreUnavailableError as exc:
+        _auth_logger.error("auth.session_store.unavailable", error=str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Sessions cannot be checked right now.",
+        ) from exc
+    if refused:
+        raise _unauthorized(refused)
     return claims
-
-
-async def _refuse_ended_session(claims: Claims) -> None:
-    """401 when the token predates its user's last session end (deactivated,
-    deleted, or a role/scope taken away)."""
-    from tuvl.core.auth.blacklist import token_blacklist
-
-    ended_at = await token_blacklist.sessions_ended_at(str(claims["sub"]))
-    if ended_at is None:
-        return
-    issued_ms = int(float(claims["iat"]) * 1000)
-    if issued_ms < ended_at:
-        raise _unauthorized("Session ended — sign in again.")
 
 
 def _str_list(claims: Claims, key: str) -> list[str]:

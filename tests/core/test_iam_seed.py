@@ -9,7 +9,7 @@ from sqlmodel import SQLModel, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from tuvl.core.auth import iam_service
-from tuvl.core.auth.models import IAMRole, IAMRoleScope, IAMUser, IAMUserRole
+from tuvl.core.auth.models import IAMLoginAttempt, IAMRole, IAMRoleScope, IAMUser, IAMUserRole
 from tuvl.core.auth.seed import (
     ROLE_SEED_REGISTRY,
     RoleSeedEntry,
@@ -43,6 +43,7 @@ async def session():
                 IAMRole.__table__,
                 IAMUserRole.__table__,
                 IAMRoleScope.__table__,
+                IAMLoginAttempt.__table__,
                 SystemRegistry.__table__,
             ],
         )

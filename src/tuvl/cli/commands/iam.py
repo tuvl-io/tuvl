@@ -47,8 +47,6 @@ iam_app.add_typer(roles_app, name="roles")
 iam_app.add_typer(users_app, name="users")
 iam_app.add_typer(scopes_app, name="scopes")
 
-MIN_PASSWORD = 8
-
 
 @dataclass
 class _Opts:
@@ -114,8 +112,10 @@ def _new_password(what: str) -> str:
     password = os.environ.get("TUVL_IAM_NEW_PASSWORD") or typer.prompt(
         f"New password for {what}", hide_input=True, confirmation_prompt=True
     )
-    if len(password) < MIN_PASSWORD:
-        raise _fail(f"The password must be at least {MIN_PASSWORD} characters.")
+    try:
+        _svc().validate_password(password)
+    except _svc().ValidationError as exc:
+        raise _fail(str(exc)) from None
     return password
 
 
@@ -150,11 +150,24 @@ def _execute[T](
 
     async def main() -> T:
         from tuvl.core.datasources import postgres
+        from tuvl.core.infra.redis import (
+            close_redis,
+            init_redis,
+            is_redis_available,
+            redis_configured,
+        )
 
         if postgres._PRIMARY_DS not in postgres._sessions_rw:
             raise _fail(
                 "No primary PostgreSQL datasource is configured. Run this from the project "
                 "directory (or pass --project-dir) with the database settings in the environment."
+            )
+        # revocations and session ends go where the server reads them: Redis when the project has one
+        await init_redis()
+        if redis_configured() and not is_redis_available():
+            raise _fail(
+                "A Redis datasource is configured but cannot be reached from here, so this change could "
+                "not end the sessions the server keeps in Redis. Fix the connection and run it again."
             )
         generator = postgres.get_primary_rw_session()
         session = await generator.__anext__()
@@ -168,6 +181,7 @@ def _execute[T](
             return await op(session, actor)
         finally:
             await generator.aclose()
+            await close_redis()
             await postgres.close_db()
 
     try:
@@ -477,6 +491,18 @@ def users_enable(ctx: typer.Context, email: Annotated[str, typer.Argument()]) ->
     _set_user_active(ctx, email, True)
 
 
+@users_app.command("unlock")
+def users_unlock(ctx: typer.Context, email: Annotated[str, typer.Argument()]) -> None:
+    """Let a user who is made to wait after failed sign-ins try again now."""
+
+    async def op(session: Any, actor: str | None) -> bool:
+        was_waiting = await _svc().unlock_login(session, email)
+        _audit(actor, "users unlock", email)
+        return bool(was_waiting)
+
+    _done(f"{email} can sign in again." if _execute(ctx, op) else f"{email} was not waiting.")
+
+
 @users_app.command("disable")
 def users_disable(ctx: typer.Context, email: Annotated[str, typer.Argument()]) -> None:
     """Stop a user signing in (their sessions end)."""
@@ -592,7 +618,7 @@ def export_cmd(
     from tuvl.core.config import settings
 
     # a developer's own database has no administrator to sign in as; production always asks
-    roles = _execute(ctx, op, auth=settings.tuvl_env == "production")
+    roles = _execute(ctx, op, auth=settings.is_production)
     if not roles:
         raise _fail("There are no active roles to export.")
     text = yaml.safe_dump(

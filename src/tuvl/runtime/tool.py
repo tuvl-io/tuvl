@@ -188,37 +188,61 @@ async def _db(agent: Any, view: dict[str, Any], ctx: EngineContext) -> AgentResu
 
 
 async def _http(agent: Any, view: dict[str, Any], ctx: EngineContext) -> AgentResult:
+    from tuvl.core.config import settings
     from tuvl.core.infra.http_client import get_http_client
 
     tool = agent.tool
     where = f"agent '{agent.id}'"
-    url = _env(str(render(tool.url, view)), f"{where} url")
+    # ${VAR} is read from the workflow's own text, before any input is rendered into it: a value
+    # that arrives through {{ }} is data and must never be read as an environment reference.
+    url = str(render(_env(tool.url, f"{where} url"), view))
+    shown = str(render(tool.url, view))  # what the journal and errors say: ${VAR} left as written
     headers = {
-        k: _env(str(render(v, view)), f"{where} header '{k}'") for k, v in tool.headers.items()
+        k: str(render(_env(v, f"{where} header '{k}'"), view)) for k, v in tool.headers.items()
     }
     if tool.idempotency == "auto" and tool.method in _UNSAFE_METHODS:
         headers.setdefault("Idempotency-Key", ctx.idempotency_key)
     query = {k: v for k, v in jsonable(render(tool.query, view)).items() if v is not None}
     body = jsonable(render(tool.body, view))
 
-    await ctx.emit("tool_call", payload={"use": "http", "method": tool.method, "url": url})
     try:
-        response = await get_http_client().request(
+        target = httpx.URL(url)
+    except httpx.InvalidURL as exc:
+        raise EngineError("tool_args_invalid", f"{tool.method} {shown}: not a valid URL") from exc
+    if query:  # httpx replaces a URL's own query when params are given, so merge them here
+        target = target.copy_merge_params(query)
+    target, headers, extensions = await _destination(tool, target, headers, shown)
+
+    await ctx.emit("tool_call", payload={"use": "http", "method": tool.method, "url": shown})
+    limit = settings.tuvl_http_tool_max_bytes
+    try:
+        async with get_http_client().stream(
             tool.method,
-            url,
+            target,
             headers=headers,
-            params=query,
             json=body if body is not None else None,
+            extensions=extensions,
+        ) as response:
+            raw = await _read_capped(response, limit)
+    except _TooLargeError:
+        return AgentResult(
+            "too_large" if "too_large" in agent.routes else "error",
+            error_type="too_large",
+            message=f"{tool.method} {shown}: the response is larger than {limit} bytes",
         )
     except httpx.TimeoutException as exc:
-        raise EngineError("timeout", f"{tool.method} {url}: {type(exc).__name__}") from exc
+        raise EngineError("timeout", f"{tool.method} {shown}: {type(exc).__name__}") from exc
     except httpx.HTTPError as exc:
-        raise EngineError("transient", f"{tool.method} {url}: {type(exc).__name__}: {exc}") from exc
+        reason = str(exc).replace(url, shown)
+        raise EngineError(
+            "transient", f"{tool.method} {shown}: {type(exc).__name__}: {reason}"
+        ) from exc
 
+    text = raw.decode(response.encoding or "utf-8", errors="replace")
     try:
-        parsed: Any = response.json() if response.content else None
+        parsed: Any = json.loads(text) if raw else None
     except ValueError:
-        parsed = response.text
+        parsed = text
     data = {
         "response": {
             "status": response.status_code,
@@ -243,10 +267,70 @@ async def _http(agent: Any, view: dict[str, Any], ctx: EngineContext) -> AgentRe
         return AgentResult(
             "error",
             error_type=error_type,
-            message=f"{tool.method} {url} returned {response.status_code}",
+            message=f"{tool.method} {shown} returned {response.status_code}",
             detail=detail,
         )
     return AgentResult("default", outputs=_map(agent, tool, data, "default"), detail=detail)
+
+
+class _TooLargeError(Exception):
+    """A response is over the cap."""
+
+
+async def _read_capped(response: httpx.Response, limit: int) -> bytes:
+    """The body of *response*, or ``_TooLargeError`` as soon as it is known to be over *limit* bytes (0: no cap)."""
+    declared = response.headers.get("content-length", "")
+    if limit and declared.isdigit() and int(declared) > limit:
+        raise _TooLargeError
+    chunks: list[bytes] = []
+    size = 0
+    async for chunk in response.aiter_bytes():
+        size += len(chunk)
+        if limit and size > limit:
+            raise _TooLargeError
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
+def _host_is_dynamic(template: str) -> bool:
+    """Whether the host of a url template comes from a ``{{ }}`` placeholder: a caller, or a model, chose it."""
+    _, scheme, rest = template.partition("://")
+    authority = rest.split("/", 1)[0].split("?", 1)[0] if scheme else template
+    return "{{" in authority
+
+
+async def _destination(
+    tool: Any, target: httpx.URL, headers: dict[str, str], shown: str
+) -> tuple[httpx.URL, dict[str, str], dict[str, Any]]:
+    """Refuse a destination that must not be reached.
+
+    A host the workflow's author wrote is trusted (an in-cluster service is a fine target), except that no
+    one may name a cloud-metadata address. A host that arrives through ``{{ }}`` is not: it must resolve to
+    a public address (``allow_private`` admits inside ones), and the request goes to the address that was
+    checked, so the name cannot answer differently the second time."""
+    from tuvl.webhooks import guard
+
+    host = target.host
+    literal = guard._literal_ip(host)
+    if literal is not None and guard.is_metadata(literal):
+        raise EngineError(
+            "destination_refused",
+            f"{tool.method} {shown}: a cloud-metadata address is never a destination",
+        )
+    if not _host_is_dynamic(tool.url):
+        return target, headers, {}
+    port = target.port or (443 if target.scheme == "https" else 80)
+    try:
+        addresses = await guard.resolve(host, port, allow_private=tool.allow_private)
+    except guard.BlockedAddress as exc:
+        raise EngineError("destination_refused", f"{tool.method} {shown}: {exc}") from exc
+    except OSError as exc:
+        raise EngineError(
+            "transient", f"{tool.method} {shown}: the host name did not resolve"
+        ) from exc
+    authority = host if target.port is None else f"{host}:{target.port}"
+    extensions = {"sni_hostname": host} if target.scheme == "https" else {}
+    return target.copy_with(host=addresses[0]), {**headers, "Host": authority}, extensions
 
 
 def _map(agent: Any, tool: Any, data: dict[str, Any], signal: str) -> dict[str, Any]:

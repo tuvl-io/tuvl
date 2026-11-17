@@ -23,6 +23,10 @@ _EXTRA_BLOCKED = tuple(
         "2002::/16",  # 6to4: embeds an IPv4 address
     )
 )
+#: where a cloud provider answers with the instance's credentials; no destination is ever worth that
+_METADATA = tuple(
+    ipaddress.ip_network(n) for n in ("169.254.0.0/16", "fd00:ec2::/32", "100.100.100.200/32")
+)
 _INTERNAL_SUFFIXES = (".local", ".localhost", ".internal", ".intranet", ".lan", ".home", ".corp")
 
 
@@ -39,6 +43,15 @@ def _embedded(ip: ipaddress.IPv6Address) -> IP | None:
     if packed[:12] == bytes.fromhex("0064ff9b0000000000000000"):  # 64:ff9b::/96
         return ipaddress.IPv4Address(packed[12:])
     return None
+
+
+def is_metadata(ip: IP) -> bool:
+    """True for a cloud provider's instance-metadata address, however it is written."""
+    if isinstance(ip, ipaddress.IPv6Address):
+        inner = _embedded(ip)
+        if inner is not None and is_metadata(inner):
+            return True
+    return any(ip in net for net in _METADATA)
 
 
 def is_blocked(ip: IP) -> bool:
@@ -113,9 +126,12 @@ async def resolve(host: str, port: int, *, allow_private: bool = False) -> list[
         addresses = list(dict.fromkeys(str(info[4][0]) for info in infos))
     if not addresses:
         raise OSError("the host name did not resolve")
-    if not allow_private:
-        for address in addresses:
-            ip = _literal_ip(address.split("%", 1)[0])
-            if ip is None or is_blocked(ip):
-                raise BlockedAddress("the host resolves to an internal address")
+    for address in addresses:
+        ip = _literal_ip(address.split("%", 1)[0])
+        if ip is None:
+            raise BlockedAddress("the host resolves to something that is not an address")
+        if is_metadata(ip):
+            raise BlockedAddress("the host resolves to a cloud-metadata address")
+        if not allow_private and is_blocked(ip):
+            raise BlockedAddress("the host resolves to an internal address")
     return addresses

@@ -9,7 +9,7 @@ surface per workflow. (gRPC was removed in 2.0.)
 |---|---|
 | `<trigger.http.path>` | The workflow's own route: the end's `status`/`body`, or `202` + run descriptor |
 | `POST /api/workflows/{name}/runs` `{ input }` | Start any workflow by name (`?wait=false` returns `202` immediately). For a workflow with `http.upload`, send `multipart/form-data` instead: one part per input |
-| `GET /api/runs` | Recent runs (`?workflow=`, `?status=`, `?limit=`) |
+| `GET /api/runs` | Recent runs (`?workflow=`, `?status=`, `?limit=`): the caller's own, or every run of the tenant with `runs:read` |
 | `GET /api/runs/{id}` | Status, current agent, end, output, error, tokens, pending approval |
 | `GET /api/runs/{id}/events` | **SSE**: journal replay from `?from_seq=`, then live; `?follow=false` stops after the replay |
 | `GET /api/runs/{id}/export` | The run's journal as a replayable fixture |
@@ -18,10 +18,11 @@ surface per workflow. (gRPC was removed in 2.0.)
 | `GET /api/approvals` | Open approvals the caller may decide |
 | `POST /api/approvals/{id}` | Decide: `{ values }` for a human form, `{ decision: approve\|edit\|reject, edited_args?, message? }` for a tool call |
 | `POST /api/runs/{id}/human/{agent_id}` | Submit a human agent's form (alias) |
-| `/models/{model}/…` | CRUD for models that opt in with `spec.api.crud: [list, read, create, update, delete]` |
+| `/models/{model}/…` | CRUD for models that opt in with `spec.api.crud: [list, read, create, update, delete]`. `PATCH` changes the fields the body names, `null` included (a field the body leaves out is untouched; `null` on a required field is `422`). A list is ordered by primary key. A write the database refuses is `409` (a duplicate, or a record that is referred to) or `422` (a required field is missing); the answer names the constraint, never the values |
 | `/auth/*`, `/admin/*` | Login; IAM administration and federation admin (the `iam` group), role membership (the `roles` group) and engine admin (`admin`), all three off in production unless you expose them |
 | `/api/artifacts` | Artifact list/upload (off in production unless you expose it) |
-| `/health` | Liveness and decision-model readiness |
+| `/health` | Liveness (`503` only if the worker's poll loop is gone or stuck) and decision-model readiness |
+| `/ready` | Readiness (`503` before the runtime has started, while the database does not answer, or while shutting down) |
 | `/openapi.json`, `/docs`, `/redoc` | OpenAPI generated from the contracts; off in production unless you turn it on |
 
 A run descriptor (`202` body, `GET /api/runs/{id}`):
@@ -32,6 +33,19 @@ A run descriptor (`202` body, `GET /api/runs/{id}`):
   "status_url": "/api/runs/…", "events_url": "/api/runs/…/events",
   "approval": { "approval_id": "…", "kind": "human", "title": "Refund 123", "form": { … }, "decide_url": "/api/approvals/…" } }
 ```
+
+A run no token started (a `public: true` trigger called anonymously) has no `status_url` or `events_url` in its `202`
+body: nobody could read what they point to. Keep the `run_id`; the operator can read the run with `iam:admin`.
+
+**Errors.** A run that fails answers `500` with `{ "run_id", "status", "error" }`. A caller with a token sees the whole
+`error` (`error_type`, `message`, `agent_id`), as the run's owner can read it from `GET /api/runs/{id}` anyway. An
+anonymous caller of a public trigger in production sees only `{ "error_type": … }`: a message can name tables, hosts and
+values. The text stays in the journal. `TUVL_EXPOSE_ERRORS=true` shows it to everyone, `false` hides it from an anonymous
+caller in dev mode as well; unset, dev mode shows it.
+
+**Body size.** A JSON request body over `TUVL_MAX_BODY_BYTES` (1 MiB; `0` turns the cap off) is `413`, by its
+`Content-Length` before it is read and by the bytes received when it is chunked. A `multipart/form-data` upload is bounded
+by the trigger's `upload` settings instead. A protected trigger answers `401` or `403` before its body is read.
 
 ### SSE events
 
@@ -131,7 +145,7 @@ spec:
 - An origin is `scheme://host[:port]` exactly as the browser sends it: no path, no trailing slash. `tuvl lint project` rejects anything else; the server leaves a bad entry out, so a mistake narrows access.
 - Nothing is allowed by default, in dev too: a web page you open could otherwise call your dev server. Add `http://localhost:5173` yourself if you want to skip the proxy.
 - `*` allows every website; the API still needs a token, but `tuvl lint project` warns and the server logs a warning. Prefer a list.
-- Allowed: methods `GET POST PUT PATCH DELETE`, request headers `Authorization`, `Content-Type`, `Accept`, `Last-Event-ID`. Credentials mode is off: tokens travel in the `Authorization` header, never in cookies. The response header `X-Tuvl-Run-Id` is exposed, because `@tuvl/client` reads it.
+- Allowed: methods `GET POST PUT PATCH DELETE`, request headers `Authorization`, `Content-Type`, `Accept`, `Last-Event-ID`. Credentials mode is off: tokens travel in the `Authorization` header, never in cookies. The response headers `X-Tuvl-Run-Id` and `Retry-After` are exposed, because `@tuvl/client` reads them (the second is how long a throttled sign-in must wait).
 - It is not a login. CORS only decides which pages the browser lets read a response; scopes and groups still decide who may do what.
 - The setting is read at boot: restart after changing it. The IP allowlist (`TUVL_ALLOWED_HOSTS`) is a separate gate on the client's address.
 

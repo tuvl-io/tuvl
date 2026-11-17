@@ -257,7 +257,8 @@ async def test_slow_runs_answer_202_then_finish(
     resp = await client.post("/t/slow")
     assert resp.status_code == 202
     body = resp.json()
-    assert body["status"] == "running" and body["status_url"] == f"/api/runs/{body['run_id']}"
+    assert body["status"] == "running" and body["run_id"] == resp.headers["x-tuvl-run-id"]
+    assert "status_url" not in body  # nobody started this run with a token: nothing to point at
     for _ in range(40):
         await asyncio.sleep(0.05)
         if (await host.get(uuid.UUID(body["run_id"]))).status == "completed":
@@ -271,10 +272,12 @@ async def test_slow_runs_answer_202_then_finish(
 async def test_unhandled_errors_are_500_with_the_run_error(client: httpx.AsyncClient) -> None:
     resp = await client.post("/t/broken")
     assert resp.status_code == 500
-    assert (
-        resp.json()["error"]["error_type"] == "code_exception"
-        and "kaboom" in resp.json()["error"]["message"]
-    )
+    assert resp.json()["error"] == {
+        "error_type": "code_exception"
+    }  # an anonymous caller: the kind only
+    run = await client.get(f"/api/runs/{resp.headers['x-tuvl-run-id']}", headers=ADMIN)
+    assert run.json()["error"]["error_type"] == "code_exception"
+    assert "kaboom" in run.json()["error"]["message"]
 
 
 async def test_generic_start_without_waiting(client: httpx.AsyncClient, host: RuntimeHost) -> None:
@@ -304,13 +307,29 @@ async def test_run_visibility(client: httpx.AsyncClient) -> None:
     ).status_code == 200
     mine = (await client.get("/api/runs", headers=token("alice"))).json()
     assert run_id in {r["run_id"] for r in mine}
+    stranger = token("eve", ["greet:run"])  # not the owner, no runs:read
     assert run_id not in {
-        r["run_id"] for r in (await client.get("/api/runs", headers=MANAGER)).json()
+        r["run_id"] for r in (await client.get("/api/runs", headers=stranger)).json()
     }
+    assert (await client.get(f"/api/runs/{run_id}", headers=stranger)).status_code == 404
     assert (
-        await client.get(f"/api/runs/{run_id}", headers=MANAGER)
-    ).status_code == 404  # not theirs
+        await client.get(f"/api/runs/{run_id}/events?follow=false", headers=stranger)
+    ).status_code == 404
     assert (await client.get(f"/api/runs/{run_id}", headers=ADMIN)).status_code == 200
+
+
+async def test_runs_read_lets_a_token_read_and_list_any_run(client: httpx.AsyncClient) -> None:
+    """A webhook receiver, a dashboard or a manager holding `runs:read` can pull a run it did not start."""
+    run_id = (await client.post("/t/greet", json={"name": "x"}, headers=ALICE)).headers[
+        "x-tuvl-run-id"
+    ]
+    assert (await client.get(f"/api/runs/{run_id}", headers=MANAGER)).status_code == 200
+    assert (
+        await client.get(f"/api/runs/{run_id}/events?follow=false", headers=MANAGER)
+    ).status_code == 200
+    assert run_id in {r["run_id"] for r in (await client.get("/api/runs", headers=MANAGER)).json()}
+    # reading is all it grants: no control over the run
+    assert (await client.post(f"/api/runs/{run_id}/pause", headers=MANAGER)).status_code == 403
 
 
 def _parse_sse(text: str) -> list[dict[str, Any]]:
@@ -495,6 +514,16 @@ async def test_a_reset_tells_the_client_to_drop_the_draft(
     assert names == [("token_delta", "bad"), ("token_reset", None), ("token_delta", "good")]
 
 
+async def _draft_so_far(host: RuntimeHost, run_id: str) -> str:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from tuvl.runtime import deltas
+
+    async with AsyncSession(host.engine) as s:
+        text, _ = await deltas.draft(s, uuid.UUID(run_id), "streamer")
+    return text
+
+
 async def test_a_client_that_joins_mid_agent_gets_the_draft_so_far(
     client: httpx.AsyncClient, host: RuntimeHost
 ) -> None:
@@ -503,7 +532,11 @@ async def test_a_client_that_joins_mid_agent_gets_the_draft_so_far(
         "run_id"
     ]
     worker = asyncio.create_task(drain(host))
-    await asyncio.sleep(0.6)  # "Hel" is written and the agent is still running
+    # join once "Hel" is written, however slowly this machine starts the run
+    async with asyncio.timeout(10):
+        while not (written := await _draft_so_far(host, run_id)):
+            await asyncio.sleep(0.02)
+    assert written == "Hel"  # and the agent is still in its one-second nap
     async with asyncio.timeout(15):
         joined = await client.get(f"/api/runs/{run_id}/events?drafts=true", headers=ADMIN)
     await worker
@@ -603,9 +636,13 @@ async def test_export_is_a_replayable_journal(client: httpx.AsyncClient) -> None
     run_id = (await client.post("/t/greet", json={"name": "ada"}, headers=ALICE)).headers[
         "x-tuvl-run-id"
     ]
+    stranger = token("eve", ["greet:run"])
+    assert (
+        await client.get(f"/api/runs/{run_id}/export", headers=stranger)
+    ).status_code == 404  # not theirs, and no runs:read
     assert (
         await client.get(f"/api/runs/{run_id}/export", headers=MANAGER)
-    ).status_code == 404  # not theirs
+    ).status_code == 200  # runs:read reads any run
     exported = (await client.get(f"/api/runs/{run_id}/export", headers=ALICE)).json()
     assert exported["format"] == "tuvl.journal/v1" and exported["run"]["workflow"] == "greet"
     assert [c["agent_id"] for c in exported["checkpoints"]] == ["greet"]
@@ -613,15 +650,12 @@ async def test_export_is_a_replayable_journal(client: httpx.AsyncClient) -> None
 
 
 async def test_list_runs_is_scoped_to_the_caller(client: httpx.AsyncClient) -> None:
-    mine = (await client.post("/t/greet", json={"name": "ada"}, headers=ALICE)).headers[
+    own = token("alice", ["greet:run"])  # no runs:read: only what alice started
+    mine = (await client.post("/t/greet", json={"name": "ada"}, headers=own)).headers[
         "x-tuvl-run-id"
     ]
-    (
-        await client.post(
-            "/t/greet", json={"name": "bob"}, headers=token("bob", ["greet:run", "runs:read"])
-        )
-    )
-    listed = (await client.get("/api/runs", headers=ALICE)).json()
+    (await client.post("/t/greet", json={"name": "bob"}, headers=token("bob", ["greet:run"])))
+    listed = (await client.get("/api/runs", headers=own)).json()
     assert [r["run_id"] for r in listed] == [mine]
     everyone = (
         await client.get("/api/runs", params={"workflow": "greet", "limit": 5}, headers=ADMIN)

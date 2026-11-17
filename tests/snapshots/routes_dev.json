@@ -84,6 +84,7 @@
  "GET /insight": "insight_ui_missing",
  "GET /insight/": "insight_ui_missing",
  "GET /openapi.json": "openapi",
+ "GET /ready": "ready",
  "GET /redoc": "redoc_html",
  "GET /registry": "registry",
  "PATCH /admin/models/{name}/{version}/toggle": "admin_toggle_model",

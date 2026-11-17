@@ -1,3 +1,4 @@
+import asyncio
 import os
 from collections.abc import AsyncIterator
 from contextlib import AsyncExitStack, asynccontextmanager
@@ -13,11 +14,14 @@ from tuvl.core.api.artifacts_router import router as artifacts_router
 from tuvl.core.api.crud_router import build_crud_routers
 from tuvl.core.api.system_router import require_dev_mode
 from tuvl.core.api.system_router import router as system_router
+from tuvl.core.auth.federation import admin_router as federation_admin_router
+from tuvl.core.auth.federation import router as federation_router
 from tuvl.core.auth.roles_router import roles_router
 from tuvl.core.auth.router import iam_router
 from tuvl.core.auth.router import router as auth_router
+from tuvl.core.body_limit import BodyLimitMiddleware
 from tuvl.core.bootstrap import run_pre_flight
-from tuvl.core.config import settings
+from tuvl.core.config import KNOWN_ENVS, settings
 from tuvl.core.config_loader import load_all_configs
 from tuvl.core.cors import install_cors
 from tuvl.core.datasources.loader import DATASOURCE_REGISTRY
@@ -37,7 +41,7 @@ if settings.tuvl_dev_mode:
     from tuvl.core.dev.extensions import mount_dev_extensions
     from tuvl.core.dev.middleware import DevMiddleware
 
-if not settings.tuvl_dev_mode and settings.tuvl_allowed_hosts:
+if settings.tuvl_allowed_hosts:
     from tuvl.core.access_control import AllowedHostsMiddleware
 
 
@@ -80,6 +84,18 @@ async def _start_runtime(app: FastAPI) -> None:
 
         tools = await mount_mcp(app, host, _RUNTIME_STACK)
     host.start()
+    try:
+        for workflow, error_type, count in await host.stale_runs():
+            logger.warning(
+                "runtime.runs.will_fail",
+                workflow=workflow,
+                runs=count,
+                error_type=error_type,
+                hint="unfinished runs started on another version of this workflow fail when a worker "
+                "claims them; see Deploying a changed workflow in the runtime docs",
+            )
+    except Exception:
+        logger.warning("runtime.stale_runs_check_failed", exc_info=True)
     for name, reasons in host.unavailable().items():
         logger.error("runtime.workflow.unavailable", workflow=name, reasons=reasons)
     logger.info(
@@ -104,6 +120,29 @@ async def _stop_runtime() -> None:
         set_host(None)
 
 
+async def _database_unreachable(exc: PostgresStartupError) -> None:
+    """Startup cannot go on without PostgreSQL.
+
+    In development ``tuvl dev``'s reloader is our parent and would sit idle waiting for file changes, so
+    it is stopped and this process exits. In production the parent is a supervisor or a test runner that
+    must not be killed: the lifespan raises, the server exits non-zero and the orchestrator restarts it.
+    """
+    logger.error(
+        "Startup aborted — could not connect to PostgreSQL. "
+        "Fix the connection issue and restart tuvl.",
+        error=str(exc),
+    )
+    await close_db()
+    if not settings.tuvl_dev_mode:
+        raise exc
+    import signal as _signal
+
+    parent = os.getppid()
+    if parent and parent != 1:
+        os.kill(parent, _signal.SIGTERM)
+    os._exit(1)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     logger.info("tuvl starting up")
@@ -113,6 +152,19 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         project=settings.project_dir,
         db=f"{settings.postgres_host}:{settings.postgres_port}/{settings.postgres_db}",
     )
+    if not settings.env_is_known:
+        logger.warning(
+            "settings.unknown_env",
+            value=settings.tuvl_env,
+            known=list(KNOWN_ENVS),
+            consequence="treated as not production: development documents load and boot checks only warn",
+        )
+    if settings.tuvl_env.strip().lower() == "production" and not settings.tuvl_token_ttl_seconds:
+        logger.error(
+            "auth.tokens.no_expiry",
+            detail="TUVL_TOKEN_TTL_SECONDS=0: access tokens never expire, so a stolen one works until "
+            "its user's sessions are ended",
+        )
     init_telemetry()
     reconfigure_third_party_logging()
 
@@ -124,7 +176,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     get_key_manager()
 
     logger.info("Loading all configurations")
-    load_all_configs(include_dev_documents=settings.tuvl_env != "production")
+    load_all_configs(include_dev_documents=not settings.is_production)
 
     # Integrity-pinned external artifact sources (config.yaml artifact_sources).
     from tuvl.core.artifacts.external import load_external_artifacts
@@ -142,12 +194,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Fail fast on models the workflows use but the environment can't serve.
     from tuvl.core.models.requirements import check_at_boot
 
-    check_at_boot(production=settings.tuvl_env == "production")
+    check_at_boot(production=settings.is_production)
 
     # ... and on the variables the project's EnvConfig declares required.
     from tuvl.core import envconfig
 
-    envconfig.check_at_boot(production=settings.tuvl_env == "production")
+    envconfig.check_at_boot(production=settings.is_production)
 
     logger.info("Running deployment mode pre-flight check")
     await run_pre_flight()
@@ -165,20 +217,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     try:
         await init_db()
-    except PostgresStartupError:
-        logger.error(
-            "Startup aborted — could not connect to PostgreSQL. "
-            "Fix the connection issue and restart tuvl."
-        )
-        await close_db()
-        # SIGTERM the reloader/supervisor (our parent) so it exits cleanly
-        # rather than hanging idle waiting for file-change events.
-        import signal as _signal
+    except PostgresStartupError as exc:
+        await _database_unreachable(exc)
 
-        parent = os.getppid()
-        if parent and parent != 1:
-            os.kill(parent, _signal.SIGTERM)
-        os._exit(1)
+    from tuvl.core.datasources.rls import warn_if_role_bypasses_rls
+
+    await warn_if_role_bypasses_rls()
 
     logger.info("Syncing model versions to DB")
     from tuvl.core.models.model_version import sync_model_versions
@@ -222,12 +266,18 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     logger.info("tuvl is ready")
     yield
 
+    app.state.draining = True  # /ready answers 503 from here on, so the load balancer stops sending
     logger.info("tuvl shutting down")
     await _stop_runtime()
-    for _task_attr in ("workflow_scheduler", "webhook_dispatcher"):
-        _bg = getattr(app.state, _task_attr, None)
-        if _bg is not None and not _bg.done():
+    _background = [
+        _bg
+        for _task_attr in ("workflow_scheduler", "webhook_dispatcher")
+        if (_bg := getattr(app.state, _task_attr, None)) is not None
+    ]
+    for _bg in _background:
+        if not _bg.done():
             _bg.cancel()
+    await _asyncio.gather(*_background, return_exceptions=True)
 
     from tuvl import llm as _llm
     from tuvl.core.infra.http_client import aclose_all as _aclose_http_clients
@@ -281,7 +331,9 @@ if not settings.tuvl_dev_mode and settings.tuvl_telemetry_enabled:
 for _group, _router in (
     ("system", system_router),
     ("auth", auth_router),
+    ("auth", federation_router),
     ("iam", iam_router),
+    ("iam", federation_admin_router),
     ("roles", roles_router),
     ("admin", admin_router),
     ("artifacts", artifacts_router),
@@ -292,9 +344,16 @@ for _group, _router in (
 logger.info("API groups mounted", groups=sorted(_exposed), docs=_docs_mode)
 
 
-if not settings.tuvl_dev_mode and settings.tuvl_allowed_hosts:
+if settings.tuvl_allowed_hosts:
     app.add_middleware(AllowedHostsMiddleware)
-    logger.info("IP allowlist active", allowed_hosts=settings.tuvl_allowed_hosts)
+    logger.info(
+        "IP allowlist active",
+        allowed_hosts=settings.tuvl_allowed_hosts,
+        loopback_always_allowed=True,
+    )
+
+if settings.tuvl_max_body_bytes > 0:
+    app.add_middleware(BodyLimitMiddleware, limit=settings.tuvl_max_body_bytes)
 
 install_cors(app)  # last: outermost, so preflights and refusals carry the CORS headers
 
@@ -317,12 +376,26 @@ async def root() -> RedirectResponse | dict[str, str]:
     return {"status": "ok", "service": settings.app_name}
 
 
-@app.get("/health", tags=["meta"], summary="Liveness probe", include_in_schema=_system_in_docs)
-async def health() -> dict[str, Any]:
+@app.get(
+    "/health",
+    tags=["meta"],
+    summary="Liveness probe",
+    include_in_schema=_system_in_docs,
+    response_model=None,
+)
+async def health() -> JSONResponse:
+    """Whether this process should be restarted: 503 only when the worker's poll loop is gone or stuck.
+    A database outage does not fail it (that is ``/ready``): restarting would not help."""
     from tuvl.core.models.requirements import MODEL_STATUS
+    from tuvl.runtime import host as host_module
     from tuvl.runtime.decision import health as decision_health
 
     report: dict[str, Any] = {"status": "healthy", "version": pkg_version("tuvl")}
+    host = host_module._HOST
+    if host is not None:
+        state = host.worker_state(settings.tuvl_worker_stall_seconds)
+        if state in ("stopped", "stalled"):
+            return JSONResponse({"status": "unhealthy", "worker": state}, status_code=503)
     models = decision_health()
     if models:
         report["decision_models"] = models
@@ -332,7 +405,42 @@ async def health() -> dict[str, Any]:
             name: (info if settings.tuvl_dev_mode else {"configured": info["configured"]})
             for name, info in MODEL_STATUS.items()
         }
-    return report
+    return JSONResponse(report)
+
+
+@app.get(
+    "/ready",
+    tags=["meta"],
+    summary="Readiness probe",
+    include_in_schema=_system_in_docs,
+    response_model=None,
+)
+async def ready() -> JSONResponse:
+    """Whether this process can serve requests now: the runtime is up, the primary database answers
+    within two seconds, and the process is not shutting down."""
+    from sqlalchemy import text
+
+    from tuvl.core.datasources import postgres
+    from tuvl.runtime import host as host_module
+
+    reasons: list[str] = []
+    if getattr(app.state, "draining", False):
+        reasons.append("shutting down")
+    engine = postgres._engines_rw.get(postgres.primary_ds_name())
+    if engine is not None:
+        if host_module._HOST is None:
+            reasons.append("the runtime has not started")
+        try:
+            async with asyncio.timeout(2.0), engine.connect() as conn:
+                await conn.execute(text("SELECT 1"))
+        except Exception:
+            reasons.append("the database does not answer")
+    if reasons:
+        body: dict[str, Any] = {"status": "unavailable"}
+        if settings.tuvl_dev_mode:
+            body["reasons"] = reasons
+        return JSONResponse(body, status_code=503)
+    return JSONResponse({"status": "ready"})
 
 
 @app.get(

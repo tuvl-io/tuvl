@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import time
 import uuid
+from typing import Any
 
 import pytest
 import sqlalchemy as sa
@@ -329,3 +331,153 @@ async def test_drain_with_no_runs_returns_at_once(pg_engine: AsyncEngine) -> Non
     async def never(run_id: uuid.UUID, lease: Lease) -> None: ...
 
     await Worker(pg_engine, never, owner="w").drain(5)
+
+
+# ── a worker survives what goes wrong around it ──────────────────────────────
+
+
+async def test_a_failing_claim_does_not_stop_the_worker(
+    pg_engine: AsyncEngine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (run_id,) = await enqueue(pg_engine)
+    real, calls = queue.claim, {"n": 0}
+
+    async def flaky(*args: Any, **kwargs: Any) -> list[uuid.UUID]:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise OSError("connection reset")
+        return await real(*args, **kwargs)
+
+    monkeypatch.setattr(queue, "claim", flaky)
+    done = asyncio.Event()
+
+    async def executor(run_id: uuid.UUID, lease: Lease) -> None:
+        async with AsyncSession(pg_engine) as s:
+            await queue.release(s, run_id, lease.owner, "completed")
+            await s.commit()
+        done.set()
+
+    worker = Worker(pg_engine, executor, owner="w1", poll_seconds=0.05)
+    loop = asyncio.create_task(worker.run_forever())
+    try:
+        await asyncio.wait_for(done.wait(), 5)
+    finally:
+        await worker.stop()
+        await asyncio.wait_for(loop, 5)
+    assert calls["n"] >= 2
+    assert (await get(pg_engine, run_id)).status == "completed"
+
+
+async def test_a_failing_sweep_does_not_stop_the_claim(
+    engine: AsyncEngine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    await enqueue(engine)
+    ran: list[str] = []
+
+    async def bad(session: AsyncSession) -> int:
+        raise RuntimeError("sweep failed")
+
+    async def good(session: AsyncSession) -> int:
+        ran.append("good")
+        return 0
+
+    async def idle(run_id: uuid.UUID, lease: Lease) -> None: ...
+
+    monkeypatch.setattr(queue, "SWEEPS", [bad, good])
+    worker = Worker(engine, idle, owner="w1")
+    assert await worker.claim_some() == 1
+    assert ran == ["good"]
+    await worker.drain()
+
+
+async def test_a_failed_heartbeat_is_retried(
+    pg_engine: AsyncEngine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (run_id,) = await enqueue(pg_engine)
+    real, calls = queue.heartbeat, {"n": 0}
+
+    async def flaky(*args: Any, **kwargs: Any) -> bool:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise OSError("connection reset")
+        return await real(*args, **kwargs)
+
+    monkeypatch.setattr(queue, "heartbeat", flaky)
+    stolen: list[uuid.UUID] = []
+
+    async def slow(run_id: uuid.UUID, lease: Lease) -> None:
+        for _ in range(10):  # 2 s on a 1 s lease: only the retried heartbeat keeps the run ours
+            await asyncio.sleep(0.2)
+            async with AsyncSession(pg_engine) as s:
+                stolen.extend(await queue.claim(s, "thief", lease_seconds=1.0))
+                await s.commit()
+        assert not lease.lost.is_set()
+        async with AsyncSession(pg_engine) as s:
+            await queue.release(s, run_id, lease.owner, "completed")
+            await s.commit()
+
+    worker = Worker(pg_engine, slow, owner="w1", lease_seconds=1.0, heartbeat_seconds=0.3)
+    await worker.claim_some()
+    await worker.drain()
+    assert stolen == [] and calls["n"] >= 2
+    assert (await get(pg_engine, run_id)).status == "completed"
+
+
+async def test_a_lost_lease_cancels_the_running_step(
+    pg_engine: AsyncEngine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (run_id,) = await enqueue(pg_engine)
+    cancelled = asyncio.Event()
+
+    async def forever(run_id: uuid.UUID, lease: Lease) -> None:
+        try:
+            await asyncio.sleep(30)
+        except asyncio.CancelledError:
+            cancelled.set()
+            raise
+
+    async def gone(*args: Any, **kwargs: Any) -> bool:
+        return False  # the update matched no row: another worker owns the run
+
+    monkeypatch.setattr(queue, "heartbeat", gone)
+    worker = Worker(pg_engine, forever, owner="w1", lease_seconds=1.0, heartbeat_seconds=0.1)
+    await worker.claim_some()
+    await asyncio.wait_for(cancelled.wait(), 3)
+    await worker.drain(2)
+    run = await get(pg_engine, run_id)
+    assert run.status == "running" and run.error is None  # the new owner decides, not this worker
+
+
+async def test_an_unreachable_database_for_a_whole_lease_ends_the_step(
+    pg_engine: AsyncEngine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    await enqueue(pg_engine)
+    cancelled = asyncio.Event()
+
+    async def forever(run_id: uuid.UUID, lease: Lease) -> None:
+        try:
+            await asyncio.sleep(30)
+        except asyncio.CancelledError:
+            cancelled.set()
+            raise
+
+    async def down(*args: Any, **kwargs: Any) -> bool:
+        raise OSError("database unreachable")
+
+    monkeypatch.setattr(queue, "heartbeat", down)
+    worker = Worker(pg_engine, forever, owner="w1", lease_seconds=0.6, heartbeat_seconds=0.1)
+    await worker.claim_some()
+    await asyncio.wait_for(cancelled.wait(), 3)  # after lease_seconds with no good beat
+    await worker.drain(2)
+
+
+async def test_the_worker_reports_its_polling(pg_engine: AsyncEngine) -> None:
+    async def idle(run_id: uuid.UUID, lease: Lease) -> None: ...
+
+    worker = Worker(pg_engine, idle, owner="w1", poll_seconds=0.05)
+    assert worker.last_poll is None
+    loop = asyncio.create_task(worker.run_forever())
+    await asyncio.sleep(0.4)
+    assert worker.last_poll is not None and time.monotonic() - worker.last_poll < 1
+    await worker.stop()
+    await asyncio.wait_for(loop, 5)

@@ -68,6 +68,16 @@ ENGINE_CATALOG: dict[str, EnvVar] = dict(
             required=True,
         ),
         _v(
+            "TUVL_SIGNING_KEY_PREVIOUS",
+            "Retired Ed25519 private key(s), 64 hex characters each, comma-separated: they sign nothing but "
+            "still verify tokens issued before a rotation. Remove them once the token lifetime has passed.",
+            secret=True,
+        ),
+        _v(
+            "TUVL_LLM_MAX_CONNECTIONS",
+            "Most simultaneous connections the model client opens; calls past it wait. Unset: no cap.",
+        ),
+        _v(
             "TUVL_TOKEN_TTL_SECONDS",
             "Access-token lifetime in seconds; 0 disables expiry (not recommended).",
             default="86400",

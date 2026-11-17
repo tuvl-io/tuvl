@@ -37,8 +37,7 @@ def _claims(**over: object) -> dict:
 
 @pytest.fixture(autouse=True)
 def _clean_store():
-    token_blacklist._memory.clear()
-    token_blacklist._sessions.clear()
+    token_blacklist.reset_cache()
 
 
 def test_a_minted_token_is_an_eddsa_jwt_with_the_key_id() -> None:

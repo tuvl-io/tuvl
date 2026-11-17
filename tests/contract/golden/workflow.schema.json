@@ -815,6 +815,12 @@
     "HttpTool": {
       "additionalProperties": false,
       "properties": {
+        "allow_private": {
+          "default": false,
+          "description": "Let a host that arrives through {{ }} be a loopback, private or link-local address. A host written in the url is trusted and needs no flag; the cloud-metadata address is refused either way.",
+          "title": "Allow Private",
+          "type": "boolean"
+        },
         "body": {
           "$ref": "#/$defs/JsonValue",
           "default": null
@@ -1675,6 +1681,16 @@
             }
           ],
           "default": null
+        },
+        "tool_choice": {
+          "default": "auto",
+          "description": "'required' makes every model turn call a tool (one of the loop's tools or finish), for models that tend to answer in text. A provider that does not accept it fails the agent with llm_error.",
+          "enum": [
+            "auto",
+            "required"
+          ],
+          "title": "Tool Choice",
+          "type": "string"
         },
         "tools": {
           "items": {

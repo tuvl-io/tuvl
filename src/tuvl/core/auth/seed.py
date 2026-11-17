@@ -28,13 +28,12 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from tuvl.core.auth import iam_service
 from tuvl.core.auth.crypto import aget_password_hash
 from tuvl.core.auth.models import IAMRole, IAMRoleScope, IAMUser, IAMUserRole
+from tuvl.core.auth.schemas import SCOPE_NAME_RE
 from tuvl.core.logger import logger
 
 ROLE_SEED_KIND = "RoleSeed"
 SEEDED_KEY = "iam_seeded"
-_ADVISORY_KEY = 7_411_902_017  # arbitrary; shared by every replica of one database
 _ROLE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:\-]*$")
-_SCOPE = re.compile(r"^[^\s]+$")
 
 
 @dataclass(frozen=True)
@@ -79,9 +78,12 @@ def parse_role_seed(data: dict[str, Any]) -> list[RoleSeedEntry]:
             raise ValueError(f"{where}.description must be a string")
         scopes = raw.get("scopes") or []
         if not isinstance(scopes, list) or not all(
-            isinstance(s, str) and _SCOPE.match(s) for s in scopes
+            isinstance(s, str) and SCOPE_NAME_RE.fullmatch(s) for s in scopes
         ):
-            raise ValueError(f"{where}.scopes must be a list of scope strings such as `runs:read`")
+            raise ValueError(
+                f"{where}.scopes must be a list of scope strings such as `runs:read` "
+                "(letters, digits and _ : . - / only)"
+            )
         entries.append(RoleSeedEntry(name, description, tuple(dict.fromkeys(scopes))))
     return entries
 
@@ -151,7 +153,9 @@ async def seed_iam(
     """
     connection = await session.connection()
     if connection.dialect.name == "postgresql":
-        await connection.execute(sa.text("SELECT pg_advisory_xact_lock(:k)"), {"k": _ADVISORY_KEY})
+        await connection.execute(
+            sa.text("SELECT pg_advisory_xact_lock(:k)"), {"k": iam_service.SEED_ADVISORY_KEY}
+        )
 
     if await _marker_exists(session):
         return SeedResult("already_seeded")
@@ -173,6 +177,15 @@ async def seed_iam(
         await _write_marker(session)
         return SeedResult("populated")
 
+    if has_admin_input:
+        assert admin_password
+        try:
+            iam_service.validate_password(admin_password)
+        except iam_service.ValidationError as exc:
+            raise ValueError(
+                f"TUVL_BOOTSTRAP_ADMIN_PASSWORD (or its _FILE) cannot be used: {exc}"
+            ) from None
+
     for entry in roles:
         role = IAMRole(name=entry.name, description=entry.description)
         session.add(role)
@@ -185,15 +198,15 @@ async def seed_iam(
     if has_admin_input:
         assert admin_email and admin_password
         role = await iam_service._ensure_superadmin_role(session, [iam_service.ADMIN_SCOPE])
+        created_admin = iam_service.normalize_email(admin_email)
         user = IAMUser(
-            email=admin_email,
+            email=created_admin,
             hashed_password=await aget_password_hash(admin_password),
             is_active=True,
         )
         session.add(user)
         await session.flush()
         session.add(IAMUserRole(user_id=user.id, role_id=role.id))
-        created_admin = admin_email
     elif not any(iam_service.ADMIN_SCOPE in e.scopes for e in roles):
         notes.append(
             "no administrator exists: set TUVL_BOOTSTRAP_ADMIN_EMAIL and TUVL_BOOTSTRAP_ADMIN_PASSWORD, "

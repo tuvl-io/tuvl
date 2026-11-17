@@ -15,7 +15,10 @@ run, because run state lives in Postgres, not in worker memory.
 | `run_deltas` | The **live draft** of an agent's answer while it is still being written: text pieces and resets, written in batches by the worker and read by the event stream. Not part of the journal. Rows stay for a minute after the run ends (a client may still be reading the last pieces) and a sweep then removes them; a run that never finished loses them after a day |
 
 On boot tuvl builds the indexes on the vector store, and `run_deltas (created_at)` for the draft sweep, including the partial indexes agent memory
-uses (by `memory_key` and by `step`). They are built with
+uses (by `memory_key` and by `step`), and four on `runs`: the queued runs by age (`WHERE status = 'queued'`, so a claim reads
+the head of the backlog instead of sorting it), a caller's runs and all runs by newest first (`GET /api/runs`), and a unique one on
+`(workflow, trigger) WHERE trigger LIKE 'schedule:%'`, which makes a scheduled fire one run for good (a process that loses the race
+is told it was already fired). They are built with
 `CREATE INDEX CONCURRENTLY IF NOT EXISTS`, so upgrading a deployment with a large table does not block writes. One process builds them (an
 advisory lock; the others skip) and an index an interrupted build left invalid is rebuilt.
 
@@ -45,9 +48,41 @@ Statuses: `queued`, `running`, `waiting_human`, `waiting_approval`, `paused`, `c
 
 - `all` serves HTTP and executes the queue (default);
 - `api` serves HTTP and only executes synchronous requests inline;
-- `worker` executes the queue (and serves `/health`).
+- `worker` executes the queue (and serves `/health` and `/ready`).
 
 `--concurrency` bounds runs per process.
+
+### Health and readiness
+
+- `GET /health` is the **liveness** probe. It answers `503` only when the worker's poll loop is gone, or has made no
+  poll attempt for `TUVL_WORKER_STALL_SECONDS` (300): a restart helps then. A database outage does not fail it.
+- `GET /ready` is the **readiness** probe. It answers `503` before the runtime has started, while the primary database
+  does not answer within two seconds, and once shutdown has begun, so the load balancer stops sending traffic first.
+  In production the body says only `ready` or `unavailable`. The Helm chart's `readinessProbe` uses it and the
+  `livenessProbe` uses `/health`.
+
+The housekeeping sweeps (expiring approvals, draft and memory retention) run every 15 seconds, not before every claim.
+A request or a parent run waiting for another run is woken by the commit that ends it when that happens in the same process,
+and otherwise asks again after 20 ms, 40 ms, 80 ms ... up to once a second (it used to open a session every 20 to 250 ms).
+A claim takes a crashed worker's runs (expired leases) first, then the oldest queued ones.
+
+**Starting several replicas.** The schema is created and altered under one advisory lock, taken by trying it a few
+times a second rather than waiting on it (a waiting session would hold a snapshot that another process's
+`CREATE INDEX CONCURRENTLY` needs): replicas that boot together on an empty database find the tables made by the
+first, and an up-to-date database is not altered at all (a column or index is added only after the catalog shows it
+missing, so no replica takes the brief exclusive lock of an `ALTER TABLE` on every boot). A process that cannot get
+the lock within two minutes stops with a message instead of hanging. A datasource without `ro_host` has **one**
+connection pool, not a read and a write pool to the same server; with `ro_host` the reads use their own. If the
+database cannot be reached at startup, in production the process exits with the error (the supervisor restarts it);
+only `tuvl dev` also stops its reloader. In production, two workflows (or a workflow and a route) claiming one
+`method path` stop the boot with the names; in development the later one is skipped and logged.
+`TUVL_LLM_MAX_CONNECTIONS` (unset: no cap) bounds the connections the model client opens; calls past it wait.
+
+A failing claim, sweep or heartbeat is logged and retried; it never ends the poll loop or the heartbeat for good. A
+sweep that fails is skipped and the others still run. A heartbeat that fails is retried sooner than the lease runs
+out. When the heartbeat finds that the run is no longer this worker's, or a whole lease passes without a good beat,
+the running step is **cancelled** (`runtime.lease.cancelled`): carrying on would repeat its outside effects next to
+the worker that owns the run now.
 
 ## Crash recovery
 
@@ -75,19 +110,36 @@ of every **completed** agent that declares one, in **reverse completion order**.
 receives the original agent's inputs and outputs. A failing compensator makes the run `failed`
 (`compensation_failed`); the rest still run. Success ends as `compensated`.
 
+A compensating run holds its lease like any other: its heartbeat goes on (the status is `compensating`) and a
+compensator that takes longer than the lease does not let another worker take the run. When a worker is lost half
+way, another claims the run, still `compensating`, and **finishes the compensation**: a compensator that completed
+is not run again, the agent that failed is not tried again, and the run ends the way it was going to (the error is
+recorded when compensation begins; an end that rolls back keeps its name). A compensator that was running when the
+worker was lost runs again, so give it an idempotency key like any step.
+
 ## Journal events
 
 Every event: `{ run_id, seq, ts, type, agent_id, engine, tokens, latency_ms, payload }`.
 
 `run_queued` · `run_started` · `agent_started` · `agent_completed` · `signal` · `llm_turn` ·
 `tool_call` · `tool_result` · `map_started` · `map_item` · `map_finished` · `parallel_started` · `parallel_branch` · `parallel_finished` ·
-`memory_recalled` · `memory_written` · `memory_compacted` · `decision` · `judge_verdict` · `approval_requested` ·
+`memory_recalled` · `memory_written` · `memory_compacted` · `decision` · `judge_verdict` · `supervisor` · `approval_requested` ·
 `approval_decided` · `paused` · `resumed` · `checkpoint` · `compensation_started` ·
 `compensation_completed` · `run_completed` · `run_failed` · `run_aborted`
 
 Read them with `GET /api/runs/{id}/events` (SSE: replay, then live), `tuvl follow run`, the Insight
 Runs page, or `RunHandle.events()` in `@tuvl/client`. Checkpoints keep real values (they are the
 resume state); secure fields are redacted on export.
+
+## Keeping the tables small
+
+Nothing removes a run, so `tuvl_system_runs` and the rows that belong to it (the journal, checkpoints, approvals, webhook
+deliveries and drafts) grow with use. `tuvl prune runs --older-than 30d [--status failed] [--dry-run] [--with-uploads]`
+removes the runs that **ended** (`completed`, `failed`, `aborted`, `compensated`) before the cutoff, in batches that each
+commit; a run that is queued, running, waiting or paused is never touched. The files a trigger stored from an upload are
+left alone unless `--with-uploads` names them for deletion (they may be the only copy); a run whose file cannot be
+deleted right now (the store is down) is kept for the next time, and a file that is already gone does not keep it.
+`TUVL_RUN_RETENTION_DAYS` (0, off) makes the worker's sweep do the database part by itself, 500 runs every 15 seconds.
 
 ## Replay and fixtures
 
@@ -103,6 +155,21 @@ with zero tokens, and `tuvl replay runs <fixture>` fails if the end or output di
 runner between agents and loop iterations, under the run's lock, so it works across workers. In dev
 mode, Insight breakpoints and step mode pause runs through the same mechanism.
 
+## Deploying a changed workflow
+
+A run records a hash of its workflow when it starts. After a deploy that changes that workflow, every run
+that is still **queued, paused or waiting for a person** fails with `workflow_changed` the next time a worker
+claims it (`workflow_not_found` when the workflow is gone), and compensation does not run: the run cannot be
+loaded. A synchronous request that finishes within its `sync_timeout` is not affected.
+
+At boot the runtime logs `runtime.runs.will_fail` for each workflow with such runs, with their number, so a
+deploy that would fail waiting approvals is visible before anyone is told. To avoid losing them:
+
+- let the waiting runs finish, or decide or abort them, before deploying the change;
+- or ship the change as a new workflow (a new name and trigger path) and leave the old one in place until its
+  runs have ended;
+- or accept it: the failed run keeps its journal and error, and the caller starts it again.
+
 ## Production server and shutdown
 
 `tuvl serve app` starts uvicorn and *replaces* the `tuvl` process with it, so in a
@@ -112,8 +179,10 @@ ones finish for `--graceful-timeout` seconds (20), then the runtime stops claimi
 lease expires and another worker resumes it from the last checkpoint. `terminationGracePeriodSeconds` in the
 chart (60) must exceed the sum, and a `preStop` pause lets the load balancer stop sending traffic first.
 
+`--allow-host` always lets loopback through, so a reverse proxy on the same host reaches the server whatever the list says unless its `X-Forwarded-For` is trusted: set `--forwarded-allow-ips` below.
+
 Behind an ingress, `--forwarded-allow-ips` (`forwardedAllowIps` in the chart) names the proxies whose
-`X-Forwarded-For` is trusted, so `--allow-host` and the logs see the real client. Leave it empty to trust
+`X-Forwarded-For` is trusted, so `--allow-host`, the logs and the per-address sign-in limit (`TUVL_LOGIN_IP_FAILURES`) see the real client. Leave it empty to trust
 only `127.0.0.1`; `*` trusts every sender and lets a client spoof its address. `--limit-max-requests`
 restarts a worker after that many requests. The `Server` response header is off.
 
@@ -150,10 +219,17 @@ run belongs to one tenant:
   tenant is refused (`MissingTenantContextError`) unless `TUVL_REQUIRE_TENANT_CONTEXT=false`.
 - **Workers execute a run under its tenant.** The tenant is bound while the run executes, so its
   `db` calls, logs, journal rows and child runs carry it, and the runtime engine sets
-  `app.current_tenant_id` for row-level security (`tuvl generate rls`).
+  `app.current_tenant_id` for row-level security (`tuvl generate rls`). Policies bind only a role that is neither a superuser nor `BYPASSRLS`: boot logs `rls.role_bypasses` as an error in multi-tenant mode when the engine's role is one, and `tuvl verify rls` fails.
 - **Callers reach only their own tenant's runs.** Reads, the event stream, export, pause/resume/abort,
   the run list and approvals are filtered by tenant, whatever scopes the caller holds, `iam:admin`
   and `runs:control` included. Another tenant's run answers `404`.
+- **What the database enforces, and what the application does.** The row-level-security policy that
+  `tuvl generate rls` writes covers your **model tables** and the system tables for the vector store and artifacts. The
+  **run tables** (`runs`, `run_events`, `run_checkpoints`, `approvals`, `webhook_deliveries`, `run_deltas`) have no
+  database policy: a tenant's runs are isolated by the checks above, in the application, because the worker's own
+  housekeeping (claiming, heartbeats, sweeps) binds no tenant and would need a policy of its own. A role that can read
+  those tables reads every tenant's runs, so give the application's database role only the access it needs and do not
+  share it with other tools.
 - **Scheduled workflows list their tenants.** A scheduled run has no request to take a tenant from:
 
   ```yaml

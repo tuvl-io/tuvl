@@ -1,47 +1,45 @@
-"""OAuth 2.0 CSRF state token store.
+"""What a provider sign-in keeps between its start and its end.
 
-Provides an abstraction that uses Redis (when a ``type: redis`` datasource is
-configured and reachable) or an in-process dict fallback.
+Two kinds of entry, both short-lived and single-use: a *state* (the CSRF token of an authorization-code
+sign-in, with its PKCE verifier) and a *device* handle (a device-flow login in progress).
 
-**Scaling requirement** — in multi-worker / multi-process deployments you
-*must* configure a Redis datasource so that OAuth state tokens minted by one
-worker are visible to the worker that handles the callback.  Without Redis,
-each worker maintains its own isolated state dict; callbacks routed to a
-different worker will always fail the CSRF check.
+Where they live follows the rule of the session store (``tuvl.core.auth.blacklist``): in Redis when a
+``type: redis`` datasource is deployed and reachable, otherwise in the ``tuvl_system_oauth_states`` table of
+the primary database. Either way every worker and replica sees what another one started, so a callback may
+land anywhere. Expired rows are removed whenever a new one is stored.
 
 Usage::
 
-    store = OAuthStateStore()
-
-    # In /auth/oauth/{provider}/start
-    state_token = await store.new_state("github")
-
-    # In /auth/oauth/{provider}/callback
-    if not await store.consume_state(state_token, "github"):
-        raise HTTPException(400, "Invalid or expired OAuth state.")
+    state = await oauth_state_store.new_state("github", {"verifier": v}, session=session)
+    payload = await oauth_state_store.consume_state(state, "github", session=session)  # dict, or None
 """
 
 from __future__ import annotations
 
+import datetime
 import json
 import secrets
-import time
-from typing import Any, ClassVar
+from typing import Any
+
+from sqlalchemy import delete
+from sqlmodel import select
+from sqlmodel.ext.asyncio.session import AsyncSession
+
+from tuvl.core.auth.models import IAMOAuthState
 
 _STATE_TTL: int = 600  # seconds (10 min)
 _REDIS_KEY_PREFIX = "tuvl:oauth_state:"
 _DEVICE_PREFIX = "tuvl:oauth_device:"
+_STATE, _DEVICE = "state", "device"
+_TABLE = IAMOAuthState.__table__  # type: ignore[attr-defined]
+
+
+def _now() -> datetime.datetime:
+    return datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
 
 
 class OAuthStateStore:
-    """Thread-safe (async) OAuth state store backed by Redis or in-process memory."""
-
-    # In-process fallback: state → (provider, expires_at_monotonic)
-    _memory: ClassVar[dict[str, tuple[str, float]]] = {}
-    # Device-flow sessions: handle → (provider, payload, expires_at_monotonic)
-    _devices: ClassVar[dict[str, tuple[str, dict[str, Any], float]]] = {}
-
-    # ── Internal helpers ──────────────────────────────────────────────────────
+    """Single-use sign-in state in Redis or Postgres."""
 
     @staticmethod
     def _use_redis() -> bool:
@@ -55,85 +53,158 @@ class OAuthStateStore:
 
         return get_redis_client()
 
-    # ── Public API ────────────────────────────────────────────────────────────
+    @staticmethod
+    def _need(session: AsyncSession | None) -> AsyncSession:
+        if session is None:
+            raise RuntimeError(
+                "Without a Redis datasource the sign-in state is kept in the database."
+            )
+        return session
 
-    async def new_state(self, provider: str) -> str:
-        """Generate and store a new CSRF state token for *provider*.
+    # ── Redis ────────────────────────────────────────────────────────────────
 
-        Returns the opaque state string that should be embedded in the
-        authorization redirect URL and later verified in the callback.
+    @staticmethod
+    def _decode(raw: Any) -> tuple[str, dict[str, Any]]:
+        """(provider, payload) of a stored value; a bare provider name is what 2.0 stored."""
+        text = raw.decode() if isinstance(raw, bytes) else str(raw)
+        try:
+            entry = json.loads(text)
+        except ValueError:
+            return text, {}
+        if isinstance(entry, dict) and "provider" in entry:
+            return str(entry["provider"]), dict(entry.get("payload") or {})
+        return text, {}
+
+    # ── Postgres ─────────────────────────────────────────────────────────────
+
+    async def _put(
+        self,
+        session: AsyncSession,
+        handle: str,
+        kind: str,
+        provider: str,
+        payload: dict[str, Any],
+        ttl: int,
+    ) -> None:
+        now = _now()
+        await session.exec(delete(_TABLE).where(_TABLE.c.expires_at <= now))
+        session.add(
+            IAMOAuthState(
+                handle=handle,
+                kind=kind,
+                provider=provider,
+                payload=payload,
+                expires_at=now + datetime.timedelta(seconds=ttl),
+            )
+        )
+        await session.commit()
+
+    # ── Public API ───────────────────────────────────────────────────────────
+
+    async def new_state(
+        self,
+        provider: str,
+        payload: dict[str, Any] | None = None,
+        *,
+        session: AsyncSession | None = None,
+    ) -> str:
+        """Store a new CSRF state for *provider* (with *payload*, such as the PKCE verifier) and return it.
+
+        The state goes in the authorization redirect and is checked, once, in the callback.
         """
         state = secrets.token_urlsafe(32)
-
+        body = dict(payload or {})
         if self._use_redis():
-            await self._redis().set(
-                f"{_REDIS_KEY_PREFIX}{state}",
-                provider,
-                ex=_STATE_TTL,
-            )
+            blob = json.dumps({"provider": provider, "payload": body})
+            await self._redis().set(f"{_REDIS_KEY_PREFIX}{state}", blob, ex=_STATE_TTL)
         else:
-            self._memory[state] = (provider, time.monotonic() + _STATE_TTL)
-
+            await self._put(self._need(session), state, _STATE, provider, body, _STATE_TTL)
         return state
 
-    async def new_device(self, provider: str, payload: dict[str, Any], *, ttl: int) -> str:
+    async def consume_state(
+        self, state: str, provider: str, *, session: AsyncSession | None = None
+    ) -> dict[str, Any] | None:
+        """Use up *state*: its payload when it exists, is *provider*'s and has not expired, else ``None``.
+
+        It is deleted in the same step that reads it (one ``GETDEL`` pipeline on Redis, one
+        ``DELETE ... RETURNING`` on Postgres), so of any number of simultaneous callbacks only one wins, and
+        a state tried for the wrong provider is spent too.
+        """
+        if self._use_redis():
+            redis = self._redis()
+            async with redis.pipeline(transaction=True) as pipe:
+                pipe.get(f"{_REDIS_KEY_PREFIX}{state}")
+                pipe.delete(f"{_REDIS_KEY_PREFIX}{state}")
+                raw, _ = await pipe.execute()
+            if raw is None:
+                return None
+            stored_provider, payload = self._decode(raw)
+            return payload if stored_provider == provider else None
+        db = self._need(session)
+        row = (
+            await db.exec(
+                delete(_TABLE)
+                .where(_TABLE.c.handle == state, _TABLE.c.kind == _STATE)
+                .returning(_TABLE.c.provider, _TABLE.c.payload, _TABLE.c.expires_at)
+            )
+        ).first()
+        await db.commit()
+        if row is None:
+            return None
+        stored_provider, payload, expires_at = row
+        if stored_provider != provider or expires_at <= _now():
+            return None
+        return dict(payload or {})
+
+    async def new_device(
+        self,
+        provider: str,
+        payload: dict[str, Any],
+        *,
+        ttl: int,
+        session: AsyncSession | None = None,
+    ) -> str:
         """Store a device-flow session and return its opaque handle."""
         handle = secrets.token_urlsafe(32)
         if self._use_redis():
             blob = json.dumps({"provider": provider, "payload": payload})
             await self._redis().set(f"{_DEVICE_PREFIX}{handle}", blob, ex=ttl)
         else:
-            self._devices[handle] = (provider, payload, time.monotonic() + ttl)
+            await self._put(self._need(session), handle, _DEVICE, provider, payload, ttl)
         return handle
 
-    async def get_device(self, handle: str, provider: str) -> dict[str, Any] | None:
+    async def get_device(
+        self, handle: str, provider: str, *, session: AsyncSession | None = None
+    ) -> dict[str, Any] | None:
         """The stored payload for *handle*, or ``None`` if unknown, expired or another provider's."""
         if self._use_redis():
             raw = await self._redis().get(f"{_DEVICE_PREFIX}{handle}")
             if raw is None:
                 return None
-            entry = json.loads(raw)
-            return entry["payload"] if entry.get("provider") == provider else None
-        found = self._devices.get(handle)
-        if found is None:
+            stored_provider, payload = self._decode(raw)
+            return payload if stored_provider == provider else None
+        db = self._need(session)
+        row = (
+            await db.exec(
+                select(_TABLE.c.provider, _TABLE.c.payload).where(
+                    _TABLE.c.handle == handle,
+                    _TABLE.c.kind == _DEVICE,
+                    _TABLE.c.expires_at > _now(),
+                )
+            )
+        ).first()
+        if row is None or row[0] != provider:
             return None
-        stored_provider, payload, expires_at = found
-        if time.monotonic() >= expires_at:
-            self._devices.pop(handle, None)
-            return None
-        return payload if stored_provider == provider else None
+        return dict(row[1] or {})
 
-    async def drop_device(self, handle: str) -> None:
+    async def drop_device(self, handle: str, *, session: AsyncSession | None = None) -> None:
         if self._use_redis():
             await self._redis().delete(f"{_DEVICE_PREFIX}{handle}")
-        else:
-            self._devices.pop(handle, None)
-
-    async def consume_state(self, state: str, provider: str) -> bool:
-        """Pop *state* and return ``True`` iff it exists, matches *provider*, and hasn't expired.
-
-        The state is deleted atomically (single GET+DEL pipeline on Redis) so
-        it can only be consumed once.
-        """
-        if self._use_redis():
-            redis = self._redis()
-            # Atomic GET-and-DELETE using a pipeline
-            async with redis.pipeline(transaction=True) as pipe:
-                pipe.get(f"{_REDIS_KEY_PREFIX}{state}")
-                pipe.delete(f"{_REDIS_KEY_PREFIX}{state}")
-                stored_provider, _ = await pipe.execute()
-
-            if stored_provider is None:
-                return False
-            return bool(stored_provider == provider)
-
-        # In-memory fallback
-        entry = self._memory.pop(state, None)
-        if entry is None:
-            return False
-        stored_provider, expires_at = entry
-        return stored_provider == provider and time.monotonic() < expires_at
+            return
+        db = self._need(session)
+        await db.exec(delete(_TABLE).where(_TABLE.c.handle == handle, _TABLE.c.kind == _DEVICE))
+        await db.commit()
 
 
-# Single process-wide instance used by the auth router.
+# Single process-wide instance used by the federation router.
 oauth_state_store = OAuthStateStore()

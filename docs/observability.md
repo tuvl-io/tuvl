@@ -75,6 +75,14 @@ tuvl logs with structlog: JSON lines in production, a readable console format in
 | `runtime.trigger.mounted` | info | `workflow`, `method`, `path` |
 | `runtime.mcp.mounted` | info | `tools` |
 | `runtime.lease.lost` | warning | the run moved to another worker |
+| `runtime.lease.cancelled` | warning | the running step was cancelled because the run is no longer this worker's |
+| `runtime.lease.expired` | error | a whole lease passed without a good heartbeat (the database was unreachable) |
+| `runtime.heartbeat.failed` | warning | a heartbeat raised; it is retried |
+| `runtime.worker.poll_failed` | error | a claim raised; the poll loop goes on after a backoff |
+| `runtime.sweep.failed` | error | a housekeeping sweep raised; it is skipped |
+| `runtime.worker.ended` | error | the poll loop ended unexpectedly; `/health` answers 503 |
+| `scheduler.schedule_dropped` | error | a schedule that cannot advance is no longer fired; the others go on |
+| `runtime.runs.will_fail` | warning | at boot: `workflow`, `runs`, `error_type`: unfinished runs of a workflow that changed (or is gone) since they started |
 | `runtime.pause_ignored` | warning | pause requested on a `per_run` transaction |
 | `decide.shadow_model_failed` | warning | `agent`, `error` (shadow failures never fail the run) |
 | `decision.provider.load_failed` | warning | a decision provider entry point failed to load |
@@ -165,7 +173,7 @@ All settings are read from `.env` or environment variables. Settings also suppor
 | `TUVL_OTLP_PROTOCOL` | `http/protobuf` | `http/protobuf` or `grpc` (needs `pip install 'tuvl[otel-grpc]'`) |
 | `OTEL_EXPORTER_OTLP_PROTOCOL` | — | Standard OTel env var — takes precedence over `TUVL_OTLP_PROTOCOL` when set |
 | `TUVL_SERVICE_NAME` | `tuvl` | `service.name` resource attribute in every span |
-| `TUVL_ENV` | `production` | `production` → JSON logs; `development` → coloured console logs |
+| `TUVL_ENV` | `production` | `production` → JSON logs; `development` → coloured console logs. Case and padding do not matter; a value other than `production`, `development`, `test` or `staging` is logged at boot and treated as not production |
 
 ### `.tuvl/telemetry.yaml` override
 
@@ -289,9 +297,16 @@ spec:
 ```
 
 - are **redacted** (`"*****"`) in journal events, SSE streams, run exports, pinned fixtures and the
-  Insight views; checkpoints keep real values because they are the resume state;
+  Insight views; checkpoints and a run's input keep real values because they are the resume state;
 - are never span attributes (tuvl puts no context values on spans);
-- are **not sent to models** (`llm`, `loop`, judges, decision models) unless
-  `policy.allow_secure_to_llm: true` — a secure field in a model agent's inputs is a V020 error.
+- are **left out of CRUD responses** unless the caller holds `<model>:read_secure` or `iam:admin`, in the
+  record and in related records an `?include=` embeds (`docs/auth.md`);
+- are **not sent to models** (`llm`, `loop`) unless `policy.allow_secure_to_llm: true`: a secure field in a
+  model agent's inputs is a V020 error, and at run time the value is replaced by `*****` in the prompt (its
+  template and its input block) and in every tool result a loop agent reads. This masks by field *name*, because
+  the data a prompt or a tool result carries has no model attached: a key that shares a secure field's name is
+  masked wherever it appears. The CRUD API uses the per-model registry, so there a field is hidden only in the model
+  that declares it `secure`.
 
-The secure-field registry is built at startup from every loaded `ModelDefinition`.
+Two registries are built at startup from every loaded `ModelDefinition`: `SECURE_FIELDS` (the names) and
+`SECURE_BY_MODEL` (model → names).

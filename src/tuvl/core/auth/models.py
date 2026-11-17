@@ -7,6 +7,8 @@ tuvl_system_iam_roles       — named roles, e.g. "hr_manager", "recruiter".
 tuvl_system_iam_user_roles  — many-to-many: which user holds which role.
 tuvl_system_iam_role_scopes — which scopes a role grants, e.g. "requisition:write".
 tuvl_system_iam_password_tokens — one-time links that let a user set their own password (hashed, expiring).
+tuvl_system_iam_session_ends — when a user's sessions were last ended (tokens issued before are refused).
+tuvl_system_iam_revoked_tokens — tokens refused until they would have expired anyway (logout, refresh).
 
 Design notes
 ------------
@@ -20,8 +22,10 @@ from __future__ import annotations
 
 import datetime
 import uuid
+from typing import Any
 
 import sqlalchemy as sa
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
 
 
@@ -145,4 +149,68 @@ class IAMPasswordToken(SQLModel, table=True):
     created_at: datetime.datetime = Field(
         default_factory=datetime.datetime.utcnow,
         sa_column=sa.Column(sa.DateTime, default=datetime.datetime.utcnow, nullable=False),
+    )
+
+
+class IAMLoginAttempt(SQLModel, table=True):
+    """Failed password attempts per login, so a guesser is made to wait.
+
+    Keyed by a hash of the normalised login rather than by user: an unknown login is slowed exactly like a
+    known one, so the answer never says which logins exist. Nothing is stored until a login fails; a
+    success deletes the row; ``locked_until`` is when the next attempt is judged again."""
+
+    __tablename__ = "tuvl_system_iam_login_attempts"
+
+    key: str = Field(primary_key=True)
+    failures: int = Field(default=0)
+    locked_until: datetime.datetime | None = Field(
+        default=None, sa_column=sa.Column(sa.DateTime, nullable=True)
+    )
+    updated_at: datetime.datetime = Field(
+        default_factory=datetime.datetime.utcnow,
+        sa_column=sa.Column(sa.DateTime, nullable=False, index=True),
+    )
+
+
+class IAMOAuthState(SQLModel, table=True):
+    """What a provider sign-in keeps between its start and its end: a ``state`` (the CSRF token of an
+    authorization-code sign-in, with its PKCE verifier) or a ``device`` handle. Single-use and short-lived.
+
+    Used when no Redis datasource is deployed (see ``tuvl.core.auth.state_store``), so a callback that lands
+    on another replica than the start still finds it."""
+
+    __tablename__ = "tuvl_system_oauth_states"
+
+    handle: str = Field(primary_key=True)
+    kind: str = Field()
+    provider: str = Field()
+    payload: dict[str, Any] = Field(
+        default_factory=dict,
+        sa_column=sa.Column(sa.JSON().with_variant(JSONB(), "postgresql"), nullable=False),
+    )
+    expires_at: datetime.datetime = Field(
+        sa_column=sa.Column(sa.DateTime, nullable=False, index=True)
+    )
+
+
+class IAMSessionEnd(SQLModel, table=True):
+    """When a user's sessions were last ended: a token issued before then is refused.
+
+    Keyed by the token's subject, not by a foreign key, so it outlives a deleted user. Used when no Redis
+    datasource is deployed (see ``tuvl.core.auth.blacklist``)."""
+
+    __tablename__ = "tuvl_system_iam_session_ends"
+
+    user_id: str = Field(primary_key=True)
+    ended_at_ms: int = Field(sa_column=sa.Column(sa.BigInteger, nullable=False))
+
+
+class IAMRevokedToken(SQLModel, table=True):
+    """A token refused until it would have expired anyway (``expires_at_ms`` is null: never expires)."""
+
+    __tablename__ = "tuvl_system_iam_revoked_tokens"
+
+    jti: str = Field(primary_key=True)
+    expires_at_ms: int | None = Field(
+        default=None, sa_column=sa.Column(sa.BigInteger, nullable=True, index=True)
     )

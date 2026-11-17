@@ -52,6 +52,25 @@ class RedisRequiredButUnavailableError(RuntimeError):
     """
 
 
+def _redis_entries() -> list[tuple[str, dict[str, Any]]]:
+    """The ``type: redis`` datasources, by name; the first one is used."""
+    from tuvl.core.datasources.loader import DATASOURCE_REGISTRY
+
+    return sorted(
+        (
+            (name, entry)
+            for name, entry in DATASOURCE_REGISTRY.items()
+            if entry.get("spec", {}).get("type") in ("redis",)
+        ),
+        key=lambda t: t[0],
+    )
+
+
+def redis_configured() -> bool:
+    """Whether the project declares a ``type: redis`` datasource (reachable or not)."""
+    return bool(_redis_entries())
+
+
 async def init_redis() -> None:
     """Attempt to connect to the first configured Redis datasource.
 
@@ -64,18 +83,13 @@ async def init_redis() -> None:
     - Redis configured + unreachable + ``settings.tuvl_require_redis`` is True
       → raise ``RedisRequiredButUnavailableError`` so the process refuses to boot.
     - Redis configured + unreachable + ``tuvl_require_redis`` is False
-      → log warning and fall back to in-process memory (legacy behaviour).
+      → log warning and fall back to Postgres (revocation and session end; OAuth state stays in memory).
     """
     global _redis_client, _redis_available
 
     from tuvl.core.config import settings
-    from tuvl.core.datasources.loader import DATASOURCE_REGISTRY
 
-    redis_entries = [
-        (name, entry)
-        for name, entry in DATASOURCE_REGISTRY.items()
-        if entry.get("spec", {}).get("type") in ("redis",)
-    ]
+    redis_entries = _redis_entries()
     if not redis_entries:
         if settings.tuvl_require_redis:
             raise RedisRequiredButUnavailableError(
@@ -86,13 +100,11 @@ async def init_redis() -> None:
         logger.info(
             "redis.not_configured",
             reason="no DataSource with spec.type=redis was registered",
-            consequence="OAuth state and token blacklist use in-process memory",
+            consequence="revocation and session end use Postgres; OAuth state uses in-process memory",
             multi_worker_safe=False,
         )
         return
 
-    # Sort deterministically; use the first one.
-    redis_entries.sort(key=lambda t: t[0])
     name, entry = redis_entries[0]
     conn = entry.get("spec", {}).get("connection", {})
 
@@ -142,15 +154,15 @@ async def init_redis() -> None:
             raise RedisRequiredButUnavailableError(
                 f"TUVL_REQUIRE_REDIS=true but Redis datasource {name!r} "
                 f"({host}:{port}) is unreachable: {exc}. Fix connectivity or "
-                "unset TUVL_REQUIRE_REDIS for in-process-memory fallback (dev only)."
+                "unset TUVL_REQUIRE_REDIS to fall back to Postgres."
             ) from exc
         logger.warning(
-            "redis.unreachable.fallback_memory",
+            "redis.unreachable.fallback_postgres",
             datasource=name,
             host=host,
             port=port,
             error=str(exc),
-            consequence="multi-worker revocation disabled",
+            consequence="revocation and session end use Postgres here; workers connected to Redis do not see them",
         )
 
 

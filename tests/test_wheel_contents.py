@@ -66,6 +66,7 @@ def test_the_engine_wheel_keeps_only_the_production_commands(wheels: dict[str, l
         "iam",
         "keys",
         "memory",
+        "retention",
         "storage",
     }
 

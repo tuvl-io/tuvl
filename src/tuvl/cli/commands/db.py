@@ -161,22 +161,29 @@ def check_rls(
         )
         return
 
-    from tuvl.core.datasources.rls import find_tables_missing_rls_policy
+    from tuvl.core.datasources import rls
 
-    missing = asyncio.run(find_tables_missing_rls_policy())
-    if not missing:
+    async def checks() -> tuple[list[str], str | None]:
+        return await rls.find_tables_missing_rls_policy(), await rls.primary_role_bypass_reason()
+
+    missing, bypass = asyncio.run(checks())
+    if not missing and not bypass:
         console.print(
             "[green]\u2713 All tenant-scoped tables have the tuvl_tenant_isolation policy installed.[/green]"
         )
         return
 
-    console.print(
-        Panel.fit(
+    problems = []
+    if missing:
+        problems.append(
             "[red]Missing RLS policies on:[/red]\n  - "
             + "\n  - ".join(missing)
-            + "\n\nRun [bold]tuvl generate rls[/bold] and apply the SQL.",
-            title="db check-rls",
-            border_style="red",
+            + "\n\nRun [bold]tuvl generate rls[/bold] and apply the SQL."
         )
-    )
+    if bypass:
+        problems.append(
+            f"[red]The database role ignores RLS:[/red] {bypass}, so the policies protect nothing. "
+            "Connect as a role that is neither a superuser nor BYPASSRLS."
+        )
+    console.print(Panel.fit("\n\n".join(problems), title="db check-rls", border_style="red"))
     raise typer.Exit(1)

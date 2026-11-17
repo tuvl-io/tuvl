@@ -118,6 +118,7 @@ def schedule_trigger(fire_at: datetime, tenant: str | None = None) -> str:
 async def enqueue_scheduled(name: str, fire_at: datetime, tenant: str | None = None) -> bool:
     """Enqueue the 2.0 run for this fire (and tenant) unless one exists. True when enqueued."""
     import sqlalchemy as sa
+    from sqlalchemy.exc import IntegrityError
     from sqlalchemy.ext.asyncio import AsyncSession
 
     from tuvl.runtime.host import InputError, WorkflowUnavailableError, get_host
@@ -141,13 +142,21 @@ async def enqueue_scheduled(name: str, fire_at: datetime, tenant: str | None = N
             existing = await lock_session.execute(
                 sa.select(sa.func.count())
                 .select_from(SystemRun)
-                .where(SystemRun.workflow == name, SystemRun.trigger == trigger)  # type: ignore[arg-type]
+                .where(
+                    SystemRun.workflow == name,  # type: ignore[arg-type]
+                    SystemRun.trigger == trigger,  # type: ignore[arg-type]
+                    SystemRun.trigger.like("schedule:%"),  # type: ignore[attr-defined]  # the index's predicate
+                )
             )
             if existing.scalar_one():
                 return False
             try:
                 with tenant_scope(tenant) if tenant else contextlib.nullcontext():
                     run_id = await host.enqueue(doc, payload, principal=None, trigger=trigger)
+            except IntegrityError:
+                return (
+                    False  # the unique index on (workflow, trigger): another process fired it first
+                )
             except InputError as exc:
                 logger.error("workflow.scheduled_input_invalid", workflow=name, errors=exc.errors)
                 return False
@@ -211,20 +220,39 @@ async def scheduler_loop() -> None:
     logger.info("scheduler.started", schedules=schedules)
 
     now = datetime.now(UTC)
-    iterators = {name: CronSim(expr, now) for name, expr in schedules.items()}
-    next_fire = {name: next(it) for name, it in iterators.items()}
+    iterators: dict[str, CronSim] = {}
+    next_fire: dict[str, datetime] = {}
+    for name, expr in schedules.items():
+        try:
+            iterators[name] = CronSim(expr, now)
+            next_fire[name] = next(iterators[name])
+        except Exception:  # an expression that never matches must not stop the other schedules
+            logger.exception("scheduler.schedule_dropped", workflow=name, cron=expr)
 
-    while True:
-        soonest = min(next_fire.values())
-        delay = (soonest - datetime.now(UTC)).total_seconds()
-        if delay > 0:
-            await asyncio.sleep(delay)
+    while next_fire:
+        try:
+            await _wait_and_fire(iterators, next_fire)
+        except Exception:
+            logger.exception("scheduler.tick_failed")
+            await asyncio.sleep(5)
+    logger.error("scheduler.no_schedules_left")
 
-        now = datetime.now(UTC)
-        for name, fire_at in list(next_fire.items()):
-            if fire_at > now:
-                continue
-            task = asyncio.create_task(_fire(name, fire_at))
-            _FIRE_TASKS.add(task)
-            task.add_done_callback(_FIRE_TASKS.discard)
+
+async def _wait_and_fire(iterators: dict[str, CronSim], next_fire: dict[str, datetime]) -> None:
+    soonest = min(next_fire.values())
+    delay = (soonest - datetime.now(UTC)).total_seconds()
+    if delay > 0:
+        await asyncio.sleep(delay)
+
+    now = datetime.now(UTC)
+    for name, fire_at in list(next_fire.items()):
+        if fire_at > now:
+            continue
+        task = asyncio.create_task(_fire(name, fire_at))
+        _FIRE_TASKS.add(task)
+        task.add_done_callback(_FIRE_TASKS.discard)
+        try:
             next_fire[name] = _next_after(iterators[name], now)
+        except Exception:
+            logger.exception("scheduler.schedule_dropped", workflow=name)
+            del next_fire[name]

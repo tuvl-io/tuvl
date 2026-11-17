@@ -53,9 +53,15 @@ class BaseRepository[T]:
     async def get(self, ident: Any) -> T | None:
         return await self.session.get(self.model_class, ident)
 
+    def is_nullable(self, name: str) -> bool:
+        """Whether *name* may be null (a name that is not a column is left for the update to refuse)."""
+        column = self._table.columns.get(name)
+        return column is None or bool(column.nullable)
+
     def filterable_columns(self) -> frozenset[str]:
         """Columns a ``filter[...]`` may name: the table's, minus ``secure`` fields (filtering on one
-        would let a caller test guesses against a value it may not read)."""
+        would let a caller test guesses against a value it may not read, so it is refused for every
+        caller, whether or not they hold ``<model>:read_secure``)."""
         from tuvl.core.models.loader import secure_fields_view
 
         secure = secure_fields_view()
@@ -80,7 +86,8 @@ class BaseRepository[T]:
             if filters:
                 statement = statement.where(and_(*filters))
 
-        statement = statement.offset(offset).limit(limit)
+        # a stable order: without one, pages of a table can repeat rows or skip them
+        statement = statement.order_by(*self._table.primary_key.columns).offset(offset).limit(limit)
         result = await self.session.exec(statement)
         return list(result.all())
 

@@ -110,3 +110,60 @@ async def test_dispatch_denies_host_outside_boot_time_allowlist(monkeypatch):
 
     resp = await mw.dispatch(_make_request("8.8.8.8"), call_next)
     assert resp.status_code == 403
+
+
+_ROUTES_PROBE = """
+import json
+from fastapi.testclient import TestClient
+from tuvl.main import app
+
+def status(client_ip, path):
+    return TestClient(app, client=(client_ip, 50000)).get(path).status_code
+
+print(json.dumps({
+    "outsider": status("198.51.100.9", "/health"),
+    "outsider_insight": status("198.51.100.9", "/insight/"),
+    "listed": status("203.0.113.5", "/health"),
+    "loopback": status("127.0.0.1", "/health"),
+}))
+"""
+
+
+def _statuses(mode: dict[str, str], tmp_path):
+    import json
+    import os
+    import subprocess
+    import sys
+
+    env = {k: v for k, v in os.environ.items() if not k.startswith("TUVL_")}
+    env.update(mode)
+    env["TUVL_TOOLCHAIN"] = "1"
+    done = subprocess.run(
+        [sys.executable, "-c", _ROUTES_PROBE],
+        capture_output=True,
+        text=True,
+        env=env,
+        cwd=tmp_path,
+        check=False,
+    )
+    assert done.returncode == 0, done.stderr[-800:]
+    return json.loads(done.stdout.strip().splitlines()[-1])
+
+
+_DEV = {
+    "TUVL_ENV": "development",
+    "TUVL_DEV_MODE": "true",
+    "TUVL_ALLOW_DEV_AUTH": "true",
+    "TUVL_DEV_API_KEY": "allowlist-test-key",
+}
+
+
+def test_dev_mode_applies_the_allowlist_to_every_route(tmp_path):
+    seen = _statuses({**_DEV, "TUVL_ALLOWED_HOSTS": "203.0.113.0/24"}, tmp_path)
+    assert seen["outsider"] == 403 and seen["outsider_insight"] == 403
+    assert seen["listed"] == 200 and seen["loopback"] == 200
+
+
+def test_dev_mode_without_an_allowlist_answers_everyone(tmp_path):
+    seen = _statuses(_DEV, tmp_path)
+    assert seen["outsider"] == 200

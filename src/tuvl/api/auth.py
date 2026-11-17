@@ -7,6 +7,8 @@ declaring a fixed FastAPI dependency.
 
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import HTTPException, Request, status
 
 from tuvl.contract.schema import WorkflowDocument
@@ -14,6 +16,9 @@ from tuvl.core.auth.schemas import TokenUser
 from tuvl.core.auth.workflow_policy import WorkflowAuthPolicy
 
 ADMIN = "iam:admin"
+
+#: ``user`` argument of a start function: the caller has not been authenticated yet
+UNSET: Any = object()
 
 
 def _bearer(request: Request) -> str | None:

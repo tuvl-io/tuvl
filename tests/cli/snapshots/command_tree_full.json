@@ -148,6 +148,10 @@
   "hidden": false
  },
  {
+  "command": "iam users unlock",
+  "hidden": false
+ },
+ {
   "command": "import idea",
   "hidden": false
  },
@@ -201,6 +205,10 @@
  },
  {
   "command": "prune memory",
+  "hidden": false
+ },
+ {
+  "command": "prune runs",
   "hidden": false
  },
  {

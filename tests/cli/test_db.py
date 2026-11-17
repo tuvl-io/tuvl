@@ -52,6 +52,10 @@ def test_generate_rls_writes_to_out_file(tmp_path: Path, monkeypatch: pytest.Mon
     assert "Wrote 1 table" in res.output
 
 
+async def _no_bypass() -> None:
+    return None
+
+
 def test_check_rls_skips_when_single_tenant(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -70,6 +74,7 @@ def test_check_rls_passes_when_no_missing_policies(
         return []
 
     monkeypatch.setattr("tuvl.core.datasources.rls.find_tables_missing_rls_policy", _no_missing)
+    monkeypatch.setattr("tuvl.core.datasources.rls.primary_role_bypass_reason", _no_bypass)
     res = runner.invoke(app, ["verify", "rls", "-d", str(tmp_path)])
     assert res.exit_code == 0, res.output
     assert "All tenant-scoped tables" in res.output
@@ -84,6 +89,25 @@ def test_check_rls_fails_when_policies_missing(
         return ["candidates"]
 
     monkeypatch.setattr("tuvl.core.datasources.rls.find_tables_missing_rls_policy", _missing)
+    monkeypatch.setattr("tuvl.core.datasources.rls.primary_role_bypass_reason", _no_bypass)
     res = runner.invoke(app, ["verify", "rls", "-d", str(tmp_path)])
     assert res.exit_code == 1
     assert "candidates" in res.output
+
+
+def test_check_rls_fails_when_the_role_ignores_row_level_security(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("tuvl.core.bootstrap.LOCKED_DEPLOYMENT_MODE", "multi_tenant")
+
+    async def _no_missing() -> list[str]:
+        return []
+
+    async def _superuser() -> str:
+        return "it is a superuser"
+
+    monkeypatch.setattr("tuvl.core.datasources.rls.find_tables_missing_rls_policy", _no_missing)
+    monkeypatch.setattr("tuvl.core.datasources.rls.primary_role_bypass_reason", _superuser)
+    res = runner.invoke(app, ["verify", "rls", "-d", str(tmp_path)])
+    assert res.exit_code == 1
+    assert "superuser" in res.output and "All tenant-scoped tables" not in res.output
