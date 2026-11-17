@@ -1,0 +1,97 @@
+kind: Workflow
+version: tuvl/v2
+metadata:
+  name: screen_candidates
+  description: Score a batch of candidates against a role and store the best three.
+  tags: [screening]
+spec:
+  models: [Screening]
+  trigger:
+    http: { path: /api/screenings, method: POST, sync_timeout: 60s }
+    input:
+      role: str
+      requirements: str
+      candidates: list[json]
+
+  agents:
+    - id: score_each
+      description: Score every candidate in its own child run
+      engine: map
+      effect: read
+      inputs:
+        role: str
+        requirements: str
+        candidates: list[json]
+      outputs:
+        scores: list[json]
+      map:
+        over: candidates
+        workflow: score_candidate
+        as: candidate
+        with: { role: "{{ role }}", requirements: "{{ requirements }}" }
+        concurrency: 4
+        max_items: 25
+        on_error: collect
+      routes:
+        default: rank
+        partial: rank
+        error: END.failed
+
+    - id: rank
+      description: Order the scored candidates and keep the best three that score 50 or more
+      engine: code
+      effect: read
+      inputs:
+        scores: list[json]
+      outputs:
+        shortlist: list[json]
+        candidate_count: int
+        scored_count: int
+        failed_count: int
+      code: { run: rank, with: { shortlist_size: 3, min_score: 50 } }
+      routes:
+        default: store
+        error: END.failed
+
+    - id: store
+      description: Store the screening with its shortlist
+      engine: tool
+      inputs:
+        role: str
+        candidate_count: int
+        scored_count: int
+        failed_count: int
+        shortlist: list[json]
+      outputs:
+        screening: Screening
+      tool:
+        use: db
+        model: Screening
+        op: create
+        values:
+          role: "{{ role }}"
+          candidate_count: "{{ candidate_count }}"
+          scored_count: "{{ scored_count }}"
+          failed_count: "{{ failed_count }}"
+          shortlist: "{{ shortlist }}"
+      routes:
+        default: END
+        conflict: END.failed
+        error: END.failed
+
+  policy:
+    max_tokens_per_run: 15000
+
+  outputs:
+    default:
+      status: 201
+      body:
+        id: "{{ screening.id }}"
+        role: "{{ screening.role }}"
+        candidates: "{{ candidate_count }}"
+        scored: "{{ scored_count }}"
+        failed: "{{ failed_count }}"
+        shortlist: "{{ shortlist }}"
+    failed:
+      status: 502
+      body: { error: the screening failed }

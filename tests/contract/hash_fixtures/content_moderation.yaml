@@ -1,0 +1,139 @@
+kind: Workflow
+version: tuvl/v2
+metadata:
+  name: moderate_content
+  description: Classify user-generated content, apply region policy, gate borderline cases behind human review, and notify on violations.
+  tags: [moderation]
+  required_scope: moderation:submit
+spec:
+  models: [ContentItem, ModerationAction]
+  trigger:
+    http: { path: /api/moderate, method: POST }
+    input:
+      author_id: str
+      region: "enum[us, eu, in]"
+      content: str
+
+  agents:
+    - id: classify
+      description: Classify the content as safe, borderline, or a violation
+      engine: llm
+      inputs: { region: "enum[us, eu, in]", content: str }
+      outputs:
+        verdict: "enum[safe, borderline, violation]"
+        rationale: str
+        confidence: float
+      budget:
+        timeout: 30s
+        max_tokens: 400
+        retry: { attempts: 2, errors: [parse_error, timeout], backoff: 2 }
+      llm:
+        model: default
+        system: |
+          You are a strict content-moderation classifier. Decide whether the
+          content is safe, borderline, or a policy violation. Treat the region as
+          context (norms differ) but never invent policy. Give one short reason
+          and a confidence between 0 and 1.
+        prompt: Classify this content.
+      routes:
+        default: apply_policy
+        parse_error: review        # an unclassifiable item goes to a human
+        timeout: review
+        budget_exceeded: review
+        error: review
+
+    - id: apply_policy
+      description: Apply the regional policy (EU escalates borderline to violation)
+      engine: code
+      effect: read
+      code: { run: apply_policy }
+      inputs:
+        region: "enum[us, eu, in]"
+        verdict: "enum[safe, borderline, violation]"
+        rationale: str
+      outputs:
+        category: "enum[safe, borderline, violation]"
+        reason: str
+      routes:
+        safe: record
+        violation: record
+        borderline: review
+        error: END.failed
+
+    - id: review
+      description: A moderator approves or removes the content
+      engine: human
+      inputs: { author_id: str, region: "enum[us, eu, in]", content: str }
+      outputs:
+        decision: "enum[approve, remove]"
+        note: str?
+      human:
+        title: Moderation review
+        instruction: "Review content from {{ author_id }} (region {{ region }})."
+        show: [content, region]
+        form:
+          decision: { label: Decision, widget: select }
+          note: { label: Note, widget: textarea }
+        required_group: moderators
+        expires: 48h
+        route_on: decision
+      routes:
+        approve: record
+        remove: record
+        expired: END.failed
+        error: END.failed
+
+    - id: record
+      description: Store the item and its moderation action in one transaction
+      engine: code
+      code: { run: record_moderation }
+      inputs:
+        author_id: str
+        region: "enum[us, eu, in]"
+        content: str
+        category: "enum[safe, borderline, violation]?"
+        reason: str?
+        decision: "enum[approve, remove]?"
+        note: str?
+      outputs:
+        item_id: uuid
+        status: "enum[approved, removed]"
+        recorded_category: "enum[safe, borderline, violation]"
+        action: str
+      routes:
+        notify: notify
+        recorded: END
+        error: END.failed
+
+    - id: notify
+      description: Tell the moderation channel a violation was removed
+      engine: tool
+      inputs:
+        author_id: str
+        region: "enum[us, eu, in]"
+        recorded_category: "enum[safe, borderline, violation]"
+        reason: str?
+        item_id: uuid
+      tool:
+        use: http
+        method: POST
+        url: "${MODERATION_WEBHOOK_URL:https://httpbin.org/post}"
+        body:
+          event: content_violation
+          item_id: "{{ item_id }}"
+          author_id: "{{ author_id }}"
+          region: "{{ region }}"
+          category: "{{ recorded_category }}"
+          reason: "{{ reason }}"
+        idempotency: auto
+      routes:
+        default: END
+        error: END            # the item is already recorded; a failed webhook is logged in the journal
+
+  outputs:
+    default:
+      status: 201
+      body: { item_id: "{{ item_id }}", status: "{{ status }}", category: "{{ recorded_category }}", action: "{{ action }}" }
+    failed:
+      status: 502
+      body: { error: the content could not be moderated }
