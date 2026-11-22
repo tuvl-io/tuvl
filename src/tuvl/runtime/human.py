@@ -10,9 +10,9 @@ field to its value. :func:`expire_due` closes requests past ``expires`` and
 re-queues their runs, which then take the ``expired`` route.
 
 Authorisation (spec §9.6, §16.5): the reviewer needs ``approvals:decide``.
-With ``required_group`` they must also be in that group (``iam:admin``
-bypasses both) and must never be the principal who triggered the run.
-Without it only that principal or ``iam:admin`` decides.
+With ``required_group`` and/or ``required_scope`` they must also satisfy that
+group/scope (``iam:admin`` bypasses both) and must never be the principal who
+triggered the run. Without either only that principal or ``iam:admin`` decides.
 """
 
 from __future__ import annotations
@@ -153,21 +153,25 @@ async def human_engine(agent: Any, view: dict[str, Any], ctx: EngineContext) -> 
         kind="human",
         payload=journal.to_json(payload),
         required_group=params.required_group,
+        required_scope=params.required_scope,
         requested_by=ctx.principal,
         expires_at=expires_at,
     )
     session.add(approval)
     await session.flush()
+    event_payload: dict[str, Any] = {
+        "approval_id": str(approval.id),
+        "title": payload["title"],
+        "required_group": params.required_group,
+    }
+    if params.required_scope is not None:
+        event_payload["required_scope"] = params.required_scope
     await journal.append_event(
         session,
         ctx.run_id,
         "approval_requested",
         agent_id=agent.id,
-        payload={
-            "approval_id": str(approval.id),
-            "title": payload["title"],
-            "required_group": params.required_group,
-        },
+        payload=event_payload,
     )
     return AgentResult("default", suspend="waiting_human", detail={"approval_id": str(approval.id)})
 
@@ -181,13 +185,18 @@ register_engine("human", human_engine)
 def authorise(approval: SystemApproval, reviewer: Reviewer) -> None:
     if not (reviewer.is_admin or DECIDE_SCOPE in reviewer.scopes):
         raise ApprovalForbiddenError(f"deciding requires the '{DECIDE_SCOPE}' scope")
-    if approval.required_group:
+    required_scope = getattr(approval, "required_scope", None)
+    if approval.required_group or required_scope:
         if reviewer.user_id is not None and reviewer.user_id == approval.requested_by:
             raise ApprovalForbiddenError("the principal who triggered this run cannot approve it")
-        if not (reviewer.is_admin or approval.required_group in reviewer.groups):
+        if approval.required_group and not (
+            reviewer.is_admin or approval.required_group in reviewer.groups
+        ):
             raise ApprovalForbiddenError(
                 f"deciding this requires the '{approval.required_group}' group"
             )
+        if required_scope and not (reviewer.is_admin or required_scope in reviewer.scopes):
+            raise ApprovalForbiddenError(f"deciding this requires the '{required_scope}' scope")
         return
     is_owner = approval.requested_by is not None and approval.requested_by == reviewer.user_id
     if not (is_owner or reviewer.is_admin):

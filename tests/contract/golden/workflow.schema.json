@@ -61,6 +61,18 @@
           "default": null,
           "title": "Required Group"
         },
+        "required_scope": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Required Scope"
+        },
         "when": {
           "description": "A TEL expression that must evaluate to a bool (\u00a76.2).",
           "title": "When",
@@ -1204,6 +1216,18 @@
           ],
           "default": null,
           "title": "Required Group"
+        },
+        "required_scope": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Required Scope"
         },
         "route_on": {
           "anyOf": [

@@ -99,6 +99,17 @@ class CreateRoleRequest(BaseModel):
     )
 
 
+class UpdateRoleRequest(BaseModel):
+    description: str | None = Field(
+        default=None,
+        description="Role description. Pass null to clear when included; omit to leave unchanged.",
+    )
+    is_active: bool | None = Field(
+        default=None,
+        description="Set to false to disable the role (it grants nothing), true to re-enable.",
+    )
+
+
 class UpdateRoleScopesRequest(BaseModel):
     scopes: list[str] = Field(
         ...,
@@ -570,6 +581,49 @@ async def delete_role(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ConflictError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@iam_router.patch(
+    "/admin/roles/{role_id}",
+    response_model=RoleResponse,
+    summary="Update a role's description or active status",
+)
+async def update_role(
+    role_id: uuid.UUID,
+    req: UpdateRoleRequest,
+    session: IamSession,
+    _admin: AdminUser,
+) -> RoleResponse:
+    """Update an existing IAM role's ``description`` and/or ``is_active`` flag.
+
+    Only fields present in the request body are changed; passing ``{"description": null}``
+    clears the description, while omitting ``description`` leaves it unchanged.
+    """
+    fields = req.model_fields_set
+    try:
+        role, scopes = await iam_service.update_role(
+            session,
+            role_id,
+            description=req.description if "description" in fields else iam_service.UNSET,
+            is_active=(
+                req.is_active
+                if "is_active" in fields and req.is_active is not None
+                else iam_service.UNSET
+            ),
+        )
+    except ValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return RoleResponse(
+        id=role.id,
+        name=role.name,
+        description=role.description,
+        scopes=scopes,
+        is_active=role.is_active,
+    )
 
 
 @iam_router.patch(

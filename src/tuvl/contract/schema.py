@@ -486,8 +486,16 @@ class DecideAgent(_AgentBase):
 class ApprovalWhen(_Strict):
     when: TelCondition
     required_group: str | None = None
+    required_scope: str | None = None
 
     _tel_ok = field_validator("when")(_check_tel)
+
+    @model_serializer(mode="wrap")
+    def _leave_the_default_out(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        data: dict[str, Any] = handler(self)
+        if data.get("required_scope") is None:
+            data.pop("required_scope", None)
+        return data
 
 
 Approval = Literal["required"] | ApprovalWhen
@@ -620,9 +628,18 @@ class HumanParams(_Strict):
     show: list[str] = []
     form: dict[str, HumanFormField] = {}
     required_group: str | None = None
+    required_scope: str | None = None
     assignee: str | None = None
     expires: Duration | None = None
     route_on: str | None = None
+
+    @model_serializer(mode="wrap")
+    def _leave_the_default_out(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        # Leave required_scope out when unset so existing workflows keep their workflow_hash across upgrades.
+        data: dict[str, Any] = handler(self)
+        if data.get("required_scope") is None:
+            data.pop("required_scope", None)
+        return data
 
 
 class HumanAgent(_AgentBase):

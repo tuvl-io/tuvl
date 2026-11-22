@@ -10,6 +10,15 @@ release below is the current one.
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- **`required_scope` on `human` agents and loop tool `approval` rules.** Approval steps can now gate decisions by token scope (`required_scope`) as well as or instead of IAM role name (`required_group`), so custom roles created at runtime and granted that scope can decide approval steps without holding the built-in role name. The no-self-approval rule and `iam:admin` bypass apply identically; `tuvl_system_approvals.required_scope` is added automatically on existing databases at boot, and `required_scope` is omitted from the workflow dump when unset so existing workflow hashes are unchanged.
+- **`PATCH /auth/admin/roles/{role_id}`** (`iam` API group, `iam:admin`) updates an existing role's `description` (passing `null` clears it; omitting it leaves it unchanged) and/or `is_active` flag (disabling an active role ends its members' sessions and is refused when it would leave no active administrator).
+
+---
+
 ## [2.1.0-beta.6] — 2026-11-17
 
 **Security and reliability fixes from the 2.1 pre-release review.** `tuvl` and `tuvl-insight` release together as `2.1.0b6`.

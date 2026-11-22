@@ -110,6 +110,7 @@ def approval_view(approval: SystemApproval) -> dict[str, Any]:
         "kind": approval.kind,
         "status": approval.status,
         "required_group": approval.required_group,
+        "required_scope": getattr(approval, "required_scope", None),
         "expires_at": _iso(approval.expires_at),
         "created_at": _iso(approval.created_at),
         "decide_url": f"/api/approvals/{approval.id}",
