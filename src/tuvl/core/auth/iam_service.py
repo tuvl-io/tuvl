@@ -1006,23 +1006,43 @@ async def revoke_scope(
     return role, await load_role_scopes(session, role_id)
 
 
+async def update_role(
+    session: AsyncSession,
+    role_id: uuid.UUID,
+    *,
+    description: Any = UNSET,
+    is_active: Any = UNSET,
+) -> tuple[IAMRole, list[str]]:
+    """Update a role's ``description`` and/or ``is_active`` state.
+
+    Fields left as :data:`UNSET` are unchanged. Disabling an active role ends its members'
+    sessions and is refused when it would leave no active administrator.
+    """
+    role = await get_role_by_id(session, role_id)
+    if role is None:
+        raise NotFoundError("Role not found.")
+    before = await active_admin_count(session) if is_active is False else 0
+    disabled = False
+    if description is not UNSET:
+        role.description = description
+    if is_active is not UNSET and is_active is not None:
+        disabled = role.is_active and not bool(is_active)
+        role.is_active = bool(is_active)
+    members = await _role_members(session, role_id) if disabled else []
+    await session.flush()
+    await _keep_an_admin(session, before)
+    if members:
+        await end_sessions(session, members)
+    await session.commit()
+    await session.refresh(role)
+    return role, await load_role_scopes(session, role_id)
+
+
 async def set_role_active(
     session: AsyncSession, role_id: uuid.UUID, active: bool
 ) -> tuple[IAMRole, list[str]]:
     """Enable or disable a role. A disabled role keeps its members and scopes but grants nothing."""
-    role = await get_role_by_id(session, role_id)
-    if role is None:
-        raise NotFoundError("Role not found.")
-    before = await active_admin_count(session)
-    changed = role.is_active != active
-    role.is_active = active
-    members = await _role_members(session, role_id) if changed and not active else []
-    await session.flush()
-    await _keep_an_admin(session, before)
-    await end_sessions(session, members)
-    await session.commit()
-    await session.refresh(role)
-    return role, await load_role_scopes(session, role_id)
+    return await update_role(session, role_id, is_active=active)
 
 
 async def assign_role(session: AsyncSession, user_id: uuid.UUID, role_id: uuid.UUID) -> None:

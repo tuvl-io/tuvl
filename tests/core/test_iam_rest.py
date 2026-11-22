@@ -403,6 +403,50 @@ async def test_role_crud_and_assignment_happy_path_and_not_found(iam_db, rest_ap
     assert resp.status_code == 200, resp.text
     assert set(resp.json()["scopes"]) == {"req:read", "cand:read"}
 
+    # Update role metadata (description + is_active) via PATCH /auth/admin/roles/{role_id}
+    resp = await _rest(
+        rest_app,
+        "PATCH",
+        f"/auth/admin/roles/{role['id']}",
+        headers=admin,
+        json={"description": "Human resources manager", "is_active": False},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["description"] == "Human resources manager"
+    assert resp.json()["is_active"] is False
+
+    # Omitting description leaves it unchanged while re-enabling the role; passing null clears it
+    resp = await _rest(
+        rest_app,
+        "PATCH",
+        f"/auth/admin/roles/{role['id']}",
+        headers=admin,
+        json={"is_active": True},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["description"] == "Human resources manager"
+    assert resp.json()["is_active"] is True
+
+    resp = await _rest(
+        rest_app,
+        "PATCH",
+        f"/auth/admin/roles/{role['id']}",
+        headers=admin,
+        json={"description": None},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["description"] is None
+
+    assert (
+        await _rest(
+            rest_app,
+            "PATCH",
+            f"/auth/admin/roles/{uuid.uuid4()}",
+            headers=admin,
+            json={"description": "missing"},
+        )
+    ).status_code == 404
+
     resp = await _rest(rest_app, "GET", "/auth/admin/roles", headers=admin)
     role_out = next(r for r in resp.json() if r["name"] == "hr_manager")
     assert set(role_out["scopes"]) == {"req:read", "cand:read"}

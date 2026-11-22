@@ -293,9 +293,10 @@ answer the `write` fields are stored (in the step's own transaction, once even i
   trigger answers `202` with the run descriptor and the request.
 - Answer with `POST /api/approvals/{id}` `{ values }` (or `POST /api/runs/{run_id}/human/{agent_id}`).
   Values are validated against `outputs`; the run is re-queued and continues on any worker.
-- Who may answer: with `required_group`, a holder of `approvals:decide` in that group who is not the
+- Who may answer: with `required_group` and/or `required_scope`, a holder of `approvals:decide`
+  who satisfies that group/scope (so a custom role granted the scope can also decide) and is not the
   triggering principal; otherwise the triggering principal or `iam:admin`. `iam:admin` bypasses the
-  group, never the no-self-approval rule.
+  group and scope, never the no-self-approval rule.
 - `expires` closes the request and takes the `expired` route; a late answer gets `409`.
 - `form` fields must equal `outputs`; `route_on` must be a bool or enum output (V016).
 

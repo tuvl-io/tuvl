@@ -405,6 +405,7 @@ async def _request_approval(
 ) -> AgentResult:
     ref = tool.ref
     group = ref.approval.required_group if not isinstance(ref.approval, str) else None
+    scope = ref.approval.required_scope if not isinstance(ref.approval, str) else None
     approval = SystemApproval(
         run_id=ctx.run_id,
         agent_id=agent.id,
@@ -422,6 +423,7 @@ async def _request_approval(
             }
         ),
         required_group=group,
+        required_scope=scope,
         requested_by=ctx.principal,
     )
     ctx.session.add(approval)
