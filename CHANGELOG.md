@@ -13,7 +13,7 @@ release below is the current one.
 ## [2.1.0] — 2026-11-23
 
 **The first stable 2.1 release: production IAM, an environment manifest, a thinner engine, `tuvl deploy`, and the security and reliability fixes of the 2.1 pre-release review.** `tuvl` and `tuvl-insight` release together as `2.1.0`.
-Everything since `2.0.3` is recorded in the beta sections below (`2.1.0-beta.1` to `2.1.0-beta.6`); this section is the summary to read before upgrading, and the two changes made since `2.1.0b6`.
+Everything since `2.0.3` is recorded in the beta sections below (`2.1.0-beta.1` to `2.1.0-beta.6`); this section is the summary to read before upgrading, and what changed since `2.1.0b6`: approvals by scope, `PATCH /auth/admin/roles/{role_id}`, the coding-agent skills brought up to 2.1, and updated dependencies of the Insight UI and of CI.
 
 ```bash
 uv tool install "tuvl[standard]"                  # the CLI and Insight
