@@ -100,11 +100,12 @@ def test_init_installs_the_skills(tmp_path: Path) -> None:
     assert "list tasks" in (tmp_path / "p/AGENTS.md").read_text()
 
 
-#: What `@tuvl/client` 2.x exports (src/index.ts); a skill may import only these.
+#: What `@tuvl/client` 2.1 exports (src/index.ts); a skill may import only these.
 CLIENT_EXPORTS = {
-    "RunHandle", "TuvlClient", "isTokenEvent", "TuvlAuth", "readToken", "tokenExpiresAt", "isTokenExpired",
-    "CrudClient", "WebhookError", "verifyWebhook", "webhookHandler", "parseSseEvents", "parseSseStream",
-    "Transport", "TERMINAL_STATUSES", "TuvlApiError", "TuvlRunError", "WAITING_STATUSES",
+    "RunHandle", "TuvlClient", "isTokenEvent", "TuvlAuth", "readToken", "readOAuthToken", "tokenExpiresAt",
+    "isTokenExpired", "CrudClient", "RolesClient", "WebhookError", "verifyWebhook", "webhookHandler",
+    "parseSseEvents", "parseSseStream", "Transport", "TERMINAL_STATUSES", "TuvlApiError", "TuvlRunError",
+    "TuvlStreamError", "TuvlTimeoutError", "WAITING_STATUSES",
 }  # fmt: skip
 
 

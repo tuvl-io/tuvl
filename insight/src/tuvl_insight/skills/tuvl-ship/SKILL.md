@@ -1,6 +1,6 @@
 ---
 name: tuvl-ship
-description: "Prepare a tuvl project for production: lock, the CI gate, tuvl ship and the extras an image installs."
+description: "Prepare a tuvl project for production: lock, the CI gate, tuvl ship and the extras an image installs, IAM on a fresh database, EnvConfig, probes and tuvl deploy."
 ---
 # Shipping
 
@@ -46,6 +46,16 @@ and every model provider need no extra.
 - A browser app on another origin is blocked unless `spec.api.cors_origins` lists its origin. `.tuvl/system.yaml` goes into the image, so origins written there ship with it;
   `TUVL_CORS_ORIGINS` in the chart's `env:` overrides them per environment. Nothing is allowed by default.
 - A production server mounts only what it needs: no Insight or dev routes, and the OpenAPI pages and admin routes are off unless exposed.
+  The IAM admin API (`/auth/bootstrap`, `/auth/admin/*`) is the `iam` group and is off: manage users and roles with `tuvl iam` inside the
+  deployment, or add the group to `spec.api.expose` / `TUVL_API_EXPOSE` (the list replaces the default, so keep `auth`).
+- IAM in a fresh database: keep the starting roles in a `kind: RoleSeed` file (`tuvl iam export --out iam/roles.yaml` writes it from
+  development), and set `TUVL_BOOTSTRAP_ADMIN_EMAIL` and `TUVL_BOOTSTRAP_ADMIN_PASSWORD` (or `_PASSWORD_FILE`) in the cluster Secret. They are
+  applied once in the life of a database; later changes go through `tuvl iam` (`tuvl iam check` reports drift from the seed).
+- Declare the project's own variables in a `kind: EnvConfig` file (`config/env.yaml`): a `required` one that is unset stops a
+  production boot, a `secret` one never has a value in YAML. Once the file exists, `tuvl lint project` requires every `${VAR}` to be
+  declared (V045–V047); `tuvl ship` prints the secrets the deployment needs and writes the plain defaults into the chart.
+- Probes: `GET /health` for liveness, `GET /ready` for readiness (`503` while starting, while the database does not answer, or while
+  shutting down); the chart uses both.
 - A workflow naming a disabled or undefined model is refused with the reason (HTTP 409), not run.
 - `tuvl deploy` ships the project as an archive and deploys it to a tuvl cloud (cloud.tuvl.io by default) with a client token
   (`TUVL_CLIENT_TOKEN`, standard input or `tuvl deploy --login`; never an argument). The backend is served at `api.<name>`; a `ui/` folder with an `index.html`

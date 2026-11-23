@@ -1,6 +1,6 @@
 # tuvl project — rules for coding agents
 
-This is a **tuvl 2.0** project: typed YAML workflows of agents, run by a durable, journaled runtime.
+This is a **tuvl 2** project: typed YAML workflows of agents, run by a durable, journaled runtime.
 Work spec-first and let tuvl tell you the state of the project.
 
 ## Two ways you may be started
@@ -29,7 +29,7 @@ write your own notes only below the notes marker. A browser app on another origi
    is set, `tuvl.lock`. Regenerate with `tuvl generate code` / `tuvl generate lock`.
 4. **Only `code` agents need Python**, and only the function body. The decorator, signature and
    docstring belong to `tuvl generate code`.
-5. **Never invent fields, engines or kinds.** Engines: `pending code tool decide llm loop human map`.
+5. **Never invent fields, engines or kinds.** Engines: `pending code tool decide llm loop human map parallel`.
    Every document is `kind:` + `version:` + `metadata:` + `spec:`; workflows are `version: tuvl/v2`.
 6. **Every change ends green**: `tuvl lint spec && tuvl lint project --strict && tuvl generate code --check && tuvl verify lock
    && tuvl run tests --strict && tuvl verify spec --strict && tuvl list tasks --strict && tuvl review code --strict` (the CI gate).
@@ -47,6 +47,6 @@ write your own notes only below the notes marker. A browser app on another origi
 | `tuvl-test` | tests, mocks, fixtures, judges |
 | `tuvl-review` | reviewing the Python of code agents (the C-rules, then judgement) |
 | `tuvl-harden` | changing a working workflow safely |
-| `tuvl-ship` | lock, CI gate, shipping (`tuvl ship` installs only the tuvl extras the project uses) |
+| `tuvl-ship` | lock, CI gate, shipping (`tuvl ship` installs only the tuvl extras the project uses), production IAM, `EnvConfig`, probes |
 | `tuvl-ui` | **always for a UI task** — building the user interface with `@tuvl/client`: specs, setup, same-origin proxy, one screen per workflow |
 | `ui-run` / `ui-approve` / `ui-auth` / `ui-data` | UI screens that start and follow runs, answer people and approvals, sign in, and show model data, uploads and webhooks |

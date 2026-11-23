@@ -20,6 +20,8 @@ spec:
     - { name: customer_email, type: string, secure: true }     # PII: redacted, never to models
     - { name: created_at, type: timestamptz, input: false }
 ```
+- A `secure: true` field is left out of CRUD responses unless the token has `<model>:read_secure` (for `Refund`:
+  `refund:read_secure`) or `iam:admin`, and is masked in prompts and tool results. A UI that must show it needs a role with that scope.
 - Field types: `string text integer bigint numeric float boolean uuid date timestamptz jsonb enum`.
 - In contracts the model is a type: `Refund` (read), `Refund.create`, `Refund.update`, `list[Refund]`.
 - Workflows list the models their agents touch in `spec.models`; writes go through workflows

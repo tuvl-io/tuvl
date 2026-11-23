@@ -36,7 +36,8 @@ description: "Implement a loop agent: a model that investigates with tools, unde
   (`parse_error`). To hold every turn to a tool call set `loop.tool_choice: required`; a provider that refuses it fails the agent
   with `llm_error`. A reply cut off by `length` (see `finish_reason` on the `llm_turn` event) needs a larger `max_tokens`, not this.
 - Tool arguments are validated before execution; writes behind `approval:` pause the run for a
-  person (approve / edit / reject). Human and loop agents cannot be tools (V014).
+  person (approve / edit / reject). The rule takes `required_group` (an IAM role name) and/or `required_scope` (a scope, so a
+  role created at runtime can decide), as on a `human` agent. Human and loop agents cannot be tools (V014).
 - A `collection:` tool is offered to the model as `search_<collection>(query)` (or the `name:` you give it) and returns
   `{ passages: [{ content, metadata, score }] }`, the same hybrid search as `tuvl.data_search`. `top_k` (default 5), `filter`
   (metadata the passages must contain) and `scope: global|run` are fixed in the YAML, not chosen by the model. It is a read: no `approval`
