@@ -10,7 +10,36 @@ release below is the current one.
 
 ---
 
-## [Unreleased]
+## [2.1.0] — 2026-11-23
+
+**The first stable 2.1 release: production IAM, an environment manifest, a thinner engine, `tuvl deploy`, and the security and reliability fixes of the 2.1 pre-release review.** `tuvl` and `tuvl-insight` release together as `2.1.0`.
+Everything since `2.0.3` is recorded in the beta sections below (`2.1.0-beta.1` to `2.1.0-beta.6`); this section is the summary to read before upgrading, and the two changes made since `2.1.0b6`.
+
+```bash
+uv tool install "tuvl[standard]"                  # the CLI and Insight
+pip install "tuvl[standard]"                       # or into an environment
+pip install tuvl                                   # the production engine only
+```
+
+**What 2.1 is**
+
+- **Production IAM.** `tuvl iam` manages users, roles and scopes from inside the deployment; `kind: RoleSeed` and `TUVL_BOOTSTRAP_ADMIN_*` seed them once; roles can be disabled; the last administrator is protected; one-time set-password links; role management over HTTP in a separate `roles` group; `TUVL_SIGNING_KEY_PREVIOUS` rotates the signing key without signing anyone out. ([beta.1](#210-beta1--2026-11-10), [beta.2](#210-beta2--2026-11-11), [beta.5](#210-beta5--2026-11-14), [beta.6](#210-beta6--2026-11-17))
+- **`kind: EnvConfig`.** A project declares the environment it needs; lint, `tuvl ship`, the production boot check and Insight's Settings → Environment all read it. ([beta.1](#210-beta1--2026-11-10))
+- **A thinner engine.** The developer tooling moved into `tuvl-insight`; `tuvl` is the engine and the production CLI. ([beta.1](#210-beta1--2026-11-10))
+- **`tuvl deploy`** deploys a project, and its web UI, to a tuvl cloud, with `--check-dns` and `--set-hostname`. ([beta.3](#210-beta3--2026-11-12), [beta.5](#210-beta5--2026-11-14))
+- **Operations.** `GET /ready`, `tuvl prune runs`, `TUVL_LLM_MAX_CONNECTIONS`, `loop.tool_choice: required`, a boot log of the runs a changed workflow will fail, Google Cloud Storage with HMAC keys. ([beta.4](#210-beta4--2026-11-13), [beta.6](#210-beta6--2026-11-17))
+- **Security and reliability.** Login throttling, one password rule, secure fields hidden from the API and the model unless allowed, a safer `http` tool, browser sign-in bound to its browser (PKCE), and many fixes to workers, leases, lists and writes. ([beta.6](#210-beta6--2026-11-17))
+
+**Read before upgrading from 2.0.x** (nothing in your YAML has to change; each point is explained in its beta entry):
+
+- **Breaking.** The REST IAM admin API (`/auth/bootstrap`, `/auth/admin/*`) is in the `iam` group, which a production server does not mount by default: use `tuvl iam`, or add `iam` to `spec.api.expose` / `TUVL_API_EXPOSE`. Tooling modules moved from `tuvl.<name>` to `tuvl_insight.<name>`. The extras `tuvl[codegen]`, `[test]`, `[tui]`, `[review]` and `[pdf]` are gone: use `tuvl[standard]`.
+- **Sign-in.** Wrong passwords are slowed per login and per address (`429` with `Retry-After`); one password rule everywhere (8 to 72 bytes, `422`; a bootstrap password under 8 characters is refused); emails are case-insensitive; a browser sign-in through a provider must finish in the browser that started it.
+- **The API.** A JSON body over 1 MiB is `413`; a protected trigger answers `401` before it reads the body; an anonymous caller of a public trigger gets the kind of error and the run id, no message and no `status_url`; `runs:read` reads any run of its tenant.
+- **Data.** Fields marked `secure: true` are left out of CRUD responses unless the token has `<model>:read_secure` (or `iam:admin`) and are masked in prompts and tool results; `PATCH` with `null` clears a field; lists have a stable order; a refused write is `409` or `422`.
+- **The `http` tool.** `${VAR}` is read from the workflow's own text only; a host that arrives through `{{ }}` must be public (`allow_private: true` allows an inside one); a response is read up to 10 MiB.
+- **Operations.** `GET /ready` is the readiness probe (the Helm chart uses it); several `tuvl_system_*` tables and four run indexes are created at the next boot (the indexes are built concurrently); a run waiting while its workflow changes still fails with `workflow_changed`, and boot now logs how many.
+
+In a project created by `tuvl init` on a beta, change the `dev` group to `tuvl[standard]>=2.1.0` (the separate `tuvl-insight` pin is no longer needed) and run `uv lock --upgrade`. The Microsoft sign-in change (the email now comes from `userinfo`) has been tested against a stub provider, not yet a live tenant.
 
 ### Added
 
