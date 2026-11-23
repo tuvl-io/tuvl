@@ -17,6 +17,14 @@ release below is the current one.
 - **`required_scope` on `human` agents and loop tool `approval` rules.** Approval steps can now gate decisions by token scope (`required_scope`) as well as or instead of IAM role name (`required_group`), so custom roles created at runtime and granted that scope can decide approval steps without holding the built-in role name. The no-self-approval rule and `iam:admin` bypass apply identically; `tuvl_system_approvals.required_scope` is added automatically on existing databases at boot, and `required_scope` is omitted from the workflow dump when unset so existing workflow hashes are unchanged.
 - **`PATCH /auth/admin/roles/{role_id}`** (`iam` API group, `iam:admin`) updates an existing role's `description` (passing `null` clears it; omitting it leaves it unchanged) and/or `is_active` flag (disabling an active role ends its members' sessions and is refused when it would leave no active administrator).
 
+### Fixed
+
+- **The coding-agent skills describe 2.1.** `ui-auth` read the OAuth sign-in token from the query string; since 2.1 it is in the URL
+  fragment, so it now uses `readOAuthToken({ clear: true })`, and it covers set-password links and the `429` / `422` sign-in answers.
+  `agent-human`, `agent-loop` and `ui-approve` know `required_scope`; `tuvl-data` knows `<model>:read_secure`; `tuvl-ship` covers
+  production IAM (`tuvl iam`, `RoleSeed`, `TUVL_BOOTSTRAP_ADMIN_*`, the `iam` API group), `kind: EnvConfig` and the `/health` and
+  `/ready` probes; `AGENTS.md` lists the `parallel` engine. Run `tuvl update skills` in an existing project.
+
 ---
 
 ## [2.1.0-beta.6] — 2026-11-17

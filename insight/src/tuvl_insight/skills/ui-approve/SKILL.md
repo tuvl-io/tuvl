@@ -12,7 +12,7 @@ const open = await client.approvals.list();                          // only wha
 const approval = open.find((a) => a.run_id === runId);
 ```
 `Approval`: `approval_id`, `run_id`, `agent_id`, `kind` (`human` | `tool` | `pause`), `title`, `instruction`, `show`, `expires_at`,
-`required_group`, and either `form` (human) or `tool` + `args` + `reason` (tool call).
+`required_group`, `required_scope`, and either `form` (human) or `tool` + `args` + `reason` (tool call).
 
 ## Human form
 Render `approval.form` as inputs: `{ [field]: { type, required, label?, widget?, help? } }`. Show `title`, `instruction` and the `show` data the
@@ -39,8 +39,8 @@ const output = await handle.wait();
 ```
 
 ## Who may decide
-- The token needs scope `approvals:decide` and the agent's `required_group`. When a group is required, the person who started the run is not allowed to
-  decide it (separation of duties): a `403` is expected, not a bug. Show a no-access state.
+- The token needs scope `approvals:decide` and the agent's `required_group` and/or `required_scope`. When either is set, the person who started the run
+  is not allowed to decide it (separation of duties): a `403` is expected, not a bug. Show a no-access state.
 - A decision the server refuses (already decided, expired, not yours to decide) rejects `TuvlApiError` with the server's status and message: show it and refresh the list.
 - `approvals.list()` is per token: build an inbox screen from it and refresh it on `approval_requested` events or when the screen gets focus.
 - `kind: "pause"` is not a form: a loop agent suspended itself and gives a `reason`. Show it; `handle.resume()` (scope `runs:control`) continues the run.
