@@ -575,11 +575,12 @@ def _verify_engine_params(out: VerifyResult, step: Step, agent: Any) -> None:
             out.add("R007", step.line, f"`{step.id}`: the workflow's rules differ from the spec's")
     if step.engine == "human":
         human = agent.human
-        if step.group and human.required_group != step.group:
+        actual_group = human.required_group or human.required_scope
+        if step.group and actual_group != step.group:
             out.add(
                 "R008",
                 step.line,
-                f"`{step.id}`: required_group {human.required_group!r}, spec says {step.group!r}",
+                f"`{step.id}`: required_group {actual_group!r}, spec says {step.group!r}",
             )
         if step.expires and _seconds(human.expires) != _seconds(step.expires):
             out.add(
@@ -607,7 +608,12 @@ def _verify_loop_tools(out: VerifyResult, step: Step, agent: Any) -> None:
         if tool is None:
             continue
         approval = getattr(tool, "approval", None)
-        if t.approval_group and (approval is None or approval.required_group != t.approval_group):
+        actual_group = (
+            (approval.required_group or getattr(approval, "required_scope", None))
+            if approval is not None and not isinstance(approval, str)
+            else None
+        )
+        if t.approval_group and actual_group != t.approval_group:
             out.add(
                 "R007",
                 step.line,

@@ -177,6 +177,7 @@ class SystemApproval(DynamicTenantModel, table=True):
         default_factory=dict, sa_column=sa.Column(_JSON, nullable=False)
     )
     required_group: str | None = Field(default=None, sa_column=sa.Column(sa.String, nullable=True))
+    required_scope: str | None = Field(default=None, sa_column=sa.Column(sa.String, nullable=True))
     requested_by: str | None = Field(default=None, sa_column=sa.Column(sa.String, nullable=True))
     status: str = Field(default="pending", sa_column=sa.Column(sa.String, nullable=False))
     decision: dict[str, Any] | None = Field(default=None, sa_column=sa.Column(_JSON, nullable=True))

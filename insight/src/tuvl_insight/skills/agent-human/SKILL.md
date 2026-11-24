@@ -14,12 +14,16 @@ description: "Implement a human agent: an approval or review step with a form, r
     instruction: Approve if the order is not flagged.
     show: [subject, summary]            # what the reviewer sees — never secure fields
     required_group: support_leads       # who may decide (no self-approval)
+    # required_scope: refunds:approve   # and/or a scope: any role granted it may decide
     expires: 4h
     route_on: approved                  # bool → routes true/false; enum → one route per value
   routes: { "true": issue, "false": END.denied, expired: END.expired, error: END.failed }
 ```
 - The run suspends (`waiting_human`) and resumes when someone decides via `POST /api/approvals/{id}`
   (scope `approvals:decide`) or Insight. `expired` is required with `expires`.
+- Who may decide: with `required_group` and/or `required_scope`, a holder of `approvals:decide` who has that group and/or
+  scope and did not start the run; without either, the person who started it or `iam:admin`. `iam:admin` passes the group
+  and scope, never the no-self-approval rule. Prefer `required_scope` when roles are managed at runtime (`tuvl iam`).
 - Quote `"true"`/`"false"` route keys in YAML.
 - `policy.require_human_before: [write]` forces a human before every write on the path.
 - Tests: an unmocked human agent suspends the run — assert it with `expect: { wait: human }`, or

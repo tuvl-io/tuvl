@@ -15,7 +15,7 @@ from typing import Any
 import pytest
 import yaml
 
-from tuvl.contract.schema import HttpTool, WorkflowDocument
+from tuvl.contract.schema import ApprovalWhen, HttpTool, HumanParams, WorkflowDocument
 from tuvl.runtime.runner import workflow_hash
 
 HERE = Path(__file__).parent
@@ -64,3 +64,17 @@ def test_an_http_tool_dumps_allow_private_once_it_is_set() -> None:
     dumped = tool.model_dump(mode="json")
     assert dumped["allow_private"] is True
     assert HttpTool.model_validate(dumped).allow_private is True
+
+
+def test_human_and_approval_when_leave_required_scope_out_while_none() -> None:
+    hp = HumanParams(title="Review")
+    assert "required_scope" not in hp.model_dump(mode="json")
+    hp_scoped = HumanParams(title="Review", required_scope="finance_controllers")
+    assert hp_scoped.model_dump(mode="json")["required_scope"] == "finance_controllers"
+
+    aw = ApprovalWhen.model_validate({"when": "args.amount > 10"})
+    assert "required_scope" not in aw.model_dump(mode="json")
+    aw_scoped = ApprovalWhen.model_validate(
+        {"when": "args.amount > 10", "required_scope": "finance_controllers"}
+    )
+    assert aw_scoped.model_dump(mode="json")["required_scope"] == "finance_controllers"

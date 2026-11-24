@@ -201,6 +201,38 @@ async def test_authorisation_rules(pg_engine: AsyncEngine) -> None:
             pg_engine, open_doc, anonymous, {"approved": True}, Reviewer(None, scopes=DECIDE)
         )
 
+    scoped_doc = workflow(required_group=None, required_scope="finance_controllers")
+    scoped_run = await start(pg_engine, scoped_doc)
+    [scoped_req] = await approvals(pg_engine, scoped_run)
+    assert scoped_req.required_scope == "finance_controllers" and scoped_req.required_group is None
+    with pytest.raises(ApprovalForbiddenError, match="cannot approve it"):
+        await decide(
+            pg_engine,
+            scoped_doc,
+            scoped_run,
+            {"approved": True},
+            Reviewer(REQUESTER, scopes=frozenset({"approvals:decide", "finance_controllers"})),
+        )
+    with pytest.raises(ApprovalForbiddenError, match="'finance_controllers' scope"):
+        await decide(
+            pg_engine,
+            scoped_doc,
+            scoped_run,
+            {"approved": True},
+            Reviewer("custom-user", groups=frozenset({"custom_role"}), scopes=DECIDE),
+        )
+    await decide(
+        pg_engine,
+        scoped_doc,
+        scoped_run,
+        {"approved": True},
+        Reviewer(
+            "custom-user",
+            groups=frozenset({"custom_role"}),
+            scopes=frozenset({"approvals:decide", "finance_controllers"}),
+        ),
+    )
+
 
 async def test_form_validation_and_closed_requests(pg_engine: AsyncEngine) -> None:
     doc = workflow()

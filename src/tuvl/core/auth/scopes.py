@@ -11,6 +11,7 @@ def scope_catalogue() -> dict[str, Any]:
     Needs the project loaded (models, schemas and workflows registered).
     """
     from tuvl.contract.registry import WORKFLOWS
+    from tuvl.contract.schema import HumanAgent, LoopAgent
     from tuvl.core.models.loader import CRUD_OPERATIONS, SECURE_BY_MODEL
     from tuvl.core.models.schemas import SCHEMA_REGISTRY
     from tuvl.core.models.secure import read_secure_scope
@@ -38,11 +39,27 @@ def scope_catalogue() -> dict[str, Any]:
                 # without it a caller's responses leave the model's `secure` fields out
                 crud[model_name].append(read_secure_scope(model_name))
 
-    # ── Workflow trigger scopes ───────────────────────────────────────────
+    # ── Workflow trigger and approval scopes ──────────────────────────────
     workflows: dict[str, list[str]] = {}
     for wf_name, doc in WORKFLOWS.items():
+        wf_scopes: list[str] = []
         if doc.metadata.required_scope:
-            workflows[wf_name] = [doc.metadata.required_scope]
+            wf_scopes.append(doc.metadata.required_scope)
+        for agent in doc.spec.agents:
+            if isinstance(agent, HumanAgent) and agent.human.required_scope:
+                if agent.human.required_scope not in wf_scopes:
+                    wf_scopes.append(agent.human.required_scope)
+            elif isinstance(agent, LoopAgent):
+                for tool in agent.loop.tools:
+                    if (
+                        tool.approval is not None
+                        and not isinstance(tool.approval, str)
+                        and tool.approval.required_scope
+                        and tool.approval.required_scope not in wf_scopes
+                    ):
+                        wf_scopes.append(tool.approval.required_scope)
+        if wf_scopes:
+            workflows[wf_name] = wf_scopes
 
     return {
         "crud": crud,

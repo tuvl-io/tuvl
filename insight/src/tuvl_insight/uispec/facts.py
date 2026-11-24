@@ -133,7 +133,8 @@ def _human_steps(doc: Any) -> list[dict[str, Any]]:
                 "agent": a.id,
                 "title": h.title,
                 "instruction": h.instruction,
-                "group": h.required_group,
+                "group": h.required_group or h.required_scope,
+                "scope": h.required_scope,
                 "expires": h.expires,
                 "route_on": h.route_on,
                 "form": [

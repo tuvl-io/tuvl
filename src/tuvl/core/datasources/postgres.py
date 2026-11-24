@@ -657,6 +657,21 @@ async def ensure_iam_columns(conn: AsyncConnection) -> None:
         )
 
 
+async def ensure_runtime_columns(conn: AsyncConnection) -> None:
+    """Add the columns runtime tables gained after a database was first booted (``create_all`` never alters).
+
+    Idempotent. Approvals can require a scope as well as a group; an older database has no ``required_scope``
+    on ``tuvl_system_approvals``.
+    """
+    from tuvl.runtime.models import SystemApproval
+
+    approvals = table_of(SystemApproval).name
+    if not await _has_column(conn, approvals, "required_scope"):
+        await conn.execute(
+            text(f'ALTER TABLE "{approvals}" ADD COLUMN IF NOT EXISTS required_scope VARCHAR')
+        )
+
+
 async def init_db() -> None:
     _build_engines()
     if not _engines_rw:
@@ -734,7 +749,11 @@ async def init_db() -> None:
     if _PRIMARY_DS in _engines_rw:
         from tuvl.runtime.models import RUNTIME_TABLES
 
-        await ensure_schema(_engines_rw[_PRIMARY_DS], [table_of(m) for m in RUNTIME_TABLES])
+        await ensure_schema(
+            _engines_rw[_PRIMARY_DS],
+            [table_of(m) for m in RUNTIME_TABLES],
+            extra=ensure_runtime_columns,
+        )
         await ensure_indexes(_engines_rw[_PRIMARY_DS], RUNTIME_INDEXES)
         logger.info("Runtime tables ready", datasource=_PRIMARY_DS, pid=pid)
 
