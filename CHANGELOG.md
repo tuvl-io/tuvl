@@ -16,6 +16,7 @@ release below is the current one.
 
 - **README links work on PyPI.** The README linked to the changelog, the docs, `LICENSE` and other files with relative paths, so on the PyPI page they resolved to
   `pypi.org/project/tuvl/CHANGELOG.md/` and returned 404. They are now absolute `github.com/tuvl-io/tuvl/blob/main/...` URLs.
+- **`tuvl-insight` has project links on PyPI.** Its `pyproject.toml` had no `[project.urls]`, so its PyPI page showed no Homepage (`tuvl.org`), Documentation, Repository, Changelog or Issues link.
 
 ### Changed
 
