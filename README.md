@@ -14,9 +14,13 @@
 </p>
 
 <p align="center">
-  <a href="https://tuvl.io">Website</a> &nbsp;·&nbsp;
+  <a href="https://tuvl.org">Website</a> &nbsp;·&nbsp;
   <a href="https://tuvl.dev">Docs</a> &nbsp;·&nbsp;
   <a href="https://github.com/tuvl-io/tuvl">GitHub</a>
+</p>
+
+<p align="center">
+  <sub>Maintained by <a href="https://tuvl.io/?utm_source=pypi&amp;utm_medium=readme&amp;utm_campaign=maintained-by">tuvl.io</a></sub>
 </p>
 
 > Versions follow [SemVer](https://semver.org); every change is in the [CHANGELOG](CHANGELOG.md).

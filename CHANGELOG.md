@@ -10,6 +10,16 @@ release below is the current one.
 
 ---
 
+## [Unreleased]
+
+### Changed
+
+- **The website is now tuvl.org.** The package `Homepage` on PyPI, the README links, and the website links in the files `tuvl init` writes
+  (`pyproject.toml`, `README.md`) point to `https://tuvl.org`. Documentation stays at `tuvl.dev` (also mirrored at `tuvl.org/docs`). The READMEs (the PyPI pages) credit tuvl.io as the maintainer. Nothing
+  changes in the engine or the CLI; `tuvl.io` keeps serving the same site, and the `tuvl.io` email addresses are unchanged.
+
+---
+
 ## [2.1.0] — 2026-11-23
 
 **The first stable 2.1 release: production IAM, an environment manifest, a thinner engine, `tuvl deploy`, and the security and reliability fixes of the 2.1 pre-release review.** `tuvl` and `tuvl-insight` release together as `2.1.0`.

@@ -1021,7 +1021,7 @@ def _write_pyproject(path: Path, *, name: str) -> None:
         "#\n"
         "# Built with tuvl — YAML-driven AI workflow orchestration for Python backends.\n"
         "#\n"
-        "#   Website:       https://tuvl.io\n"
+        "#   Website:       https://tuvl.org\n"
         "#   Documentation: https://tuvl.dev\n"
         "#   PyPI:          https://pypi.org/project/tuvl/\n"
         "#   GitHub:        https://github.com/tuvl-io/\n"
@@ -1031,7 +1031,7 @@ def _write_pyproject(path: Path, *, name: str) -> None:
         "[project]\n"
         f'name = "{name}"\n'
         'version = "0.1.0"\n'
-        f'description = "A tuvl project — see https://tuvl.io"\n'
+        f'description = "A tuvl project — see https://tuvl.org"\n'
         'readme = "README.md"\n'
         'requires-python = ">=3.13,<3.15"\n'
         "dependencies = [\n"
@@ -1039,7 +1039,7 @@ def _write_pyproject(path: Path, *, name: str) -> None:
         "]\n"
         "\n"
         "[project.urls]\n"
-        '"Homepage"      = "https://tuvl.io"\n'
+        '"Homepage"      = "https://tuvl.org"\n'
         '"Documentation" = "https://tuvl.dev"\n'
         '"tuvl on PyPI"  = "https://pypi.org/project/tuvl/"\n'
         '"Source"        = "https://github.com/tuvl-io/"\n'
@@ -1060,13 +1060,13 @@ def _write_pyproject(path: Path, *, name: str) -> None:
 
 
 def _write_readme(path: Path, *, name: str) -> None:
-    """Write a README.md with quick-start and links to tuvl.io / tuvl.dev."""
+    """Write a README.md with quick-start and links to tuvl.org / tuvl.dev."""
     if path.exists():
         return
     content = (
         f"# {name}\n"
         "\n"
-        "> Built with [tuvl](https://tuvl.io) — compose AI-powered backend workflows\n"
+        "> Built with [tuvl](https://tuvl.org) — compose AI-powered backend workflows\n"
         "> as typed YAML workflows of agents, run by a durable, journaled runtime.\n"
         "\n"
         "## Quick Start\n"
@@ -1083,7 +1083,7 @@ def _write_readme(path: Path, *, name: str) -> None:
         "```\n"
         "\n"
         "The engine starts at **http://localhost:8000** and the\n"
-        "[Tuvl Insight](https://tuvl.io) developer portal is available at\n"
+        "[Tuvl Insight](https://tuvl.org) developer portal is available at\n"
         "**http://localhost:8000/insight**.\n"
         "\n"
         "## Project structure\n"
@@ -1120,7 +1120,7 @@ def _write_readme(path: Path, *, name: str) -> None:
         "\n"
         "| | |\n"
         "|--|--|\n"
-        "| **Website** | <https://tuvl.io> |\n"
+        "| **Website** | <https://tuvl.org> |\n"
         "| **Documentation** | <https://tuvl.dev> |\n"
         "| **Getting started** | [tuvl.dev/getting-started](https://tuvl.dev/getting-started/quickstart/) |\n"
         "| **Concepts** | [tuvl.dev/concepts](https://tuvl.dev/concepts/architecture/) |\n"

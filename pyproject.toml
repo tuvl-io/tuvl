@@ -87,7 +87,7 @@ dev = [
 tuvl = "tuvl.cli.main:main"
 
 [project.urls]
-Homepage = "https://tuvl.io"
+Homepage = "https://tuvl.org"
 Documentation = "https://tuvl.dev"
 Repository = "https://github.com/tuvl-io/tuvl"
 Changelog = "https://github.com/tuvl-io/tuvl/blob/main/CHANGELOG.md"
