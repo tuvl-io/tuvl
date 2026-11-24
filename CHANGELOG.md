@@ -12,6 +12,11 @@ release below is the current one.
 
 ## [Unreleased]
 
+### Fixed
+
+- **README links work on PyPI.** The README linked to the changelog, the docs, `LICENSE` and other files with relative paths, so on the PyPI page they resolved to
+  `pypi.org/project/tuvl/CHANGELOG.md/` and returned 404. They are now absolute `github.com/tuvl-io/tuvl/blob/main/...` URLs.
+
 ### Changed
 
 - **The website is now tuvl.org.** The package `Homepage` on PyPI, the README links, and the website links in the files `tuvl init` writes

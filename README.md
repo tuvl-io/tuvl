@@ -23,7 +23,7 @@
   <sub>Maintained by <a href="https://tuvl.io/?utm_source=pypi&amp;utm_medium=readme&amp;utm_campaign=maintained-by">tuvl.io</a></sub>
 </p>
 
-> Versions follow [SemVer](https://semver.org); every change is in the [CHANGELOG](CHANGELOG.md).
+> Versions follow [SemVer](https://semver.org); every change is in the [CHANGELOG](https://github.com/tuvl-io/tuvl/blob/main/CHANGELOG.md).
 
 A tuvl workflow is a graph of **agents**. Each agent has a typed contract — `inputs`, `outputs`, the
 signals it emits — and an **engine** that implements it:
@@ -93,7 +93,7 @@ uv add "tuvl[standard]"
 (`tuvl serve app`, `run workflow`, `list runs`, `check system`, `generate key`, ...). `[standard]` adds the
 `tuvl-insight` package: **Insight** (served only in dev mode) and the development tools (`tuvl init`, `dev`, `ship`,
 `lint project`, `generate code`, `run tests`, `serve mcp`). On a bare install those commands answer with how to install
-them. See [Core and Insight](docs/core-and-insight.md). Features with their own packages are
+them. See [Core and Insight](https://github.com/tuvl-io/tuvl/blob/main/docs/core-and-insight.md). Features with their own packages are
 extras: `tuvl[mcp]`, `tuvl[redis]`, `tuvl[vector]`, `tuvl[otel-grpc]`. `tuvl ship` installs only the ones a project uses.
 
 ## Quick start
@@ -141,7 +141,7 @@ tuvl review code && tuvl ship --format both      # gate, image and a runnable ar
 ```
 
 `tuvl dev` shows the same path in a terminal UI, and every step is in a local audit ledger. Details:
-[docs/authoring.md](docs/authoring.md).
+[docs/authoring.md](https://github.com/tuvl-io/tuvl/blob/main/docs/authoring.md).
 
 ## Surfaces
 
@@ -165,11 +165,11 @@ fields kept away from models, optional Postgres row-level multi-tenancy.
 
 ## Documentation
 
-[tuvl.dev](https://tuvl.dev) · in this repository: [agentic manual](docs/tuvl-agentic-manual.md),
-[runtime](docs/runtime.md), [engines](docs/engines.md), [decide](docs/decide.md),
-[loop and tools](docs/loop-and-tools.md), [judges](docs/judges.md),
-[storage](docs/storage.md), [models](docs/models.md), [spec-driven](docs/spec-driven.md), [Insight](docs/insight.md), [API](docs/api.md),
-[CLI](docs/cli.md), [security](docs/auth.md), [observability](docs/observability.md).
+[tuvl.dev](https://tuvl.dev) · in this repository: [agentic manual](https://github.com/tuvl-io/tuvl/blob/main/docs/tuvl-agentic-manual.md),
+[runtime](https://github.com/tuvl-io/tuvl/blob/main/docs/runtime.md), [engines](https://github.com/tuvl-io/tuvl/blob/main/docs/engines.md), [decide](https://github.com/tuvl-io/tuvl/blob/main/docs/decide.md),
+[loop and tools](https://github.com/tuvl-io/tuvl/blob/main/docs/loop-and-tools.md), [judges](https://github.com/tuvl-io/tuvl/blob/main/docs/judges.md),
+[storage](https://github.com/tuvl-io/tuvl/blob/main/docs/storage.md), [models](https://github.com/tuvl-io/tuvl/blob/main/docs/models.md), [spec-driven](https://github.com/tuvl-io/tuvl/blob/main/docs/spec-driven.md), [Insight](https://github.com/tuvl-io/tuvl/blob/main/docs/insight.md), [API](https://github.com/tuvl-io/tuvl/blob/main/docs/api.md),
+[CLI](https://github.com/tuvl-io/tuvl/blob/main/docs/cli.md), [security](https://github.com/tuvl-io/tuvl/blob/main/docs/auth.md), [observability](https://github.com/tuvl-io/tuvl/blob/main/docs/observability.md).
 
 ---
 
@@ -196,15 +196,15 @@ More in the [installation guide](https://tuvl.dev/getting-started/installation/#
 
 ## License & contributing
 
-tuvl is licensed under the **Apache License, Version 2.0** — see [LICENSE](LICENSE) and
-[NOTICE](NOTICE). It is free to use, modify and distribute, with an express patent grant.
+tuvl is licensed under the **Apache License, Version 2.0** — see [LICENSE](https://github.com/tuvl-io/tuvl/blob/main/LICENSE) and
+[NOTICE](https://github.com/tuvl-io/tuvl/blob/main/NOTICE). It is free to use, modify and distribute, with an express patent grant.
 The name "tuvl" and the logos are not licensed for use as a brand (Apache-2.0 §6).
 
 Releases before `2.0.0b5` keep the terms they were published with. From `2.0.0b5` tuvl is
-Apache-2.0; see the [changelog](CHANGELOG.md).
+Apache-2.0; see the [changelog](https://github.com/tuvl-io/tuvl/blob/main/CHANGELOG.md).
 
 The source of every release is published at [tuvl-io/tuvl](https://github.com/tuvl-io/tuvl), tagged with the
 release version. Bug reports, feature proposals and patches are welcome; see
-[CONTRIBUTING](CONTRIBUTING.md) for how a change lands and the [code of conduct](CODE_OF_CONDUCT.md).
+[CONTRIBUTING](https://github.com/tuvl-io/tuvl/blob/main/CONTRIBUTING.md) for how a change lands and the [code of conduct](https://github.com/tuvl-io/tuvl/blob/main/CODE_OF_CONDUCT.md).
 Security reports go to [security@tuvl.io](mailto:security@tuvl.io), never to a public issue; see
-[SECURITY](SECURITY.md). Anything else: [developer@tuvl.io](mailto:developer@tuvl.io).
+[SECURITY](https://github.com/tuvl-io/tuvl/blob/main/SECURITY.md). Anything else: [developer@tuvl.io](mailto:developer@tuvl.io).
