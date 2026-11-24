@@ -14,7 +14,7 @@
 </p>
 
 <p align="center">
-  <a href="https://tuvl.io">Website</a> &nbsp;·&nbsp;
+  <a href="https://tuvl.org">Website</a> &nbsp;·&nbsp;
   <a href="https://tuvl.dev">Docs</a> &nbsp;·&nbsp;
   <a href="https://github.com/tuvl-io/tuvl">GitHub</a>
 </p>

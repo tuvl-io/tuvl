@@ -2,7 +2,7 @@
 
 **Intelligent workflows. Deterministic execution.**
 
-**tuvl Insight** is the development UI that ships with [tuvl](https://tuvl.io). It takes you from a spec to a running workflow in one place:
+**tuvl Insight** is the development UI that ships with [tuvl](https://tuvl.org). It takes you from a spec to a running workflow in one place:
 
 - a spec and task board for what the feature must do
 - a workflow canvas over the same YAML
