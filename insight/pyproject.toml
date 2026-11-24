@@ -17,6 +17,13 @@ dependencies = [
     "pypdf>=6.21.4",  # tuvl import idea reads the text of PDF ideas (Word files need nothing extra)
 ]
 
+[project.urls]
+Homepage = "https://tuvl.org"
+Documentation = "https://tuvl.dev"
+Repository = "https://github.com/tuvl-io/tuvl"
+Changelog = "https://github.com/tuvl-io/tuvl/blob/main/CHANGELOG.md"
+Issues = "https://github.com/tuvl-io/tuvl/issues"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

@@ -162,7 +162,7 @@ Key invariants to respect (the agentic manual's golden rules are the contract):
 
 - `docs/tuvl-agentic-manual.md` is the ground-truth YAML/agent contract — any
   behavior change that touches the contract must update it in the same PR.
-- The docs site ([tuvl.io/docs](https://tuvl.io/docs)) mirrors `docs/` from this
+- The docs site ([tuvl.org/docs](https://tuvl.org/docs)) mirrors `docs/` from this
   repo; it is built with MkDocs in the separate docs repository.
 
 ## Releasing
