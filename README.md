@@ -19,6 +19,10 @@
   <a href="https://github.com/tuvl-io/tuvl">GitHub</a>
 </p>
 
+<p align="center">
+  <sub>Maintained by <a href="https://tuvl.io/?utm_source=pypi&amp;utm_medium=readme&amp;utm_campaign=maintained-by">tuvl.io</a></sub>
+</p>
+
 > Versions follow [SemVer](https://semver.org); every change is in the [CHANGELOG](CHANGELOG.md).
 
 A tuvl workflow is a graph of **agents**. Each agent has a typed contract — `inputs`, `outputs`, the

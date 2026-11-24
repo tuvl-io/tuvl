@@ -15,7 +15,7 @@ release below is the current one.
 ### Changed
 
 - **The website is now tuvl.org.** The package `Homepage` on PyPI, the README links, and the website links in the files `tuvl init` writes
-  (`pyproject.toml`, `README.md`) point to `https://tuvl.org`. Documentation stays at `tuvl.dev` (also mirrored at `tuvl.org/docs`). Nothing
+  (`pyproject.toml`, `README.md`) point to `https://tuvl.org`. Documentation stays at `tuvl.dev` (also mirrored at `tuvl.org/docs`). The READMEs (the PyPI pages) credit tuvl.io as the maintainer. Nothing
   changes in the engine or the CLI; `tuvl.io` keeps serving the same site, and the `tuvl.io` email addresses are unchanged.
 
 ---
